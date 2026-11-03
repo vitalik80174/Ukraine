@@ -49,7 +49,7 @@ html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 var(--f-b
 .chip{all:unset;cursor:pointer;font-size:12px;padding:4px 9px;border-radius:999px;background:rgba(13,17,23,.75);border:1px solid var(--line);color:var(--fg)}
 .chip:focus-visible,.wx button:focus-visible{outline:2px solid var(--other);outline-offset:2px}
 .tip{position:absolute;pointer-events:none;background:rgba(13,17,23,.92);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;max-width:220px}
-.legend{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--dim);font-size:12px;padding:0 2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--dim);font-size:12px;padding:4px 12px 10px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .threats{display:flex;flex-wrap:wrap;gap:8px}
 .tcard{flex:1 1 90px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
@@ -71,11 +71,24 @@ summary{cursor:pointer;font-weight:600}
 .set input,.set select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%}
 .set .hint{font-size:11.5px}
 .empty{color:var(--dim);padding:6px 8px}
+.btn{font:inherit;font-weight:600;color:var(--fg);background:var(--calm);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;text-align:left}
+.btn:focus-visible{outline:2px solid var(--other);outline-offset:2px}
+.missile{border-radius:14px;padding:12px 14px;background:var(--missile);color:#fff;font-weight:600;animation:pulse 1.4s infinite}
+.missile span{display:block;font-weight:400;font-size:13px;opacity:.9}
+.nearest,.power{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.nearest b,.power b{display:block}
+.nearest span,.power span{color:var(--dim);font-size:13px}
+.nearest.close{border-color:var(--shahed)}
+.power .bar{position:relative;height:10px;border-radius:5px;background:rgba(60,207,142,.35);margin:8px 0 4px;overflow:hidden}
+.power .bar i{position:absolute;top:0;bottom:0;background:var(--fg);opacity:.75}
+.power .bar em{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--amber)}
+.power .ticks{display:flex;justify-content:space-between;color:var(--dim);font:11px var(--f-mono)}
+body.night .wrap{filter:brightness(.4)}
+body.night{background:#000}
 @media (min-width:900px){
   .wrap{max-width:1500px;display:grid;grid-template-columns:minmax(0,1.75fr) minmax(330px,1fr);align-items:start;column-gap:22px;row-gap:12px;padding-top:20px}
   .wrap>*{grid-column:2}
-  .mapbox{grid-column:1;grid-row:1 / span 8;margin-bottom:34px}
-  .legend{grid-column:1;grid-row:1 / span 8;align-self:end;padding-bottom:6px}
+  .mapbox{grid-column:1;grid-row:1 / span 14}
   .clock{font-size:56px}
   .list{max-height:300px}
 }
@@ -107,16 +120,24 @@ summary{cursor:pointer;font-weight:600}
     </svg>
     <div class="maptools"><button class="chip" id="zoomBtn" type="button">Моя область</button></div>
     <div class="tip" id="tip" hidden></div>
-  </div>
-  <div class="legend">
-    <span><i style="background:var(--red)"></i>Тривога</span>
-    <span><i style="background:repeating-linear-gradient(45deg,#ff3b3b 0 2px,#2b3644 2px 5px)"></i>Частина району</span>
-    <span><i style="background:var(--amber)"></i>Жовтий рівень</span>
-    <span><i style="background:var(--shahed);border-radius:50%"></i>Шахеди</span>
-    <span><i style="background:var(--missile);border-radius:50%"></i>Ракети</span>
+    <div class="legend">
+      <span><i style="background:var(--red)"></i>Тривога</span>
+      <span><i style="background:repeating-linear-gradient(45deg,#ff3b3b 0 2px,#2b3644 2px 5px)"></i>Частина району</span>
+      <span><i style="background:var(--amber)"></i>Жовтий рівень</span>
+      <span><i style="background:var(--shahed);border-radius:50%"></i>Шахеди</span>
+      <span><i style="background:var(--missile);border-radius:50%"></i>Ракети</span>
+    </div>
   </div>
 
+  <div class="missile" id="missile" hidden></div>
+
   <div class="threats" id="threats"></div>
+  <div class="nearest" id="nearest" hidden></div>
+
+  <div class="power" id="power" hidden></div>
+
+  <h2>Тривоги у вашому районі</h2>
+  <div class="threats" id="stats"><div class="tcard"><b>…</b><span>завантажую історію</span></div></div>
 
   <h2>Активні тривоги</h2>
   <div class="list" id="alerts"><div class="empty">Ще немає даних</div></div>
@@ -132,6 +153,19 @@ summary{cursor:pointer;font-weight:600}
         <input id="tokenIn" placeholder="Вставте ключ, якщо маєте" autocomplete="off">
         <span class="hint">Без ключа тривоги беруться з siren.pp.ua. Ключ можна запросити на alerts.in.ua/api-request.</span></label>
       <label for="thrIn"><span><input type="checkbox" id="thrIn" checked style="width:auto;vertical-align:-2px"> Показувати шахеди й ракети на карті</span></label>
+      <label for="msSel">Сигнал про ракети
+        <select id="msSel">
+          <option value="all">Ракети й балістика будь-де в Україні</option>
+          <option value="oblast">Лише в моїй області</option>
+          <option value="off">Вимкнено</option>
+        </select>
+        <span class="hint">Звук і сповіщення лише для ракет і балістики. Шахеди та звичайні тривоги без звуку.</span></label>
+      <button class="btn" id="testBtn" type="button">Перевірити сигнал</button>
+      <label for="pwSel">Моя група відключень світла (Львівобленерго)
+        <select id="pwSel"><option value="">Не показувати</option></select></label>
+      <label for="nightIn"><span><input type="checkbox" id="nightIn" style="width:auto;vertical-align:-2px"> Нічний режим з 23:00 до 7:00</span>
+        <span class="hint">Екран тьмяніє. Під час тривоги у вашому районі або ракет яскравість повертається.</span></label>
+      <button class="btn" id="autoBtn" type="button" hidden>Відкривати після ввімкнення планшета</button>
     </div>
   </details>
 
@@ -153,8 +187,12 @@ const settings = {
   home: store.get('home', 'Львівський район|Львівська область'),
   city: store.get('city', {name:'Львів', lat:49.8397, lon:24.0297}),
   token: store.get('token', ''),
-  threats: store.get('threats', true)
+  threats: store.get('threats', true),
+  missile: store.get('missile', 'all'),
+  power: store.get('power', ''),
+  night: store.get('night', false)
 };
+const NATIVE = window.NeboNative || null;
 
 /* ---------- data access: through the local launcher when present, otherwise direct ---------- */
 const VIA_PROXY = /^https?:$/.test(location.protocol) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -163,10 +201,13 @@ const SRC = {
   sirenRegions: 'https://siren.pp.ua/api/v3/regions',
   neptun: 'https://neptun.in.ua/api/v1/threats',
   alertsInUa: 'https://api.alerts.in.ua/v1/alerts/active.json',
-  ubilling: 'https://ubilling.net.ua/aerialalerts/'
+  ubilling: 'https://ubilling.net.ua/aerialalerts/',
+  sirenHistory: 'https://siren.pp.ua/api/v3/alerts/regionHistory',
+  loe: 'https://api.loe.lviv.ua/api/menus?page=1&type=photo-grafic'
 };
-async function getJSON(key, opts={}){
-  const url = VIA_PROXY ? '/proxy/'+key : SRC[key] + (key==='alertsInUa' && settings.token ? '?token='+encodeURIComponent(settings.token) : '');
+async function getJSON(key, query=''){
+  const url = VIA_PROXY ? '/proxy/'+key+(query?'?'+query:'')
+    : SRC[key] + (query ? (SRC[key].includes('?')?'&':'?')+query : '') + (key==='alertsInUa' && settings.token ? '?token='+encodeURIComponent(settings.token) : '');
   const headers = {};
   if (key==='alertsInUa' && VIA_PROXY) headers['X-Token'] = settings.token;
   const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 15000);
@@ -365,7 +406,7 @@ async function loadThreats(){
   try{
     const d = await getJSON('neptun');
     state.threats = (d.threats||[]).filter(t=>!t.status || t.status==='active').map(t=>({
-      type:t.type||'unknown', lat:+t.lat, lon:+t.lon, heading: t.heading==null?null:+t.heading, count: Math.max(1, t.count||1),
+      id:String(t.id||''), type:t.type||'unknown', lat:+t.lat, lon:+t.lon, heading: t.heading==null?null:+t.heading, count: Math.max(1, t.count||1),
       area: !!t.areaOnly, advisory: t.advisory ?? (t.type==='mig31k'), region:t.region||'', locality:t.locality||'', title:t.title||''
     }));
     state.errT=''; state.updT = new Date();
@@ -395,6 +436,7 @@ function renderThreats(){
   Object.keys(counts).forEach(k=>{ if(!keys.includes(k)) keys.push(k); });
   $('threats').innerHTML = !settings.threats ? '' : keys.map(k=>`<div class="tcard"><b style="color:${counts[k]?(TT[k]||TT.unknown).c:'var(--fg)'}">${counts[k]||0}</b><span>${(TT[k]||TT.unknown).n}</span></div>`).join('')
     + (state.errT ? `<div class="tcard"><span class="err">Цілі недоступні: ${esc(state.errT)}</span></div>` : '');
+  renderNearest(); renderMissiles(); applyNight();
 }
 
 /* ---------- render ---------- */
@@ -409,7 +451,7 @@ function render(){
   const items = state.list.slice().sort((a,b)=>(b.since||0)-(a.since||0));
   L.innerHTML = items.length ? items.map(a=>`<div class="row"><div class="n">${esc(a.name)}${a.kind!=='AIR'&&a.kind!=='air_raid'?' · <span style="color:var(--amber)">'+esc(KIND[a.kind]||a.kind)+'</span>':''}${a.lvl==='yellow'?' · <span style="color:var(--amber)">жовтий</span>':''}</div><div class="s">${a.since && a.since.getFullYear()>2022 ? hm(a.since)+' · '+dur(a.since) : 'постійна'}</div></div>`).join('')
     : '<div class="empty">Тривог немає</div>';
-  renderStatus();
+  renderStatus(); applyNight();
 }
 function renderStatus(){
   const [n,o] = settings.home.split('|'); const s = state.raion.get(settings.home);
@@ -434,10 +476,10 @@ function dur(d){ const m = Math.max(0, Math.round((Date.now()-d)/60000)); return
 function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ---------- settings ---------- */
-$('homeSel').onchange = e=>{ settings.home = e.target.value; store.set('home', settings.home); markHome(); renderStatus(); if(zoomed){ zoomed=false; $('zoomBtn').click(); } };
+$('homeSel').onchange = e=>{ settings.home = e.target.value; store.set('home', settings.home); markHome(); renderStatus(); renderMissiles(); loadStats(); pushNative(); if(zoomed){ zoomed=false; $('zoomBtn').click(); } };
 $('cityIn').value = settings.city.name;
 $('cityIn').onchange = async e=>{
-  try{ settings.city = await findCity(e.target.value.trim()); store.set('city', settings.city); e.target.value = settings.city.name; loadWeather(); }
+  try{ settings.city = await findCity(e.target.value.trim()); store.set('city', settings.city); e.target.value = settings.city.name; loadWeather(); renderNearest(); pushNative(); }
   catch(err){ e.target.value = ''; e.target.placeholder = 'Місто не знайдено, спробуйте інакше'; }
 };
 $('tokenIn').value = settings.token;
@@ -445,8 +487,222 @@ $('tokenIn').onchange = e=>{ settings.token = e.target.value.trim(); store.set('
 $('thrIn').checked = settings.threats;
 $('thrIn').onchange = e=>{ settings.threats = e.target.checked; store.set('threats', settings.threats); loadThreats(); };
 
+/* ---------- geometry helpers ---------- */
+const RAD = Math.PI/180;
+function distKm(a, b){ const dLat=(b.lat-a.lat)*RAD, dLon=(b.lon-a.lon)*RAD;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a.lat*RAD)*Math.cos(b.lat*RAD)*Math.sin(dLon/2)**2; return 12742*Math.asin(Math.sqrt(h)); }
+function bearing(a, b){ const y=Math.sin((b.lon-a.lon)*RAD)*Math.cos(b.lat*RAD);
+  const x=Math.cos(a.lat*RAD)*Math.sin(b.lat*RAD)-Math.sin(a.lat*RAD)*Math.cos(b.lat*RAD)*Math.cos((b.lon-a.lon)*RAD); return (Math.atan2(y,x)/RAD+360)%360; }
+const DIR_TO = ['на північ','на північний схід','на схід','на південний схід','на південь','на південний захід','на захід','на північний захід'];
+const DIR_AT = ['на півночі','на північному сході','на сході','на південному сході','на півдні','на південному заході','на заході','на північному заході'];
+const dirIdx = deg => Math.round(((deg%360)+360)%360/45)%8;
+
+/* ---------- nearest shahed ---------- */
+function renderNearest(){
+  const box = $('nearest'); const home = settings.city;
+  const uavs = settings.threats ? state.threats.filter(t=>t.type==='uav' && !t.area && !t.advisory && isFinite(t.lat)) : [];
+  if(!uavs.length){ box.hidden = true; return; }
+  let best = null;
+  uavs.forEach(t=>{ const d = distKm(home, t); if(!best || d < best.d) best = {t, d}; });
+  const at = bearing(home, best.t); const d = Math.round(best.d);
+  let fly = '', coming = false;
+  if(best.t.heading!=null){
+    fly = ', летить ' + DIR_TO[dirIdx(best.t.heading)];
+    const back = (at+180)%360; let diff = Math.abs(best.t.heading - back); diff = Math.min(diff, 360-diff);
+    coming = diff < 40 && d < 250;
+  }
+  box.hidden = false; box.className = 'nearest' + (coming || d < 50 ? ' close' : '');
+  box.innerHTML = `<b>Найближчий шахед: ${d} км ${DIR_AT[dirIdx(at)]} від міста ${esc(home.name)}${best.t.count>1?' (група з '+best.t.count+')':''}</b>
+    <span>${esc([best.t.locality, best.t.region].filter(Boolean).join(', '))}${fly}${coming?' · <b style="display:inline;color:var(--shahed)">у ваш бік</b>':''}</span>`;
+}
+
+/* ---------- missiles: banner, sound only for missiles and ballistics ---------- */
+const MISSILE = new Set(['missile','ballistic']);
+let seenMissiles = new Set(), missilesPrimed = false;
+function missilesInScope(){
+  if(settings.missile==='off') return [];
+  const ob = settings.home.split('|')[1];
+  return state.threats.filter(t=>MISSILE.has(t.type) && (settings.missile==='all' || t.region===ob));
+}
+function renderMissiles(){
+  const list = missilesInScope(); const box = $('missile');
+  if(!list.length){ box.hidden = true; seenMissiles = new Set(); missilesPrimed = true; return; }
+  const n = list.reduce((a,t)=>a+t.count,0); const ball = list.some(t=>t.type==='ballistic');
+  const where = [...new Set(list.map(t=>t.region).filter(Boolean))].slice(0,3).join(', ');
+  box.hidden = false;
+  box.innerHTML = `${ball?'Загроза балістики':'Ракети в повітрі'}: ${n}<span>${esc(where || 'Україна')}. Пройдіть в укриття, якщо оголошено тривогу.</span>`;
+  const fresh = list.some(t=>!seenMissiles.has(t.id));
+  list.forEach(t=>seenMissiles.add(t.id));
+  // On Android the background service sounds the alarm, so the page stays quiet there.
+  if(fresh && missilesPrimed && !NATIVE) beep();
+  missilesPrimed = true;
+}
+let actx = null;
+function beep(){
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    actx.resume && actx.resume();
+    const t0 = actx.currentTime;
+    for(let i=0;i<3;i++){
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(620, t0+i*0.9); o.frequency.linearRampToValueAtTime(1150, t0+i*0.9+0.6);
+      g.gain.setValueAtTime(0.0001, t0+i*0.9); g.gain.exponentialRampToValueAtTime(0.35, t0+i*0.9+0.05); g.gain.exponentialRampToValueAtTime(0.0001, t0+i*0.9+0.8);
+      o.connect(g).connect(actx.destination); o.start(t0+i*0.9); o.stop(t0+i*0.9+0.85);
+    }
+  }catch(e){}
+}
+
+/* ---------- statistics for the home raion (siren.pp.ua history) ---------- */
+function homeRegionId(){
+  if(!sirenTree) return null;
+  const [n,o] = settings.home.split('|');
+  for(const [id,x] of Object.entries(sirenTree)){
+    if(n.startsWith('м. ') ? (x.t==='State' && norm(x.n)===norm(n)) : (x.t==='District' && norm(x.n)===norm(n) && x.o===o)) return id;
+  }
+  return null;
+}
+const kyivDay = d => new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv'}).format(d);
+async function loadStats(){
+  const box = $('stats');
+  try{
+    await loadSirenTree();
+    const id = homeRegionId();
+    if(!id){ box.innerHTML = '<div class="empty">Немає історії для цього району</div>'; return; }
+    const raw = await getJSON('sirenHistory', 'regionId='+encodeURIComponent(id));
+    const flat = [];
+    (Array.isArray(raw)?raw:[raw]).forEach(x=>{ if(x && Array.isArray(x.alarms)) flat.push(...x.alarms); else if(x && x.startDate) flat.push(x); });
+    const items = flat.filter(a=>!a.alertType || a.alertType==='AIR').map(a=>{
+      const s = new Date(a.startDate); let e = a.endDate ? new Date(a.endDate) : null;
+      if(a.isContinue || !e || e.getFullYear() < 2000) e = new Date();
+      return {s, e};
+    }).filter(a=>!isNaN(a.s)).sort((a,b)=>b.s-a.s);
+    const today = kyivDay(new Date()), weekAgo = Date.now()-7*864e5;
+    const tItems = items.filter(a=>kyivDay(a.s)===today), wItems = items.filter(a=>a.s>=weekAgo);
+    const mins = arr => Math.round(arr.reduce((t,a)=>t+(a.e-a.s),0)/60000);
+    const fmtM = m => m<60 ? m+' хв' : Math.floor(m/60)+' год '+(m%60)+' хв';
+    const oldest = items.length ? items[items.length-1].s : null;
+    const partial = oldest && oldest > weekAgo && items.length >= 15;
+    const longest = wItems.reduce((m,a)=>Math.max(m,a.e-a.s),0)/60000;
+    box.innerHTML = `
+      <div class="tcard"><b>${tItems.length}</b><span>сьогодні</span></div>
+      <div class="tcard"><b>${fmtM(mins(tItems))}</b><span>тривали сьогодні</span></div>
+      <div class="tcard"><b>${wItems.length}${partial?'+':''}</b><span>${partial?'з '+oldest.toLocaleDateString('uk-UA',{day:'numeric',month:'short'}):'за 7 днів'}</span></div>
+      <div class="tcard"><b>${fmtM(Math.round(longest))}</b><span>найдовша за тиждень</span></div>`;
+  }catch(e){
+    box.innerHTML = `<div class="empty err">Історія недоступна: ${esc(e.message)}</div>`;
+  }
+}
+
+/* ---------- power outages (Lvivoblenergo) ---------- */
+const PW_GROUPS = []; for(let a=1;a<=6;a++) for(let b=1;b<=2;b++) PW_GROUPS.push(a+'.'+b);
+function htmlLines(html){
+  const d = document.createElement('div');
+  d.innerHTML = (html||'').replace(/<\/(p|div|li|tr|h[1-6])\s*>|<br\s*\/?>/gi, '\n');
+  return d.textContent.replace(/ /g,' ').split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+}
+const GRP_RE = /(?:груп|(?:під)?черг)[а-яіїєґ']*\s*№?\s*(\d\s*[.,]\s*\d(?!\d)(?:\s*(?:,|;|\/|та|і|й)\s*\d\s*[.,]\s*\d(?!\d))*)/gi;
+const RANGE_RE = /(?<!\d)(\d{1,2})\s*[:.]\s*(\d{2})\s*(?:[-–—−]|до|по)\s*(\d{1,2})\s*[:.]\s*(\d{2})/gi;
+const NO_OUT_RE = /(?:електроенергі[яю]|світло)\s+є(?![а-яіїєґ])|відключень\s+(?:немає|нема|не\s+заплановано)|без\s+(?:планових\s+)?відключень/i;
+function ranges(seg){
+  const out = [];
+  for(const m of seg.matchAll(RANGE_RE)){
+    const s = +m[1]*60 + +m[2]; let e = +m[3]*60 + +m[4];
+    if(s>=1440 || e>1440 || +m[2]>59 || +m[4]>59) continue;
+    if(e===0) e = 1440;
+    if(e>s) out.push([s,e]); else if(e<s){ out.push([s,1440]); out.push([0,e]); }
+  }
+  return out;
+}
+function parseSchedule(html){
+  const lines = htmlLines(html); const sched = {}; let ctx = [];
+  let title = lines.find(l=>/графік/i.test(l)) || '';
+  const dm = (title || lines.join(' ')).match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  const date = dm ? `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}` : null;
+  for(const line of lines){
+    const ms = [...line.matchAll(GRP_RE)];
+    if(!ms.length){
+      if(/станом|оновлен|телефон|гаряч|контакт/i.test(line)){ ctx = []; continue; }
+      const r = ranges(line); if(!r.length) ctx = []; else ctx.forEach(g=>(sched[g]=sched[g]||[]).push(...r));
+      continue;
+    }
+    ms.forEach((m,i)=>{
+      const end = i+1<ms.length ? ms[i+1].index : line.length;
+      const groups = [...m[1].matchAll(/(\d)\s*[.,]\s*(\d)/g)].map(x=>x[1]+'.'+x[2]);
+      const seg = line.slice(m.index+m[0].length, end); const r = ranges(seg);
+      groups.forEach(g=>{ sched[g] = sched[g] || []; sched[g].push(...r); });
+      ctx = NO_OUT_RE.test(seg) ? [] : groups;
+    });
+  }
+  return {date, title, sched};
+}
+const fmtMin = m => String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+let powerData = null;
+async function loadPower(){
+  if(!settings.power){ $('power').hidden = true; return; }
+  try{
+    const d = await getJSON('loe');
+    const members = d['hydra:member'] || d.member || [];
+    const items = ((members[0]||{}).menuItems || []).filter(x=>x.rawHtml);
+    powerData = items.map(x=>parseSchedule(x.rawHtml));
+    powerData.err = '';
+  }catch(e){ powerData = powerData || []; powerData.err = e.message; }
+  renderPower();
+}
+function renderPower(){
+  const box = $('power');
+  if(!settings.power || !powerData){ box.hidden = true; return; }
+  box.hidden = false;
+  const g = settings.power, today = kyivDay(new Date());
+  const now = (()=>{ const p = new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date()).split(':'); return +p[0]*60 + +p[1]; })();
+  const dayOf = x => x.date===today ? 'Сьогодні' : (x.date && x.date > today ? 'Завтра' : '');
+  const days = powerData.filter(x=>Object.keys(x.sched).length || x.date);
+  if(!days.length){ box.innerHTML = `<b>Світло, група ${g}</b><span>${powerData.err ? 'Графік недоступний: '+esc(powerData.err) : 'Графіків відключень зараз немає'}</span>`; return; }
+  box.innerHTML = days.slice(0,2).map((x,i)=>{
+    const r = (x.sched[g]||[]).sort((a,b)=>a[0]-b[0]);
+    const label = dayOf(x) || (i===0 ? 'Графік' : 'Наступний графік');
+    let head;
+    if(label==='Сьогодні'){
+      const cur = r.find(([s,e])=>now>=s && now<e); const next = r.find(([s])=>s>now);
+      head = cur ? `Зараз світла немає, увімкнуть о ${fmtMin(cur[1]%1440)}` : (next ? `Світло є, вимкнуть о ${fmtMin(next[0])}` : 'Світло є, сьогодні відключень більше немає');
+    } else head = r.length ? 'Будуть відключення' : 'Відключень не заплановано';
+    return `<div style="margin-top:${i?10:0}px"><b>${label}, група ${g}: ${head}</b>
+      <span>${r.length ? 'Без світла: '+r.map(([s,e])=>fmtMin(s)+'–'+fmtMin(e)).join(', ') : 'У графіку для вашої групи відключень немає'}</span>
+      <div class="bar">${r.map(([s,e])=>`<i style="left:${s/14.4}%;width:${(e-s)/14.4}%"></i>`).join('')}${label==='Сьогодні'?`<em style="left:${now/14.4}%"></em>`:''}</div>
+      <div class="ticks"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div></div>`;
+  }).join('') + (powerData.err ? `<span class="err">Не вдалося оновити: ${esc(powerData.err)}</span>` : '');
+}
+
+/* ---------- night mode ---------- */
+function applyNight(){
+  const h = +new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Kyiv',hour:'2-digit',hour12:false}).format(new Date());
+  const danger = (state.raion.get(settings.home)||{}).lvl && state.raion.get(settings.home).lvl!=='part' || missilesInScope().length > 0;
+  const dim = settings.night && (h>=23 || h<7) && !danger;
+  document.body.classList.toggle('night', dim);
+  if(NATIVE && NATIVE.setDim) try{ NATIVE.setDim(dim); }catch(e){}
+}
+
+/* ---------- Android bridge ---------- */
+function pushNative(){
+  if(!NATIVE) return;
+  const [n,o] = settings.home.split('|');
+  try{ NATIVE.setPrefs(JSON.stringify({home:n, oblast:o, city:settings.city.name, lat:settings.city.lat, lon:settings.city.lon, missile:settings.missile})); }catch(e){}
+}
+
 /* ---------- loops ---------- */
-loadWeather(); loadAlerts(); loadThreats();
+PW_GROUPS.forEach(g=>{ const o = document.createElement('option'); o.value = g; o.textContent = 'Група '+g; $('pwSel').appendChild(o); });
+$('pwSel').value = settings.power;
+$('pwSel').onchange = e=>{ settings.power = e.target.value; store.set('power', settings.power); loadPower(); };
+$('msSel').value = settings.missile;
+$('msSel').onchange = e=>{ settings.missile = e.target.value; store.set('missile', settings.missile); renderMissiles(); pushNative(); };
+$('nightIn').checked = settings.night;
+$('nightIn').onchange = e=>{ settings.night = e.target.checked; store.set('night', settings.night); applyNight(); };
+$('testBtn').onclick = ()=>{ if(NATIVE && NATIVE.testAlarm) NATIVE.testAlarm(); else beep(); };
+if(NATIVE && NATIVE.openAutostart){ $('autoBtn').hidden = false; $('autoBtn').onclick = ()=>NATIVE.openAutostart(); }
+pushNative();
+loadWeather(); loadAlerts(); loadThreats(); loadStats(); loadPower();
+setInterval(loadStats, 10*60000);
+setInterval(loadPower, 5*60000);
+setInterval(()=>{ renderPower(); applyNight(); }, 60000);
 setInterval(loadAlerts, 20000);
 setInterval(loadThreats, 15000);
 setInterval(loadWeather, 15*60000);

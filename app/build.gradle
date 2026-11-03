@@ -1,15 +1,30 @@
 plugins { id 'com.android.application' }
+
+def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
 android {
     namespace 'ua.nebo.widget'
     compileSdk 34
     defaultConfig {
         applicationId 'ua.nebo.widget'
-        minSdk 24
+        minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        versionCode 100 + runNumber
+        versionName "1.${runNumber}"
     }
-    buildTypes { release { minifyEnabled false } }
+    signingConfigs {
+        // One permanent key, so every new APK installs over the previous one.
+        nebo {
+            storeFile file('nebo.jks')
+            storePassword 'nebo-widget'
+            keyAlias 'nebo'
+            keyPassword 'nebo-widget'
+        }
+    }
+    buildTypes {
+        debug { signingConfig signingConfigs.nebo }
+        release { minifyEnabled false; signingConfig signingConfigs.nebo }
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
