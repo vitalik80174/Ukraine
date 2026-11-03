@@ -105,8 +105,15 @@ public class MainActivity extends Activity {
         }
     };
 
+    // The alarm rings for at most five minutes, then goes quiet on its own.
+    private final Runnable autoStop = () -> {
+        stopRing();
+        web.evaluateJavascript("window.onRingEnd&&onRingEnd()", null);
+    };
+
     private void ring() {
         stopRing();
+        ui.postDelayed(autoStop, 5 * 60_000L);
         Uri u = soundUri();
         if (u != null) {
             try {
@@ -130,6 +137,7 @@ public class MainActivity extends Activity {
 
     private void stopRing() {
         ui.removeCallbacks(rampUp);
+        ui.removeCallbacks(autoStop);
         if (player != null) { try { player.stop(); player.release(); } catch (Exception ignored) { } player = null; }
         Vibrator v = getSystemService(Vibrator.class);
         if (v != null) v.cancel();

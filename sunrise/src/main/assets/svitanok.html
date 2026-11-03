@@ -72,7 +72,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-o
   <div class="card">
     <div class="row"><div><div>Звук</div><div class="sub" id="soundName">Мелодія будильника</div></div><button class="btn" id="pick" type="button">Змінити</button></div>
     <div class="row"><div>Вібрація</div><label class="switch"><input type="checkbox" id="vib" aria-label="Вібрація"><span></span></label></div>
-    <div class="sub">Звук вмикається тихо в час будильника і за хвилину стає повною гучністю.</div>
+    <div class="sub">Звук вмикається тихо в час будильника, за хвилину стає повною гучністю і сам вимикається через 5 хвилин.</div>
   </div>
 
   <h2>Спробувати</h2>
@@ -122,7 +122,7 @@ function render(){
       <div class="days">${DAYS.map((d,k)=>`<button type="button" class="${(a.days||[]).includes(k+1)?'on':''}" data-day="${k+1}" aria-pressed="${(a.days||[]).includes(k+1)}">${d}</button>`).join('')}</div>
       <div class="row">
         <label class="sub">Світанок триває
-          <select data-f="dur">${[10,20,30,45,60].map(m=>`<option value="${m}" ${a.dur===m?'selected':''}>${m} хв</option>`).join('')}</select></label>
+          <select data-f="dur">${[5,10,20,30,45,60].map(m=>`<option value="${m}" ${a.dur===m?'selected':''}>${m} хв</option>`).join('')}</select></label>
         <button type="button" class="del" data-f="del">Видалити</button>
       </div>
       <div class="sub">${(a.days||[]).length ? (a.days.length===7 ? 'Щодня' : a.days.length===5 && !a.days.includes(6) && !a.days.includes(7) ? 'По буднях' : a.days.sort().map(d=>DAYS[d-1]).join(', ')) : 'Один раз'}</div>
@@ -206,6 +206,7 @@ function frame(now){
   raf = requestAnimationFrame(frame);
 }
 function openSky(){ $('home').hidden = true; $('sky').hidden = false; $('acts').hidden = true; $('cancelEarly').parentElement.hidden = false; resize(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); }
+window.onRingEnd = () => { $('sNote').textContent = 'Звук вимкнувся через 5 хвилин'; };
 window.startSunrise = (start, at, id) => { run = {start, at, id, rang:false}; openSky(); };
 window.showHome = () => { run = null; cancelAnimationFrame(raf); $('sky').hidden = true; $('home').hidden = false; if(N) st = JSON.parse(N.getState()); render(); };
 $('demo').onclick = ()=>{ run = {demo:true, t0:Date.now(), id:0, rang:false}; openSky(); };
