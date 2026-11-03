@@ -46,6 +46,12 @@ h2{font:600 12px/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;c
 .snd button span{color:var(--dim);font-size:13px}
 .snd button.on{border-color:var(--warm);background:rgba(255,180,107,.12)}
 .snd button:focus-visible{outline:2px solid var(--sun);outline-offset:2px}
+.checks b{font-weight:600}
+.chk{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.chk:first-child{border-top:0}
+.chk .t{display:flex;flex-direction:column;gap:2px}
+.chk .t span{color:var(--dim);font-size:12.5px}
+.chk .ok{color:#7ee0a1;font-weight:600;font-size:13px;white-space:nowrap}
 .del{all:unset;cursor:pointer;color:var(--dim);font-size:13px;padding:4px 6px}
 button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-offset:2px}
 /* sunrise */
@@ -67,6 +73,13 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-o
   <div class="hero"><div class="sunball"></div>
     <h1>Світанок</h1>
     <p id="nextLine">Будильник, перед яким екран поступово світлішає, як справжній світанок.</p>
+  </div>
+
+  <div class="card checks" id="checks" hidden>
+    <b>Щоб будильник спрацював на заблокованому екрані</b>
+    <div id="checkList"></div>
+    <button class="btn" id="testMin" type="button">Перевірити: світанок через 1 хвилину</button>
+    <div class="sub" id="testNote">Натисніть, заблокуйте екран і зачекайте хвилину. Екран має сам увімкнутися зі світанком.</div>
   </div>
 
   <h2>Будильники</h2>
@@ -240,6 +253,24 @@ $('wake').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(r
 $('snooze').onclick = ()=>{ if(run && run.demo){ if(N) N.stopPreview(); else showHome(); return; }
   if(N) N.snooze(10); run.v = 0; run.b = 0; run.rang = false; run.start = Date.now() - 1; run.at = Date.now() + 10*60000; $('acts').hidden = true; };
 $('cancelEarly').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(run ? run.id : 0)); else showHome(); };
+const CHECKS = [
+  ['notif','Сповіщення','Без них Android не покаже світанок'],
+  ['fsi','Сповіщення на весь екран','Дозволяє відкрити світанок поверх блокування'],
+  ['overlay','Показ поверх інших застосунків','Запасний спосіб відкритися, якщо екран заблокований'],
+  ['exact','Будильники та нагадування','Щоб світанок починався точно вчасно'],
+  ['battery','Без обмежень батареї','Щоб система не присипляла «Світанок» уночі']];
+window.refreshChecks = function(){
+  if(!N || !N.getChecks){ $('checks').hidden = true; return; }
+  let c = {}; try{ c = JSON.parse(N.getChecks()); }catch(e){}
+  const bad = CHECKS.filter(([k])=>c[k]===false);
+  $('checks').hidden = false;
+  $('checkList').innerHTML = CHECKS.map(([k,t,d])=>`<div class="chk"><div class="t">${t}<span>${d}</span></div>${c[k]===false
+    ? `<button class="btn main" type="button" data-set="${k}">Дозволити</button>` : '<span class="ok">Дозволено</span>'}</div>`).join('');
+  $('checks').querySelector('b').textContent = bad.length ? 'Щоб будильник спрацював на заблокованому екрані, дозвольте:' : 'Усе готово для заблокованого екрана';
+};
+$('checkList').addEventListener('click', e=>{ const b = e.target.closest('[data-set]'); if(b && N) N.openSetting(b.dataset.set); });
+$('testMin').onclick = ()=>{ if(N && N.testInMinute){ N.testInMinute(); $('testNote').textContent = 'Тест запущено. Заблокуйте екран зараз і зачекайте приблизно хвилину.'; renderNext(); } };
+refreshChecks();
 render();
 </script>
 </body>

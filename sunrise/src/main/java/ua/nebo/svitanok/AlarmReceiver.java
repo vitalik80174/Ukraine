@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.os.PowerManager;
 
 /** The sunrise is due: open the sunrise screen over the lock screen and book the next one. */
 public class AlarmReceiver extends BroadcastReceiver {
@@ -16,6 +17,9 @@ public class AlarmReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         long id = intent.getLongExtra("id", 0), start = intent.getLongExtra("start", 0), at = intent.getLongExtra("alarmAt", 0);
+        // Keep the CPU awake for a few seconds so the screen can come on.
+        PowerManager.WakeLock wl = ctx.getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "svitanok:alarm");
+        wl.acquire(10_000);
         if (at == 0) { Scheduler.schedule(ctx); return; }
         Scheduler.markFired(ctx, id, at);
         Scheduler.schedule(ctx);
@@ -39,6 +43,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setOngoing(true)
                 .build();
         try { nm.notify(NOTE, n); } catch (Exception ignored) { }
+        // With "display over other apps" Android lets the app open itself even from the background.
         try { ctx.startActivity(open); } catch (Exception ignored) { }
     }
 }

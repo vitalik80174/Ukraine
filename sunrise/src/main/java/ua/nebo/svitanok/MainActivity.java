@@ -16,6 +16,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.View;
@@ -62,6 +64,12 @@ public class MainActivity extends Activity {
         }
         handle(getIntent());
         Scheduler.schedule(this);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (pageReady) web.evaluateJavascript("window.refreshChecks&&refreshChecks()", null);
     }
 
     @Override
@@ -225,6 +233,48 @@ public class MainActivity extends Activity {
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, soundUri());
                 try { startActivityForResult(i, 7); } catch (Exception ignored) { }
             });
+        }
+
+        /** What the alarm needs to open over a locked screen. */
+        @JavascriptInterface
+        public String getChecks() {
+            JSONObject o = new JSONObject();
+            try {
+                NotificationManager nm = getSystemService(NotificationManager.class);
+                o.put("notif", nm.areNotificationsEnabled());
+                o.put("fsi", Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent());
+                o.put("overlay", Settings.canDrawOverlays(MainActivity.this));
+                PowerManager pm = getSystemService(PowerManager.class);
+                o.put("battery", pm.isIgnoringBatteryOptimizations(getPackageName()));
+                android.app.AlarmManager am = getSystemService(android.app.AlarmManager.class);
+                o.put("exact", Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms());
+            } catch (Exception ignored) { }
+            return o.toString();
+        }
+
+        @JavascriptInterface
+        public void openSetting(String which) {
+            runOnUiThread(() -> {
+                Uri pkg = Uri.parse("package:" + getPackageName());
+                Intent i;
+                switch (which) {
+                    case "notif": i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()); break;
+                    case "fsi": i = Build.VERSION.SDK_INT >= 34 ? new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg) : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg); break;
+                    case "overlay": i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg); break;
+                    case "battery": i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg); break;
+                    case "exact": i = Build.VERSION.SDK_INT >= 31 ? new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkg) : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg); break;
+                    default: i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg);
+                }
+                try { startActivity(i); }
+                catch (Exception e) { try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)); } catch (Exception ignored) { } }
+            });
+        }
+
+        /** A quick test: the sunrise screen should open by itself in about a minute. */
+        @JavascriptInterface
+        public void testInMinute() {
+            Scheduler.prefs(MainActivity.this).edit().putLong("snoozeAt", System.currentTimeMillis() + 60_000L).apply();
+            Scheduler.schedule(MainActivity.this);
         }
 
         @JavascriptInterface
