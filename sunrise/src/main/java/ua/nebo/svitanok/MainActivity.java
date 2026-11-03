@@ -90,10 +90,49 @@ public class MainActivity extends Activity {
         getWindow().setAttributes(lp);
     }
 
+    static final String BIRDS = "builtin:birds";
+
+    /** Built-in birds and music is the default sound. */
+    private String soundMode() {
+        String u = Scheduler.prefs(this).getString("sound", "");
+        if (u.isEmpty() || BIRDS.equals(u)) return "birds";
+        return "none".equals(u) ? "none" : "system";
+    }
+
     private Uri soundUri() {
         String u = Scheduler.prefs(this).getString("sound", "");
         if ("none".equals(u)) return null;
-        return u.isEmpty() ? RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) : Uri.parse(u);
+        if (u.isEmpty() || BIRDS.equals(u)) return Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.birds_music);
+        return Uri.parse(u);
+    }
+
+    private boolean startPlayer(float startVolume) {
+        Uri u = soundUri();
+        if (u == null) return false;
+        try {
+            player = new MediaPlayer();
+            player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            player.setDataSource(this, u);
+            player.setLooping(true);
+            player.prepare();
+            volume = startVolume;
+            player.setVolume(volume, volume);
+            player.start();
+            return true;
+        } catch (Exception e) { player = null; return false; }
+    }
+
+    /** Birds and music start with the sunrise and get louder with the light. */
+    private void startAmbient() {
+        if (!"birds".equals(soundMode()) || player != null) return;
+        startPlayer(0.005f);
+    }
+
+    private void setAmbientVolume(float v) {
+        if (player == null || !"birds".equals(soundMode())) return;
+        volume = Math.max(0.005f, Math.min(1f, v));
+        try { player.setVolume(volume, volume); } catch (Exception ignored) { }
     }
 
     private final Runnable rampUp = new Runnable() {
@@ -106,21 +145,13 @@ public class MainActivity extends Activity {
     };
 
     private void ring() {
-        stopRing();
-        Uri u = soundUri();
-        if (u != null) {
-            try {
-                player = new MediaPlayer();
-                player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
-                player.setDataSource(this, u);
-                player.setLooping(true);
-                player.prepare();
-                volume = 0.04f;
-                player.setVolume(volume, volume);
-                player.start();
-                ui.postDelayed(rampUp, 1200);
-            } catch (Exception e) { player = null; }
+        if ("birds".equals(soundMode()) && player != null) {
+            // already playing since the sunrise began: bring it to full volume
+            ui.removeCallbacks(rampUp);
+            ui.postDelayed(rampUp, 300);
+        } else {
+            stopRing();
+            if (startPlayer(0.04f)) ui.postDelayed(rampUp, 1200);
         }
         if (Scheduler.prefs(this).getBoolean("vibrate", false)) {
             Vibrator v = getSystemService(Vibrator.class);
@@ -150,10 +181,11 @@ public class MainActivity extends Activity {
         if (req != 7 || res != RESULT_OK || data == null) return;
         Uri u = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
         Scheduler.prefs(this).edit().putString("sound", u == null ? "none" : u.toString()).apply();
-        web.evaluateJavascript("onSound(" + JSONObject.quote(soundTitle()) + ")", null);
+        web.evaluateJavascript("onSound(" + JSONObject.quote(soundTitle()) + "," + JSONObject.quote(soundMode()) + ")", null);
     }
 
     private String soundTitle() {
+        if ("birds".equals(soundMode())) return "Пташки й музика";
         Uri u = soundUri();
         if (u == null) return "Без звуку";
         try { Ringtone r = RingtoneManager.getRingtone(this, u); return r.getTitle(this); } catch (Exception e) { return "Мелодія будильника"; }
@@ -169,6 +201,7 @@ public class MainActivity extends Activity {
                 o.put("alarms", new JSONArray(p.getString("alarms", "[]")));
                 o.put("vibrate", p.getBoolean("vibrate", false));
                 o.put("sound", soundTitle());
+                o.put("soundMode", soundMode());
                 long[] n = Scheduler.next(MainActivity.this);
                 if (n != null) { o.put("nextStart", n[1]); o.put("nextAt", n[2]); }
             } catch (Exception ignored) { }
@@ -196,6 +229,20 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void brightness(float f) { runOnUiThread(() -> setBrightness(f)); }
+
+        @JavascriptInterface
+        public void ambient(float v) { runOnUiThread(() -> { startAmbient(); setAmbientVolume(v); }); }
+
+        @JavascriptInterface
+        public void stopAmbient() { runOnUiThread(MainActivity.this::stopRing); }
+
+        @JavascriptInterface
+        public void setSound(String mode) {
+            runOnUiThread(() -> {
+                Scheduler.prefs(MainActivity.this).edit().putString("sound", "birds".equals(mode) ? BIRDS : "none").apply();
+                web.evaluateJavascript("onSound(" + JSONObject.quote(soundTitle()) + "," + JSONObject.quote(soundMode()) + ")", null);
+            });
+        }
 
         @JavascriptInterface
         public void ring() { runOnUiThread(MainActivity.this::ring); }
