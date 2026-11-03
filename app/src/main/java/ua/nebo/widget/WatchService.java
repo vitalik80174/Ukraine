@@ -52,6 +52,7 @@ public class WatchService extends Service {
     static final String CH_WATCH = "watch";
     static final String CH_MISSILE = "missile_v1";
     static final String CH_POWER = "power";
+    static final String CH_SKY = "sky";
     static final int ID_WATCH = 1, ID_MISSILE = 2;
     static final String ACTION_TEST = "ua.nebo.widget.TEST_ALARM";
 
@@ -315,6 +316,7 @@ public class WatchService extends Service {
             }
         }
         checkOutages(p);
+        checkSky(p);
         checkBattery(p);
         ed.putString("w_updated", "оновлено " + hhmm());
         ed.apply();
@@ -342,6 +344,37 @@ public class WatchService extends Service {
                 Set<String> keep = new HashSet<>();
                 for (String d : done) if (Long.parseLong(d) > now - 2 * 86400_000L) keep.add(d);
                 p.edit().putStringSet("out_done", keep).apply();
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void checkSky(SharedPreferences p) {
+        try {
+            JSONArray ev = new JSONArray(p.getString("sky", "[]"));
+            Set<String> done = new HashSet<>(p.getStringSet("sky_done", new HashSet<>()));
+            long now = System.currentTimeMillis();
+            boolean changed = false;
+            for (int i = 0; i < ev.length(); i++) {
+                JSONObject e = ev.getJSONObject(i);
+                long t = e.getLong("t"), left = t - now;
+                if (left > 0 && left <= 11 * 60_000L && !done.contains(String.valueOf(t))) {
+                    done.add(String.valueOf(t));
+                    changed = true;
+                    createChannels(this);
+                    Notification n = new Notification.Builder(this, CH_SKY)
+                            .setSmallIcon(android.R.drawable.star_on)
+                            .setContentTitle(e.optString("title"))
+                            .setContentText(e.optString("text"))
+                            .setContentIntent(openApp(this))
+                            .setAutoCancel(true)
+                            .build();
+                    try { getSystemService(NotificationManager.class).notify(5, n); } catch (Exception ignored) { }
+                }
+            }
+            if (changed) {
+                Set<String> keep = new HashSet<>();
+                for (String d : done) if (Long.parseLong(d) > now - 4 * 86400_000L) keep.add(d);
+                p.edit().putStringSet("sky_done", keep).apply();
             }
         } catch (Exception ignored) { }
     }
@@ -418,6 +451,7 @@ public class WatchService extends Service {
         m.setBypassDnd(true);
         nm.createNotificationChannel(m);
         nm.createNotificationChannel(new NotificationChannel(CH_POWER, "Світло й заряд", NotificationManager.IMPORTANCE_DEFAULT));
+        nm.createNotificationChannel(new NotificationChannel(CH_SKY, "Нічне небо", NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     static void notifyMissile(Context ctx, String title, String text) {

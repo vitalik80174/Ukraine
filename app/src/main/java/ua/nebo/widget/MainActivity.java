@@ -21,6 +21,17 @@ import android.webkit.WebResourceRequest;
 
 import org.json.JSONObject;
 
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.URL;
+
 /**
  * Shows the bundled widget page full screen.
  * The page lives in assets, and file access is allowed to reach other sites,
@@ -28,6 +39,36 @@ import org.json.JSONObject;
  */
 public class MainActivity extends Activity {
     private WebView web;
+    private static long lastSpeed = 0;
+    private static String lastGateway = null;
+
+    private static boolean tcp(String host, int port, int timeoutMs) {
+        try (Socket so = new Socket()) { so.connect(new InetSocketAddress(host, port), timeoutMs); return true; }
+        catch (Exception e) { return false; }
+    }
+
+    private static boolean http204() {
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL("https://www.gstatic.com/generate_204").openConnection();
+            c.setConnectTimeout(5000); c.setReadTimeout(5000); c.setUseCaches(false);
+            int code = c.getResponseCode(); c.disconnect();
+            return code == 204 || code == 200;
+        } catch (Exception e) { return false; }
+    }
+
+    private static double speedMbps() {
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL("https://speed.cloudflare.com/__down?bytes=4000000").openConnection();
+            c.setConnectTimeout(6000); c.setReadTimeout(15000);
+            long t0 = System.nanoTime(), total = 0;
+            try (InputStream in = c.getInputStream()) {
+                byte[] b = new byte[65536]; int n;
+                while ((n = in.read(b)) > 0) total += n;
+            }
+            double sec = (System.nanoTime() - t0) / 1e9;
+            return sec > 0 ? Math.round(total * 8 / sec / 1e6 * 10) / 10.0 : 0;
+        } catch (Exception e) { return 0; }
+    }
 
     @Override
     protected void onCreate(Bundle state) {
@@ -101,6 +142,55 @@ public class MainActivity extends Activity {
                         .putBoolean("batt", o.optBoolean("batt", true))
                         .apply();
             } catch (Exception ignored) { }
+        }
+
+        @JavascriptInterface
+        public void setSky(String json) {
+            getSharedPreferences(WatchService.PREFS, MODE_PRIVATE).edit().putString("sky", json).apply();
+        }
+
+        /** Checks the connection in the background and answers through window.onNet. */
+        @JavascriptInterface
+        public void netCheck() {
+            new Thread(() -> {
+                JSONObject o = new JSONObject();
+                try {
+                    ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+                    Network net = cm.getActiveNetwork();
+                    NetworkCapabilities nc = net == null ? null : cm.getNetworkCapabilities(net);
+                    String type = nc == null ? "none"
+                            : nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ? "wifi"
+                            : nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ? "cellular"
+                            : nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ? "ethernet" : "other";
+                    o.put("type", type);
+                    WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+                    if ("wifi".equals(type) && wm != null) {
+                        WifiInfo wi = wm.getConnectionInfo();
+                        int rssi = wi.getRssi();
+                        o.put("rssi", rssi);
+                        o.put("level", WifiManager.calculateSignalLevel(rssi, 5));
+                        int gw = wm.getDhcpInfo().gateway;
+                        if (gw != 0) {
+                            lastGateway = (gw & 0xff) + "." + ((gw >> 8) & 0xff) + "." + ((gw >> 16) & 0xff) + "." + ((gw >> 24) & 0xff);
+                            o.put("router", tcp(lastGateway, 80, 900) || tcp(lastGateway, 443, 900) || tcp(lastGateway, 53, 900));
+                        }
+                    } else if (lastGateway != null && wm != null && wm.isWifiEnabled()) {
+                        // Home Wi-Fi was here before and is gone now: usually the router lost power.
+                        o.put("router", false);
+                    }
+                    long t0 = System.nanoTime();
+                    boolean ok = http204();
+                    o.put("online", ok);
+                    if (ok) o.put("ms", (System.nanoTime() - t0) / 1_000_000);
+                    if (ok && "wifi".equals(type) && System.currentTimeMillis() - lastSpeed > 30 * 60_000L) {
+                        lastSpeed = System.currentTimeMillis();
+                        double mbps = speedMbps();
+                        if (mbps > 0) o.put("mbps", mbps);
+                    }
+                } catch (Exception ignored) { }
+                String js = "window.onNet&&window.onNet(" + o + ")";
+                runOnUiThread(() -> web.evaluateJavascript(js, null));
+            }).start();
         }
 
         @JavascriptInterface
