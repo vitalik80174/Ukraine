@@ -273,7 +273,9 @@ public class MainActivity extends Activity {
         /** A quick test: the sunrise screen should open by itself in about a minute. */
         @JavascriptInterface
         public void testInMinute() {
-            Scheduler.prefs(MainActivity.this).edit().putLong("snoozeAt", System.currentTimeMillis() + 60_000L).apply();
+            // starts in 30 s: 45 s of rising light, then 45 s of growing sound, then the alarm
+            long start = System.currentTimeMillis() + 30_000L;
+            Scheduler.prefs(MainActivity.this).edit().putLong("testStart", start).putLong("testAt", start + 90_000L).apply();
             Scheduler.schedule(MainActivity.this);
         }
 

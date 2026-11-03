@@ -30,6 +30,9 @@ public class Scheduler {
         long bestStart = Long.MAX_VALUE, bestAt = 0, bestId = 0;
         long snooze = p.getLong("snoozeAt", 0);
         if (snooze > now) { bestStart = snooze; bestAt = snooze; bestId = -1; }
+        // a test: a short real sunrise that starts soon
+        long testStart = p.getLong("testStart", 0), testAt = p.getLong("testAt", 0);
+        if (testStart > now && testStart < bestStart) { bestStart = testStart; bestAt = testAt; bestId = -2; }
         try {
             JSONArray alarms = new JSONArray(p.getString("alarms", "[]"));
             for (int i = 0; i < alarms.length(); i++) {
@@ -90,6 +93,7 @@ public class Scheduler {
         fired.add(id + "@" + at);
         SharedPreferences.Editor e = p.edit().putStringSet("fired", fired);
         if (id == -1) e.putLong("snoozeAt", 0);
+        if (id == -2) e.putLong("testStart", 0).putLong("testAt", 0);
         e.apply();
     }
 }

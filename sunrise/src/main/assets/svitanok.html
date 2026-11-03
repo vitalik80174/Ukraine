@@ -78,8 +78,8 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-o
   <div class="card checks" id="checks" hidden>
     <b>Щоб будильник спрацював на заблокованому екрані</b>
     <div id="checkList"></div>
-    <button class="btn" id="testMin" type="button">Перевірити: світанок через 1 хвилину</button>
-    <div class="sub" id="testNote">Натисніть, заблокуйте екран і зачекайте хвилину. Екран має сам увімкнутися зі світанком.</div>
+    <button class="btn" id="testMin" type="button">Перевірити: короткий світанок за 30 секунд</button>
+    <div class="sub" id="testNote">Натисніть і заблокуйте екран. Через 30 секунд екран сам увімкнеться: 45 секунд сходить сонце, потім 45 секунд наростає звук, і дзвонить будильник.</div>
   </div>
 
   <h2>Будильники</h2>
@@ -269,7 +269,7 @@ window.refreshChecks = function(){
   $('checks').querySelector('b').textContent = bad.length ? 'Щоб будильник спрацював на заблокованому екрані, дозвольте:' : 'Усе готово для заблокованого екрана';
 };
 $('checkList').addEventListener('click', e=>{ const b = e.target.closest('[data-set]'); if(b && N) N.openSetting(b.dataset.set); });
-$('testMin').onclick = ()=>{ if(N && N.testInMinute){ N.testInMinute(); $('testNote').textContent = 'Тест запущено. Заблокуйте екран зараз і зачекайте приблизно хвилину.'; renderNext(); } };
+$('testMin').onclick = ()=>{ if(N && N.testInMinute){ N.testInMinute(); $('testNote').textContent = 'Тест запущено. Заблокуйте екран зараз, світанок почнеться через 30 секунд.'; renderNext(); } };
 refreshChecks();
 render();
 </script>
