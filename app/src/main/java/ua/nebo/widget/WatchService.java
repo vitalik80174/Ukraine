@@ -16,11 +16,22 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.BatteryManager;
+import android.content.IntentFilter;
+import android.speech.tts.TextToSpeech;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileInputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -40,6 +51,7 @@ public class WatchService extends Service {
     static final String PREFS = "nebo";
     static final String CH_WATCH = "watch";
     static final String CH_MISSILE = "missile_v1";
+    static final String CH_POWER = "power";
     static final int ID_WATCH = 1, ID_MISSILE = 2;
     static final String ACTION_TEST = "ua.nebo.widget.TEST_ALARM";
 
@@ -48,6 +60,108 @@ public class WatchService extends Service {
     private final Set<String> seen = new HashSet<>();
     private boolean primed = false;
     private long lastAlerts = 0;
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
+    private boolean battWarned = false;
+
+    // Shared with the page through MainActivity's bridge (same process).
+    static final List<JSONObject> history = new ArrayList<>();
+    static final Map<String, JSONArray> trails = new HashMap<>();
+    private static String lastSig = "";
+
+    static synchronized String historyJson() {
+        JSONArray a = new JSONArray();
+        for (JSONObject o : history) a.put(o);
+        return a.toString();
+    }
+
+    static synchronized String trailsJson() {
+        JSONObject o = new JSONObject();
+        try { for (Map.Entry<String, JSONArray> e : trails.entrySet()) o.put(e.getKey(), e.getValue()); } catch (Exception ignored) { }
+        return o.toString();
+    }
+
+    private synchronized void loadHistory() {
+        try (FileInputStream in = new FileInputStream(new File(getFilesDir(), "history.json"))) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] b = new byte[16384]; int n;
+            while ((n = in.read(b)) > 0) out.write(b, 0, n);
+            JSONArray a = new JSONArray(out.toString("UTF-8"));
+            history.clear();
+            long cut = System.currentTimeMillis() - 25 * 3600_000L;
+            for (int i = 0; i < a.length(); i++) if (a.getJSONObject(i).optLong("t") >= cut) history.add(a.getJSONObject(i));
+        } catch (Exception ignored) { }
+    }
+
+    private synchronized void logHistory(JSONArray rows) {
+        try {
+            JSONArray air = new JSONArray();
+            StringBuilder sig = new StringBuilder();
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject row = rows.getJSONObject(i);
+                JSONArray act = row.optJSONArray("activeAlerts");
+                JSONArray keep = new JSONArray();
+                for (int j = 0; act != null && j < act.length(); j++) {
+                    JSONObject a = act.getJSONObject(j);
+                    if (!"AIR".equals(a.optString("type"))) continue;
+                    keep.put(a);
+                    sig.append(a.optString("regionId")).append(a.optJSONArray("activeAlertLevels") != null ? a.optJSONArray("activeAlertLevels").length() : 0).append(';');
+                }
+                if (keep.length() == 0) continue;
+                JSONObject r = new JSONObject();
+                r.put("regionId", row.optString("regionId"));
+                r.put("regionName", row.optString("regionName"));
+                r.put("regionType", row.optString("regionType"));
+                r.put("activeAlerts", keep);
+                air.put(r);
+            }
+            if (sig.toString().equals(lastSig)) return;
+            lastSig = sig.toString();
+            JSONObject e = new JSONObject();
+            e.put("t", System.currentTimeMillis());
+            e.put("rows", air);
+            history.add(e);
+            long cut = System.currentTimeMillis() - 25 * 3600_000L;
+            while (!history.isEmpty() && history.get(0).optLong("t") < cut) history.remove(0);
+            try (FileOutputStream out = new FileOutputStream(new File(getFilesDir(), "history.json"))) {
+                out.write(historyJson().getBytes("UTF-8"));
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private synchronized void addTrail(String id, double lat, double lon) {
+        long now = System.currentTimeMillis();
+        try {
+            JSONArray arr = trails.get(id);
+            if (arr == null) { arr = new JSONArray(); trails.put(id, arr); }
+            JSONArray last = arr.length() > 0 ? arr.getJSONArray(arr.length() - 1) : null;
+            if (last == null || Math.abs(last.getDouble(0) - lat) + Math.abs(last.getDouble(1) - lon) > 0.004) {
+                arr.put(new JSONArray().put(lat).put(lon).put(now));
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private synchronized void pruneTrails(Set<String> live) {
+        long cut = System.currentTimeMillis() - 25 * 60_000L;
+        Iterator<Map.Entry<String, JSONArray>> it = trails.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, JSONArray> e = it.next();
+            JSONArray kept = new JSONArray();
+            try {
+                for (int i = 0; i < e.getValue().length(); i++) {
+                    JSONArray p = e.getValue().getJSONArray(i);
+                    if (p.getLong(2) >= cut) kept.put(p);
+                }
+            } catch (Exception ignored) { }
+            if (kept.length() == 0 || (!live.contains(e.getKey()) && kept.length() > 0 && cutOld(kept))) it.remove();
+            else e.setValue(kept);
+        }
+    }
+
+    private static boolean cutOld(JSONArray kept) {
+        try { return System.currentTimeMillis() - kept.getJSONArray(kept.length() - 1).getLong(2) > 10 * 60_000L; }
+        catch (Exception e) { return true; }
+    }
 
     public static void start(Context ctx) {
         Intent i = new Intent(ctx, WatchService.class);
@@ -69,6 +183,17 @@ public class WatchService extends Service {
                 .build();
         if (Build.VERSION.SDK_INT >= 34) startForeground(ID_WATCH, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         else startForeground(ID_WATCH, n);
+
+        loadHistory();
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                int r = tts.setLanguage(new Locale("uk", "UA"));
+                ttsReady = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED;
+                tts.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
+            }
+        });
 
         thread = new HandlerThread("nebo-watch");
         thread.start();
@@ -109,6 +234,7 @@ public class WatchService extends Service {
             Set<String> fresh = new LinkedHashSet<>();
             Set<String> regions = new LinkedHashSet<>();
             Set<String> now = new HashSet<>();
+            Set<String> liveIds = new HashSet<>();
             boolean ballistic = false;
             for (int i = 0; arr != null && i < arr.length(); i++) {
                 JSONObject t = arr.getJSONObject(i);
@@ -118,6 +244,10 @@ public class WatchService extends Service {
                 int count = Math.max(1, t.optInt("count", 1));
                 String region = t.optString("region", "");
                 boolean areaOnly = t.optBoolean("areaOnly", false);
+                if (!areaOnly && t.has("lat") && ("uav".equals(type) || "missile".equals(type) || "ballistic".equals(type))) {
+                    String tid = t.optString("id", "");
+                    if (!tid.isEmpty()) { liveIds.add(tid); addTrail(tid, t.optDouble("lat"), t.optDouble("lon")); }
+                }
                 if ("uav".equals(type)) {
                     uav += count;
                     if (!areaOnly && t.has("lat")) {
@@ -139,7 +269,12 @@ public class WatchService extends Service {
             if (!fresh.isEmpty() && primed) {
                 String where = regions.isEmpty() ? "Україна" : String.join(", ", regions);
                 notifyMissile(this, (ballistic ? "Загроза балістики: " : "Ракети в повітрі: ") + missiles, where);
+                if (p.getBoolean("voice", true) && ttsReady) {
+                    String say = "Увага! " + (ballistic ? "Загроза балістики. " : "Ракети. ") + where.replace(" область", "");
+                    tts.speak(say, TextToSpeech.QUEUE_FLUSH, null, "missile");
+                }
             }
+            pruneTrails(liveIds);
             if (missiles == 0) cancelMissile(this);
             seen.clear(); seen.addAll(now);
             primed = true;
@@ -158,6 +293,7 @@ public class WatchService extends Service {
             lastAlerts = System.currentTimeMillis();
             try {
                 JSONArray rows = new JSONArray(get("https://siren.pp.ua/api/v3/alerts"));
+                logHistory(rows);
                 boolean alert = false, oblastAlert = false;
                 for (int i = 0; i < rows.length(); i++) {
                     JSONObject row = rows.getJSONObject(i);
@@ -178,9 +314,63 @@ public class WatchService extends Service {
                 ed.putString("w_status", "Немає зв'язку з даними про тривоги");
             }
         }
+        checkOutages(p);
+        checkBattery(p);
         ed.putString("w_updated", "оновлено " + hhmm());
         ed.apply();
         NeboWidget.refreshAll(this);
+    }
+
+    private void checkOutages(SharedPreferences p) {
+        if (!p.getBoolean("pwRem", true)) return;
+        try {
+            JSONArray starts = new JSONArray(p.getString("outages", "[]"));
+            Set<String> done = new HashSet<>(p.getStringSet("out_done", new HashSet<>()));
+            long now = System.currentTimeMillis();
+            boolean changed = false;
+            for (int i = 0; i < starts.length(); i++) {
+                long s = starts.getLong(i);
+                long left = s - now;
+                if (left > 0 && left <= 31 * 60_000L && !done.contains(String.valueOf(s))) {
+                    done.add(String.valueOf(s));
+                    changed = true;
+                    notifyInfo(this, 3, "Через " + Math.max(1, Math.round(left / 60000.0)) + " хв вимкнуть світло",
+                            "Заряджіть телефон і павербанк, поки є світло");
+                }
+            }
+            if (changed) {
+                Set<String> keep = new HashSet<>();
+                for (String d : done) if (Long.parseLong(d) > now - 2 * 86400_000L) keep.add(d);
+                p.edit().putStringSet("out_done", keep).apply();
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void checkBattery(SharedPreferences p) {
+        if (!p.getBoolean("batt", true)) return;
+        Intent b = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (b == null) return;
+        int level = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1), scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+        int st = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        boolean charging = st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL;
+        int pct = level < 0 ? 100 : Math.round(level * 100f / scale);
+        if (charging || pct > 30) { battWarned = false; return; }
+        if (pct <= 20 && !battWarned) {
+            battWarned = true;
+            notifyInfo(this, 4, "Планшет розряджається: " + pct + "%", "Поставте на зарядку, щоб «Небо» не вимкнулося під час тривоги");
+        }
+    }
+
+    static void notifyInfo(Context ctx, int id, String title, String text) {
+        createChannels(ctx);
+        Notification n = new Notification.Builder(ctx, CH_POWER)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_low_battery)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setContentIntent(openApp(ctx))
+                .setAutoCancel(true)
+                .build();
+        try { ctx.getSystemService(NotificationManager.class).notify(id, n); } catch (Exception ignored) { }
     }
 
     static String hhmm() {
@@ -227,6 +417,7 @@ public class WatchService extends Service {
         m.setVibrationPattern(new long[]{0, 600, 300, 600, 300, 600});
         m.setBypassDnd(true);
         nm.createNotificationChannel(m);
+        nm.createNotificationChannel(new NotificationChannel(CH_POWER, "Світло й заряд", NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     static void notifyMissile(Context ctx, String title, String text) {
@@ -255,6 +446,7 @@ public class WatchService extends Service {
 
     @Override
     public void onDestroy() {
+        if (tts != null) tts.shutdown();
         if (handler != null) handler.removeCallbacksAndMessages(null);
         if (thread != null) thread.quitSafely();
         super.onDestroy();

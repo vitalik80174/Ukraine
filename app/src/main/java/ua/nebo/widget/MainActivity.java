@@ -16,6 +16,8 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebResourceRequest;
 
 import org.json.JSONObject;
 
@@ -46,6 +48,16 @@ public class MainActivity extends Activity {
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         s.setMediaPlaybackRequiresUserGesture(false);
         web.addJavascriptInterface(new Bridge(), "NeboNative");
+        // Links to websites open in the browser instead of replacing the widget.
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) {
+                Uri u = req.getUrl();
+                if ("file".equals(u.getScheme())) return false;
+                try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) { }
+                return true;
+            }
+        });
         setContentView(web);
 
         if (state != null) web.restoreState(state);
@@ -84,8 +96,28 @@ public class MainActivity extends Activity {
                         .putLong("lat", Double.doubleToLongBits(o.optDouble("lat", 49.8397)))
                         .putLong("lon", Double.doubleToLongBits(o.optDouble("lon", 24.0297)))
                         .putString("missile", o.optString("missile", "all"))
+                        .putBoolean("voice", o.optBoolean("voice", true))
+                        .putBoolean("pwRem", o.optBoolean("pwRem", true))
+                        .putBoolean("batt", o.optBoolean("batt", true))
                         .apply();
             } catch (Exception ignored) { }
+        }
+
+        @JavascriptInterface
+        public void setOutages(String json) {
+            getSharedPreferences(WatchService.PREFS, MODE_PRIVATE).edit().putString("outages", json).apply();
+        }
+
+        @JavascriptInterface
+        public String getHistory() { return WatchService.historyJson(); }
+
+        @JavascriptInterface
+        public String getTrails() { return WatchService.trailsJson(); }
+
+        @JavascriptInterface
+        public String version() {
+            try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+            catch (Exception e) { return "0.0"; }
         }
 
         @JavascriptInterface
