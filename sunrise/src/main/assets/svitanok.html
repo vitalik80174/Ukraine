@@ -152,13 +152,13 @@ $('vib').onchange = e=>{ st.vibrate = e.target.checked; save(); };
 /* ---------- the sunrise ---------- */
 const cv = $('cv'), ctx = cv.getContext('2d');
 let run = null, raf = 0;
-const KEYS = [  // sky colours at progress 0 .. 1: top, middle, horizon
+const KEYS = [  // sky colours at progress 0 .. 1: top, middle, horizon. Ends warm golden, never white.
   [0.00, '#03040c','#080b1f','#140f26'],
-  [0.20, '#070b22','#1a1838','#4a1f33'],
-  [0.40, '#121d48','#4a2a55','#b2453a'],
-  [0.60, '#2a4a8a','#9a4e5e','#f08a4e'],
-  [0.80, '#5f93cf','#e6a07a','#ffc37a'],
-  [1.00, '#9cc9f0','#f7dcb8','#fff1d6']];
+  [0.20, '#0b0b22','#25163a','#5a2030'],
+  [0.40, '#3a1f4a','#8a3448','#d0502e'],
+  [0.60, '#b0503e','#e07a3a','#ff9a3a'],
+  [0.80, '#f0973a','#ffb347','#ffc04d'],
+  [1.00, '#ffb240','#ffc455','#ffd166']];
 const hex = h => [1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
 const mix = (a,b,t) => { const x = hex(a), y = hex(b); return `rgb(${x.map((v,i)=>Math.round(v+(y[i]-v)*t)).join(',')})`; };
 function skyAt(p){ let i = 0; while(i < KEYS.length-2 && p > KEYS[i+1][0]) i++;
@@ -178,16 +178,16 @@ function draw(p, t){
   if(starA > 0){ stars.forEach(s=>{ ctx.globalAlpha = starA*(0.55+0.45*Math.sin(t/900+s.tw)); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s.x*W, s.y*hor, s.r, 0, 7); ctx.fill(); }); ctx.globalAlpha = 1; }
   // the sun climbs from below the horizon to a third of the screen
   const sy = hor + H*0.12 - p*(H*0.55), sr = Math.min(W,H)*(0.07 + 0.03*p);
-  const sc = p < 0.5 ? mix('#b0261a','#ff8a3d',p*2) : mix('#ff8a3d','#fff4d8',(p-0.5)*2);
+  const sc = p < 0.5 ? mix('#b0261a','#ff8a3d',p*2) : mix('#ff8a3d','#ffe38a',(p-0.5)*2);
   const glow = ctx.createRadialGradient(W*0.5, sy, sr*0.5, W*0.5, sy, sr*(5+4*p));
-  glow.addColorStop(0, sc); glow.addColorStop(0.25, `rgba(255,190,110,${0.18+0.3*p})`); glow.addColorStop(1, 'rgba(255,160,90,0)');
+  glow.addColorStop(0, sc); glow.addColorStop(0.25, `rgba(255,196,80,${0.2+0.35*p})`); glow.addColorStop(1, 'rgba(255,170,60,0)');
   ctx.fillStyle = glow; ctx.fillRect(0,0,W,H);
   ctx.fillStyle = sc; ctx.beginPath(); ctx.arc(W*0.5, sy, sr, 0, 7); ctx.fill();
   clouds.forEach(c=>{ const x = ((c.x + t/1000*c.s/60) % 1.3 - 0.15)*W, y = c.y*hor;
-    ctx.fillStyle = p < 0.5 ? `rgba(${Math.round(70+200*p)},${Math.round(40+120*p)},${Math.round(70+80*p)},${0.25+0.3*p})` : `rgba(255,${Math.round(200+40*(p-0.5))},${Math.round(180+60*(p-0.5))},${0.55})`;
+    ctx.fillStyle = p < 0.5 ? `rgba(${Math.round(70+200*p)},${Math.round(40+120*p)},${Math.round(70+80*p)},${0.25+0.3*p})` : `rgba(255,${Math.round(190+30*(p-0.5))},${Math.round(120+20*(p-0.5))},${0.5})`;
     ctx.beginPath(); ctx.ellipse(x, y, c.w*W/2, c.w*W/10, 0, 0, 7); ctx.ellipse(x+c.w*W*0.18, y-c.w*W*0.04, c.w*W/3.2, c.w*W/12, 0, 0, 7); ctx.fill(); });
   if(!ridges) ridges = [ridge(1.3, H*0.06, hor+H*0.02, W), ridge(2.7, H*0.05, hor+H*0.09, W), ridge(4.1, H*0.04, hor+H*0.17, W)];
-  const tones = [[ '#1a1430','#5a3a4a'],[ '#120e22','#3e2a36'],[ '#0a0814','#2a1c22']];
+  const tones = [[ '#1a1430','#a0602e'],[ '#120e22','#7a4424'],[ '#0a0814','#55301a']];
   ridges.forEach((r,i)=>{ ctx.fillStyle = mix(tones[i][0], tones[i][1], p); ctx.beginPath(); ctx.moveTo(0,H);
     r.forEach((y,k)=>ctx.lineTo(k*8, y)); ctx.lineTo(W,H); ctx.closePath(); ctx.fill(); });
 }
@@ -197,7 +197,7 @@ function frame(now){
   if(run.demo) p = Math.min(1, (t - run.t0)/60000);
   else p = run.at > run.start ? Math.min(1, Math.max(0, (t - run.start)/(run.at - run.start))) : 1;
   draw(p, now);
-  if(N) { const b = 0.01 + Math.pow(p, 1.6)*0.99; if(Math.abs(b - (run.b||0)) > 0.01){ run.b = b; N.brightness(b); } }
+  if(N) { const q = Math.min(1, p/0.85); const b = q >= 1 ? 1 : 0.01 + Math.pow(q, 1.6)*0.99; if(b === 1 ? run.b !== 1 : Math.abs(b - (run.b||0)) > 0.01){ run.b = b; N.brightness(b); } }
   const d = new Date();
   $('sClock').textContent = hm(d); $('sClock').style.opacity = (0.25 + 0.65*p).toFixed(2);
   const reached = run.demo ? p >= 1 : t >= run.at;
