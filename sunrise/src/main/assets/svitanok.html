@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Світанок</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600&display=swap">
+<style>
+/* Layout: settings as a single column of alarm cards; the sunrise is a full-screen canvas with the clock on top. */
+:root{
+  --night:#0b1026; --panel:#141a36; --line:#26305a; --fg:#f4ecdf; --dim:#a9a6c4; --warm:#ffb46b; --sun:#ffd27a; --rose:#e2603c;
+  --f-display:"Unbounded","Golos Text",system-ui,sans-serif; --f-body:"Golos Text",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--night);color:var(--fg);font:15px/1.45 var(--f-body)}
+.home{max-width:640px;margin:0 auto;padding:max(18px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 32px max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:14px}
+.hero{padding:18px;border-radius:18px;background:linear-gradient(180deg,#1d2a5c 0%,#7a3b5a 62%,#e2603c 100%);position:relative;overflow:hidden}
+.hero h1{font:700 26px/1.1 var(--f-display);margin:0}
+.hero p{margin:8px 0 0;color:#ffe9d2}
+.hero .sunball{position:absolute;right:-20px;bottom:-46px;width:130px;height:130px;border-radius:50%;background:radial-gradient(circle,#fff3d0 0,#ffd27a 45%,rgba(255,180,107,0) 70%)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.card.off{opacity:.55}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.time{font:700 40px/1 var(--f-display);font-variant-numeric:tabular-nums;background:none;border:0;color:var(--fg);padding:0;width:auto;min-width:0}
+.time::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
+.days{display:flex;gap:6px;flex-wrap:wrap}
+.days button{all:unset;cursor:pointer;width:36px;height:36px;border-radius:50%;text-align:center;line-height:36px;font-size:13px;border:1px solid var(--line);color:var(--dim)}
+.days button.on{background:var(--warm);border-color:var(--warm);color:#2a1408;font-weight:600}
+.sub{color:var(--dim);font-size:13px}
+select,.btn{font:inherit;color:var(--fg);background:#0f1530;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.btn{cursor:pointer;font-weight:600}
+.btn.main{background:var(--warm);color:#2a1408;border-color:var(--warm)}
+.btn.ghost{background:none}
+.switch{position:relative;width:52px;height:30px;flex:none}
+.switch input{opacity:0;width:100%;height:100%;margin:0;position:absolute;cursor:pointer}
+.switch span{position:absolute;inset:0;border-radius:15px;background:#2a335e;transition:background .2s;pointer-events:none}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked + span{background:var(--warm)}
+.switch input:checked + span::after{transform:translateX(22px)}
+.switch input:focus-visible + span{outline:2px solid var(--sun);outline-offset:2px}
+h2{font:600 12px/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:8px 2px 0}
+.del{all:unset;cursor:pointer;color:var(--dim);font-size:13px;padding:4px 6px}
+button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-offset:2px}
+/* sunrise */
+.sky{position:fixed;inset:0;background:#000}
+.sky canvas{position:absolute;inset:0;width:100%;height:100%}
+.sky .over{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;pointer-events:none}
+.sky .clock{font:700 clamp(64px,16vw,150px)/1 var(--f-display);font-variant-numeric:tabular-nums;color:#fff;transition:opacity 2s;text-shadow:0 2px 24px rgba(0,0,0,.25)}
+.sky .note{font-size:17px;color:#fff;opacity:.85}
+.sky .acts{position:absolute;left:0;right:0;bottom:max(28px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:14px;padding:0 16px;pointer-events:auto}
+.sky .acts button{all:unset;cursor:pointer;padding:16px 24px;border-radius:999px;font-weight:600;font-size:17px;background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.45);backdrop-filter:blur(6px)}
+.sky .acts button.main{background:#fff;color:#7a3b1e}
+.sky .early{position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;pointer-events:auto}
+.sky .early button{all:unset;cursor:pointer;color:rgba(255,255,255,.55);font-size:13px;padding:6px 10px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="home" id="home">
+  <div class="hero"><div class="sunball"></div>
+    <h1>Світанок</h1>
+    <p id="nextLine">Будильник, перед яким екран поступово світлішає, як справжній світанок.</p>
+  </div>
+
+  <h2>Будильники</h2>
+  <div id="list"></div>
+  <button class="btn main" id="add" type="button">Додати будильник</button>
+
+  <h2>Звук і вібрація</h2>
+  <div class="card">
+    <div class="row"><div><div>Звук</div><div class="sub" id="soundName">Мелодія будильника</div></div><button class="btn" id="pick" type="button">Змінити</button></div>
+    <div class="row"><div>Вібрація</div><label class="switch"><input type="checkbox" id="vib" aria-label="Вібрація"><span></span></label></div>
+    <div class="sub">Звук вмикається тихо в час будильника і за хвилину стає повною гучністю.</div>
+  </div>
+
+  <h2>Спробувати</h2>
+  <div class="card">
+    <div class="sub">Хвилинний показ: увесь світанок у прискореному вигляді, а наприкінці звук будильника.</div>
+    <button class="btn" id="demo" type="button">Подивитися світанок</button>
+    <div class="sub">Щоб світанок спрацював, залиште планшет на зарядці. Екран увімкнеться сам, навіть якщо заблокований.</div>
+  </div>
+</div>
+
+<div class="sky" id="sky" hidden>
+  <canvas id="cv"></canvas>
+  <div class="over"><div class="clock" id="sClock">06:30</div><div class="note" id="sNote"></div></div>
+  <div class="early"><button type="button" id="cancelEarly">Вимкнути світанок</button></div>
+  <div class="acts" id="acts" hidden>
+    <button type="button" id="snooze">Ще 10 хв</button>
+    <button type="button" class="main" id="wake">Я прокинувся</button>
+  </div>
+</div>
+
+<script>
+const N = window.Svitanok || null;
+const $ = id => document.getElementById(id);
+const DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
+let st = N ? JSON.parse(N.getState()) : {alarms:[{id:1,h:7,m:0,days:[1,2,3,4,5],dur:30,on:true}], vibrate:false, sound:'Мелодія будильника'};
+const pad = n => String(n).padStart(2,'0');
+const hm = d => pad(d.getHours())+':'+pad(d.getMinutes());
+
+function save(){ if(N) N.save(JSON.stringify(st.alarms), st.vibrate); if(N) st = Object.assign(st, JSON.parse(N.getState()), {alarms:st.alarms}); renderNext(); }
+function renderNext(){
+  if(N) st = Object.assign(JSON.parse(N.getState()), {alarms:st.alarms});
+  const l = $('nextLine');
+  if(!st.nextAt){ l.textContent = 'Будильників не заплановано.'; return; }
+  const at = new Date(st.nextAt), s = new Date(st.nextStart);
+  const today = new Date().toDateString(), tm = new Date(Date.now()+864e5).toDateString();
+  const day = at.toDateString()===today ? 'сьогодні' : at.toDateString()===tm ? 'завтра' : at.toLocaleDateString('uk-UA',{weekday:'long'});
+  const mins = Math.round((st.nextAt - st.nextStart)/60000);
+  l.textContent = mins > 0 ? `Наступний: ${day} о ${hm(at)}. Світанок почнеться о ${hm(s)}.` : `Наступний: ${day} о ${hm(at)}.`;
+}
+function render(){
+  $('list').innerHTML = st.alarms.map((a,i)=>`
+    <div class="card${a.on?'':' off'}" data-i="${i}">
+      <div class="row">
+        <input class="time" type="time" value="${pad(a.h)}:${pad(a.m)}" aria-label="Час будильника" data-f="time">
+        <label class="switch"><input type="checkbox" ${a.on?'checked':''} data-f="on" aria-label="Увімкнено"><span></span></label>
+      </div>
+      <div class="days">${DAYS.map((d,k)=>`<button type="button" class="${(a.days||[]).includes(k+1)?'on':''}" data-day="${k+1}" aria-pressed="${(a.days||[]).includes(k+1)}">${d}</button>`).join('')}</div>
+      <div class="row">
+        <label class="sub">Світанок триває
+          <select data-f="dur">${[10,20,30,45,60].map(m=>`<option value="${m}" ${a.dur===m?'selected':''}>${m} хв</option>`).join('')}</select></label>
+        <button type="button" class="del" data-f="del">Видалити</button>
+      </div>
+      <div class="sub">${(a.days||[]).length ? (a.days.length===7 ? 'Щодня' : a.days.length===5 && !a.days.includes(6) && !a.days.includes(7) ? 'По буднях' : a.days.sort().map(d=>DAYS[d-1]).join(', ')) : 'Один раз'}</div>
+    </div>`).join('') || '<div class="card"><div class="sub">Ще немає будильників.</div></div>';
+  $('soundName').textContent = st.sound || 'Мелодія будильника';
+  $('vib').checked = !!st.vibrate;
+  renderNext();
+}
+$('list').addEventListener('change', e=>{
+  const c = e.target.closest('[data-i]'); if(!c) return; const a = st.alarms[+c.dataset.i];
+  if(e.target.dataset.f==='time'){ const [h,m] = e.target.value.split(':').map(Number); if(isFinite(h)){ a.h = h; a.m = m; } }
+  if(e.target.dataset.f==='on') a.on = e.target.checked;
+  if(e.target.dataset.f==='dur') a.dur = +e.target.value;
+  save(); render();
+});
+$('list').addEventListener('click', e=>{
+  const c = e.target.closest('[data-i]'); if(!c) return; const i = +c.dataset.i, a = st.alarms[i];
+  const d = e.target.closest('[data-day]');
+  if(d){ const k = +d.dataset.day; a.days = (a.days||[]).includes(k) ? a.days.filter(x=>x!==k) : [...(a.days||[]), k]; save(); render(); }
+  if(e.target.dataset.f==='del'){ st.alarms.splice(i,1); save(); render(); }
+});
+$('add').onclick = ()=>{ st.alarms.push({id:Date.now(), h:7, m:0, days:[1,2,3,4,5], dur:30, on:true}); save(); render(); };
+$('pick').onclick = ()=>{ if(N) N.pickSound(); };
+window.onSound = name => { st.sound = name; $('soundName').textContent = name; };
+$('vib').onchange = e=>{ st.vibrate = e.target.checked; save(); };
+
+/* ---------- the sunrise ---------- */
+const cv = $('cv'), ctx = cv.getContext('2d');
+let run = null, raf = 0;
+const KEYS = [  // sky colours at progress 0 .. 1: top, middle, horizon
+  [0.00, '#03040c','#080b1f','#140f26'],
+  [0.20, '#070b22','#1a1838','#4a1f33'],
+  [0.40, '#121d48','#4a2a55','#b2453a'],
+  [0.60, '#2a4a8a','#9a4e5e','#f08a4e'],
+  [0.80, '#5f93cf','#e6a07a','#ffc37a'],
+  [1.00, '#9cc9f0','#f7dcb8','#fff1d6']];
+const hex = h => [1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const mix = (a,b,t) => { const x = hex(a), y = hex(b); return `rgb(${x.map((v,i)=>Math.round(v+(y[i]-v)*t)).join(',')})`; };
+function skyAt(p){ let i = 0; while(i < KEYS.length-2 && p > KEYS[i+1][0]) i++;
+  const a = KEYS[i], b = KEYS[i+1], t = Math.min(1, Math.max(0, (p-a[0])/(b[0]-a[0]))); return [1,2,3].map(k=>mix(a[k],b[k],t)); }
+const stars = Array.from({length:140}, ()=>({x:Math.random(), y:Math.random()*0.7, r:Math.random()*1.3+0.3, tw:Math.random()*6}));
+const clouds = Array.from({length:6}, (_,i)=>({x:Math.random(), y:0.18+Math.random()*0.32, w:0.18+Math.random()*0.22, s:0.004+Math.random()*0.006}));
+function ridge(seed, amp, base, w){ const pts = []; for(let x=0;x<=w;x+=8){ const t = x/w; pts.push(base - amp*(0.5*Math.sin(t*7+seed)+0.3*Math.sin(t*17+seed*2)+0.2*Math.sin(t*31+seed*3))); } return pts; }
+let ridges = null;
+function resize(){ const dpr = Math.min(2, devicePixelRatio||1); cv.width = innerWidth*dpr; cv.height = innerHeight*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ridges = null; }
+addEventListener('resize', resize);
+function draw(p, t){
+  const W = innerWidth, H = innerHeight, hor = H*0.72;
+  const [top, mid, low] = skyAt(p);
+  const g = ctx.createLinearGradient(0,0,0,hor); g.addColorStop(0,top); g.addColorStop(0.62,mid); g.addColorStop(1,low);
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  const starA = Math.max(0, 1 - p*2.6);
+  if(starA > 0){ stars.forEach(s=>{ ctx.globalAlpha = starA*(0.55+0.45*Math.sin(t/900+s.tw)); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s.x*W, s.y*hor, s.r, 0, 7); ctx.fill(); }); ctx.globalAlpha = 1; }
+  // the sun climbs from below the horizon to a third of the screen
+  const sy = hor + H*0.12 - p*(H*0.55), sr = Math.min(W,H)*(0.07 + 0.03*p);
+  const sc = p < 0.5 ? mix('#b0261a','#ff8a3d',p*2) : mix('#ff8a3d','#fff4d8',(p-0.5)*2);
+  const glow = ctx.createRadialGradient(W*0.5, sy, sr*0.5, W*0.5, sy, sr*(5+4*p));
+  glow.addColorStop(0, sc); glow.addColorStop(0.25, `rgba(255,190,110,${0.18+0.3*p})`); glow.addColorStop(1, 'rgba(255,160,90,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = sc; ctx.beginPath(); ctx.arc(W*0.5, sy, sr, 0, 7); ctx.fill();
+  clouds.forEach(c=>{ const x = ((c.x + t/1000*c.s/60) % 1.3 - 0.15)*W, y = c.y*hor;
+    ctx.fillStyle = p < 0.5 ? `rgba(${Math.round(70+200*p)},${Math.round(40+120*p)},${Math.round(70+80*p)},${0.25+0.3*p})` : `rgba(255,${Math.round(200+40*(p-0.5))},${Math.round(180+60*(p-0.5))},${0.55})`;
+    ctx.beginPath(); ctx.ellipse(x, y, c.w*W/2, c.w*W/10, 0, 0, 7); ctx.ellipse(x+c.w*W*0.18, y-c.w*W*0.04, c.w*W/3.2, c.w*W/12, 0, 0, 7); ctx.fill(); });
+  if(!ridges) ridges = [ridge(1.3, H*0.06, hor+H*0.02, W), ridge(2.7, H*0.05, hor+H*0.09, W), ridge(4.1, H*0.04, hor+H*0.17, W)];
+  const tones = [[ '#1a1430','#5a3a4a'],[ '#120e22','#3e2a36'],[ '#0a0814','#2a1c22']];
+  ridges.forEach((r,i)=>{ ctx.fillStyle = mix(tones[i][0], tones[i][1], p); ctx.beginPath(); ctx.moveTo(0,H);
+    r.forEach((y,k)=>ctx.lineTo(k*8, y)); ctx.lineTo(W,H); ctx.closePath(); ctx.fill(); });
+}
+function frame(now){
+  if(!run) return;
+  const t = Date.now(); let p;
+  if(run.demo) p = Math.min(1, (t - run.t0)/60000);
+  else p = run.at > run.start ? Math.min(1, Math.max(0, (t - run.start)/(run.at - run.start))) : 1;
+  draw(p, now);
+  if(N) { const b = 0.01 + Math.pow(p, 1.6)*0.99; if(Math.abs(b - (run.b||0)) > 0.01){ run.b = b; N.brightness(b); } }
+  const d = new Date();
+  $('sClock').textContent = hm(d); $('sClock').style.opacity = (0.25 + 0.65*p).toFixed(2);
+  const reached = run.demo ? p >= 1 : t >= run.at;
+  if(reached && !run.rang){ run.rang = true; $('acts').hidden = false; $('cancelEarly').parentElement.hidden = true; $('sNote').textContent = 'Доброго ранку!'; if(N) N.ring(); }
+  else if(!reached){ const left = Math.ceil(((run.demo ? run.t0+60000 : run.at) - t)/60000); $('sNote').textContent = run.demo ? 'Показ світанку' : `Будильник о ${hm(new Date(run.at))}, ще ${left} хв`; }
+  raf = requestAnimationFrame(frame);
+}
+function openSky(){ $('home').hidden = true; $('sky').hidden = false; $('acts').hidden = true; $('cancelEarly').parentElement.hidden = false; resize(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); }
+window.startSunrise = (start, at, id) => { run = {start, at, id, rang:false}; openSky(); };
+window.showHome = () => { run = null; cancelAnimationFrame(raf); $('sky').hidden = true; $('home').hidden = false; if(N) st = JSON.parse(N.getState()); render(); };
+$('demo').onclick = ()=>{ run = {demo:true, t0:Date.now(), id:0, rang:false}; openSky(); };
+$('wake').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(run ? run.id : 0)); else showHome(); };
+$('snooze').onclick = ()=>{ if(run && run.demo){ if(N) N.stopPreview(); else showHome(); return; }
+  if(N) N.snooze(10); run.rang = false; run.start = Date.now() - 1; run.at = Date.now() + 10*60000; $('acts').hidden = true; };
+$('cancelEarly').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(run ? run.id : 0)); else showHome(); };
+render();
+</script>
+</body>
+</html>
