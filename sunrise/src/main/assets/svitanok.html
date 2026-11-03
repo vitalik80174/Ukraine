@@ -72,7 +72,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-o
   <div class="card">
     <div class="row"><div><div>Звук</div><div class="sub" id="soundName">Мелодія будильника</div></div><button class="btn" id="pick" type="button">Змінити</button></div>
     <div class="row"><div>Вібрація</div><label class="switch"><input type="checkbox" id="vib" aria-label="Вібрація"><span></span></label></div>
-    <div class="sub">Звук вмикається тихо в час будильника, за хвилину стає повною гучністю і сам вимикається через 5 хвилин.</div>
+    <div class="sub">Світанок доходить до повної яскравості за 5 хвилин до будильника. Потім вмикається тихий звук і за хвилину стає повною гучністю.</div>
   </div>
 
   <h2>Спробувати</h2>
@@ -122,7 +122,7 @@ function render(){
       <div class="days">${DAYS.map((d,k)=>`<button type="button" class="${(a.days||[]).includes(k+1)?'on':''}" data-day="${k+1}" aria-pressed="${(a.days||[]).includes(k+1)}">${d}</button>`).join('')}</div>
       <div class="row">
         <label class="sub">Світанок триває
-          <select data-f="dur">${[5,10,20,30,45,60].map(m=>`<option value="${m}" ${a.dur===m?'selected':''}>${m} хв</option>`).join('')}</select></label>
+          <select data-f="dur">${[10,20,30,45,60].map(m=>`<option value="${m}" ${a.dur===m?'selected':''}>${m} хв</option>`).join('')}</select></label>
         <button type="button" class="del" data-f="del">Видалити</button>
       </div>
       <div class="sub">${(a.days||[]).length ? (a.days.length===7 ? 'Щодня' : a.days.length===5 && !a.days.includes(6) && !a.days.includes(7) ? 'По буднях' : a.days.sort().map(d=>DAYS[d-1]).join(', ')) : 'Один раз'}</div>
@@ -194,19 +194,20 @@ function draw(p, t){
 function frame(now){
   if(!run) return;
   const t = Date.now(); let p;
-  if(run.demo) p = Math.min(1, (t - run.t0)/60000);
-  else p = run.at > run.start ? Math.min(1, Math.max(0, (t - run.start)/(run.at - run.start))) : 1;
+  // the sky is fully lit five minutes before the alarm, then holds warm full light until it rings
+  if(run.demo) p = Math.min(1, (t - run.t0)/45000);
+  else { const full = Math.max(run.start + (run.at - run.start)/2, run.at - 5*60000);
+    p = full > run.start ? Math.min(1, Math.max(0, (t - run.start)/(full - run.start))) : 1; }
   draw(p, now);
-  if(N) { const q = Math.min(1, p/0.85); const b = q >= 1 ? 1 : 0.01 + Math.pow(q, 1.6)*0.99; if(b === 1 ? run.b !== 1 : Math.abs(b - (run.b||0)) > 0.01){ run.b = b; N.brightness(b); } }
+  if(N) { const b = p >= 1 ? 1 : 0.01 + Math.pow(p, 1.6)*0.99; if(b === 1 ? run.b !== 1 : Math.abs(b - (run.b||0)) > 0.01){ run.b = b; N.brightness(b); } }
   const d = new Date();
   $('sClock').textContent = hm(d); $('sClock').style.opacity = (0.25 + 0.65*p).toFixed(2);
-  const reached = run.demo ? p >= 1 : t >= run.at;
+  const reached = run.demo ? t - run.t0 >= 60000 : t >= run.at;
   if(reached && !run.rang){ run.rang = true; $('acts').hidden = false; $('cancelEarly').parentElement.hidden = true; $('sNote').textContent = 'Доброго ранку!'; if(N) N.ring(); }
   else if(!reached){ const left = Math.ceil(((run.demo ? run.t0+60000 : run.at) - t)/60000); $('sNote').textContent = run.demo ? 'Показ світанку' : `Будильник о ${hm(new Date(run.at))}, ще ${left} хв`; }
   raf = requestAnimationFrame(frame);
 }
 function openSky(){ $('home').hidden = true; $('sky').hidden = false; $('acts').hidden = true; $('cancelEarly').parentElement.hidden = false; resize(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); }
-window.onRingEnd = () => { $('sNote').textContent = 'Звук вимкнувся через 5 хвилин'; };
 window.startSunrise = (start, at, id) => { run = {start, at, id, rang:false}; openSky(); };
 window.showHome = () => { run = null; cancelAnimationFrame(raf); $('sky').hidden = true; $('home').hidden = false; if(N) st = JSON.parse(N.getState()); render(); };
 $('demo').onclick = ()=>{ run = {demo:true, t0:Date.now(), id:0, rang:false}; openSky(); };
