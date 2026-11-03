@@ -163,6 +163,16 @@ summary{cursor:pointer;font-weight:600}
 .power .ticks{display:flex;justify-content:space-between;color:var(--dim);font:11px var(--f-mono)}
 body.night .wrap{filter:brightness(.4)}
 body.night{background:#000}
+/* alert colours win over every map style */
+#raions .r.y{fill:rgba(255,176,32,.5)}
+#raions .r.p{fill:url(#hatch)}
+#raions .r.a{fill:var(--red-soft)}
+#raions .r.a.lv-red{fill:rgba(255,59,59,.66)}
+#raions .r.a:hover{fill:rgba(255,59,59,.8)}
+.mapbox.style-flat #raions .r.a.lv-red,.mapbox.style-paper #raions .r.a.lv-red{fill:rgba(230,40,40,.72)}
+.mapbox.style-paper #raions .r.y{fill:rgba(230,150,0,.55)}
+.mapbox.style-neon #raions .r.a.lv-red{fill:rgba(255,0,110,.6);stroke:#ff4fa3}
+.mapbox.style-neon #raions .r.y{fill:rgba(255,200,0,.45);stroke:#ffd34f}
 .maptools .zb{min-width:14px;text-align:center}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .card b{display:block}
