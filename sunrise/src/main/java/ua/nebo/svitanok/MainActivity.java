@@ -210,6 +210,7 @@ public class MainActivity extends Activity {
                 o.put("vibrate", p.getBoolean("vibrate", false));
                 o.put("sound", soundTitle());
                 o.put("soundMode", soundMode());
+                o.put("lead", p.getInt("lead", 5));
                 long[] n = Scheduler.next(MainActivity.this);
                 if (n != null) { o.put("nextStart", n[1]); o.put("nextAt", n[2]); }
             } catch (Exception ignored) { }
@@ -221,6 +222,10 @@ public class MainActivity extends Activity {
             Scheduler.prefs(MainActivity.this).edit().putString("alarms", alarmsJson).putBoolean("vibrate", vibrate).apply();
             Scheduler.schedule(MainActivity.this);
         }
+
+        /** Minutes before the alarm when the music starts; -1 means together with the sunrise. */
+        @JavascriptInterface
+        public void setLead(int minutes) { Scheduler.prefs(MainActivity.this).edit().putInt("lead", minutes).apply(); }
 
         @JavascriptInterface
         public void pickSound() {
