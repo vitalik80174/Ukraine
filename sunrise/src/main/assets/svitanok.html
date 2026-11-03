@@ -76,7 +76,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-o
   <h2>Звук і вібрація</h2>
   <div class="card">
     <div class="snd" id="snd">
-      <button type="button" data-mode="birds"><b>Пташки й музика</b><span>Звучать разом зі світанком і стають гучнішими разом з яскравістю</span></button>
+      <button type="button" data-mode="birds"><b>Пташки й музика</b><span>Вмикаються, коли світло вже на повну, і поступово стають гучнішими</span></button>
       <button type="button" data-mode="system"><b>Мелодія з телефона</b><span id="soundName">Вибрати мелодію будильника</span></button>
       <button type="button" data-mode="none"><b>Без звуку</b><span>Лише світло</span></button>
     </div>
@@ -86,7 +86,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-o
 
   <h2>Спробувати</h2>
   <div class="card">
-    <div class="sub">Хвилинний показ: увесь світанок у прискореному вигляді. Звук наростає разом зі світлом, а наприкінці виходить на повну гучність.</div>
+    <div class="sub">Хвилинний показ: спершу 45 секунд світанку, потім 15 секунд наростають пташки й музика.</div>
     <button class="btn" id="demo" type="button">Подивитися світанок</button>
     <div class="sub">Щоб світанок спрацював, залиште планшет на зарядці. Екран увімкнеться сам, навіть якщо заблокований.</div>
   </div>
@@ -158,7 +158,7 @@ function renderSound(){
   const m = st.soundMode || 'birds';
   document.querySelectorAll('#snd button').forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
   $('soundName').textContent = m==='system' ? (st.sound||'Мелодія будильника') + ' · змінити' : 'Вибрати мелодію будильника';
-  $('sndHint').textContent = m==='birds' ? 'Пташки й музика починаються ледь чутно разом зі світанком і стають гучнішими разом з яскравістю. За 5 хвилин до будильника світло вже на повну, а в час будильника звук виходить на повну гучність.'
+  $('sndHint').textContent = m==='birds' ? 'Спершу лише світло. За 5 хвилин до будильника, коли світло вже на повну, ледь чутно вмикаються пташки й музика і поступово наростають до повної гучності в час будильника.'
     : m==='system' ? 'Світанок без звуку, а в час будильника тихо вмикається мелодія і за хвилину стає повною гучністю.' : 'Будильник лише світлом, без звуку.';
 }
 $('snd').addEventListener('click', e=>{ const b = e.target.closest('button'); if(!b) return;
@@ -217,9 +217,14 @@ function frame(now){
   else { const full = Math.max(run.start + (run.at - run.start)/2, run.at - 5*60000);
     p = full > run.start ? Math.min(1, Math.max(0, (t - run.start)/(full - run.start))) : 1; }
   draw(p, now);
-  if(N) { const b = p >= 1 ? 1 : 0.01 + Math.pow(p, 1.6)*0.99; if(b === 1 ? run.b !== 1 : Math.abs(b - (run.b||0)) > 0.01){ run.b = b; N.brightness(b);
-    // birds and music follow the light; full volume waits for the alarm itself
-    if(st.soundMode==='birds' && !run.rang) N.ambient(Math.min(0.75, b)); } }
+  if(N) { const b = p >= 1 ? 1 : 0.01 + Math.pow(p, 1.6)*0.99; if(b === 1 ? run.b !== 1 : Math.abs(b - (run.b||0)) > 0.01){ run.b = b; N.brightness(b); } }
+  // first the light; once it is full, birds and music start softly and grow until the alarm
+  if(N && st.soundMode==='birds' && !run.rang){
+    const fullAt = run.demo ? run.t0 + 45000 : Math.max(run.start + (run.at - run.start)/2, run.at - 5*60000);
+    const endAt = run.demo ? run.t0 + 60000 : run.at;
+    if(t >= fullAt){ const h = Math.min(1, (t - fullAt)/Math.max(1, endAt - fullAt)); const v = 0.02 + 0.98*h*h;
+      if(Math.abs(v - (run.v||0)) > 0.01){ run.v = v; N.ambient(v); } }
+  }
   const d = new Date();
   $('sClock').textContent = hm(d); $('sClock').style.opacity = (0.25 + 0.65*p).toFixed(2);
   const reached = run.demo ? t - run.t0 >= 60000 : t >= run.at;
@@ -233,7 +238,7 @@ window.showHome = () => { run = null; cancelAnimationFrame(raf); $('sky').hidden
 $('demo').onclick = ()=>{ run = {demo:true, t0:Date.now(), id:0, rang:false}; openSky(); };
 $('wake').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(run ? run.id : 0)); else showHome(); };
 $('snooze').onclick = ()=>{ if(run && run.demo){ if(N) N.stopPreview(); else showHome(); return; }
-  if(N) N.snooze(10); run.rang = false; run.start = Date.now() - 1; run.at = Date.now() + 10*60000; $('acts').hidden = true; };
+  if(N) N.snooze(10); run.v = 0; run.b = 0; run.rang = false; run.start = Date.now() - 1; run.at = Date.now() + 10*60000; $('acts').hidden = true; };
 $('cancelEarly').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(run ? run.id : 0)); else showHome(); };
 render();
 </script>
