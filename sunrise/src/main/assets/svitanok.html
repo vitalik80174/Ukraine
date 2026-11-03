@@ -119,8 +119,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--sun);outline-o
 <div class="sky" id="sky" hidden>
   <canvas id="cv"></canvas>
   <div class="over"><div class="clock" id="sClock">06:30</div><div class="note" id="sNote"></div></div>
-  <div class="early"><button type="button" id="cancelEarly">Вимкнути світанок</button></div>
-  <div class="acts" id="acts" hidden>
+  <div class="acts" id="acts">
     <button type="button" id="snooze">Ще 10 хв</button>
     <button type="button" class="main" id="wake">Я прокинувся</button>
   </div>
@@ -268,18 +267,23 @@ function frame(now){
   const d = new Date();
   $('sClock').textContent = hm(d); $('sClock').style.opacity = (0.25 + 0.65*p).toFixed(2);
   const reached = run.demo ? t - run.t0 >= 60000 : t >= run.at;
-  if(reached && !run.rang){ run.rang = true; $('acts').hidden = false; $('cancelEarly').parentElement.hidden = true; $('sNote').textContent = 'Доброго ранку!'; if(N) N.ring(); }
+  if(reached && !run.rang){ run.rang = true; $('sNote').textContent = 'Доброго ранку!'; if(N) N.ring(); }
   else if(!reached){ const left = Math.ceil(((run.demo ? run.t0+60000 : run.at) - t)/60000); $('sNote').textContent = run.demo ? 'Показ світанку' : `Будильник о ${hm(new Date(run.at))}, ще ${left} хв`; }
   raf = requestAnimationFrame(frame);
 }
-function openSky(){ $('home').hidden = true; $('sky').hidden = false; $('acts').hidden = true; $('cancelEarly').parentElement.hidden = false; resize(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); }
+function openSky(){ $('home').hidden = true; $('sky').hidden = false; $('acts').hidden = false; resize(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); }
 window.startSunrise = (start, at, id) => { run = {start, at, id, rang:false}; openSky(); };
 window.showHome = () => { run = null; cancelAnimationFrame(raf); $('sky').hidden = true; $('home').hidden = false; if(N) st = JSON.parse(N.getState()); render(); };
 $('demo').onclick = ()=>{ run = {demo:true, t0:Date.now(), id:0, rang:false}; openSky(); };
 $('wake').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(run ? run.id : 0)); else showHome(); };
 $('snooze').onclick = ()=>{ if(run && run.demo){ if(N) N.stopPreview(); else showHome(); return; }
-  if(N) N.snooze(10); run.v = 0; run.b = 0; run.rang = false; run.start = Date.now() - 1; run.at = Date.now() + 10*60000; $('acts').hidden = true; };
-$('cancelEarly').onclick = ()=>{ if(N) (run && run.demo ? N.stopPreview() : N.dismiss(run ? run.id : 0)); else showHome(); };
+  if(!run.rang){
+    // before the alarm: move the alarm 10 minutes later and let the sunrise carry on
+    run.at += 10*60000; run.v = 0; run.b = 0;
+    if(N) N.snooze(Math.max(1, Math.round((run.at - Date.now())/60000)));
+    return;
+  }
+  if(N) N.snooze(10); run.v = 0; run.b = 0; run.rang = false; run.start = Date.now() - 1; run.at = Date.now() + 10*60000; };
 const CHECKS = [
   ['notif','Сповіщення','Без них Android не покаже світанок'],
   ['fsi','Сповіщення на весь екран','Дозволяє відкрити світанок поверх блокування'],
