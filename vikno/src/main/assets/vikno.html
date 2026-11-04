@@ -20,9 +20,16 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .clock{font:200 min(16vw,128px)/0.95 var(--f);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .clock small{font-size:.38em;font-weight:300;opacity:.7;margin-left:.08em}
 .line{font-size:min(3.4vw,19px);color:var(--dim);margin-top:8px;font-weight:400}
+.menuBtn{position:fixed;top:max(14px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right));width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:rgba(12,16,30,.35);color:var(--fg);font-size:22px;line-height:1;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.story{color:var(--dim);font-size:13.5px;margin:6px 0 0;padding-left:16px}
+.story li{margin:4px 0}
+.card2{padding:10px 12px;border:1px solid var(--line);border-radius:12px;color:var(--dim);font-size:13.5px}
+.card2 b{color:var(--fg)}
 .toast{position:fixed;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);padding:8px 14px;border-radius:999px;font-size:13px;color:var(--dim);transition:opacity .6s;pointer-events:none}
 .panel{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .35s ease;display:flex;flex-direction:column;padding:max(20px,env(safe-area-inset-top)) 20px 20px}
 .panel.open{transform:none}
+.panel{overflow-y:auto;touch-action:pan-y}
+.panel .diary{flex:none;overflow:visible}
 .panel h1{font:600 24px/1.1 var(--f);margin:0}
 .panel .sub{color:var(--dim);font-size:13px;margin-top:4px}
 .panel h2{font:600 11px/1 var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:22px 0 10px}
@@ -59,6 +66,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div class="line" id="line">Вікно відчиняється…</div>
 </div>
 <div class="toast" id="toast" style="opacity:0"></div>
+<button class="menuBtn" id="menuBtn" aria-label="Меню">⋯</button>
 
 <aside class="panel" id="panel" aria-label="Меню">
   <button class="close" id="close" aria-label="Закрити">×</button>
@@ -76,14 +84,23 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <label class="opt"><span>Годинник<em>Час і погода в кутку</em></span><span class="switch"><input type="checkbox" id="optClock"><i></i></span></label>
     <label class="opt"><span>Не гасити екран<em>Вікно світиться, поки відкрите</em></span><span class="switch"><input type="checkbox" id="optAwake"><i></i></span></label>
     <label class="opt"><span>Приглушувати вночі<em>Темніший екран після заходу</em></span><span class="switch"><input type="checkbox" id="optDim"><i></i></span></label>
+    <label class="opt"><span>Звуки<em>Дзвін Ратуші, коли її торкнутися</em></span><span class="switch"><input type="checkbox" id="optSound"><i></i></span></label>
+    <div class="opt"><span>Заставка на зарядці<em>Налаштування → Дисплей → Заставка → «Вікно»</em></span></div>
   </div>
 
+  <h2>Цікавинка дня</h2>
+  <div class="card2" id="fact"></div>
+  <h2>Знайди кота</h2>
+  <div class="card2" id="catInfo">Щодня на якомусь даху ховається кіт. Знайдіть і торкніться його.</div>
+  <h2>Таємниця вікна</h2>
+  <div class="card2">Одне вікно в місті світиться завжди. Щодня відкривається нова підказка — торкніться його, щоб прочитати.<ul class="story" id="mystery"></ul></div>
   <h2>Щоденник змін</h2>
   <div class="diary" id="diary"></div>
   <div class="foot" id="foot">Погода: Open-Meteo</div>
 </aside>
 
 <script src="changelog.js"></script>
+<script src="life.js"></script>
 <script>
 "use strict";
 /* ============ settings & helpers ============ */
@@ -258,15 +275,15 @@ function poly(g, pts, col){ g.fillStyle=rgb(col); g.beginPath(); pts.forEach(([x
 const FOLIAGE={spring:[[110,160,80],[140,180,96]],summer:[[66,108,56],[88,128,64]],autumn:[[176,104,48],[120,120,56],[200,132,64],[150,70,40]],late:[[110,86,64],[90,80,64],[128,100,70]],winter:[[150,150,156],[120,118,124]]};
 
 function paintTerrain(S, season, W_){
-  const d=now(), qh=Math.floor((d.getHours()*60+d.getMinutes())/15);
-  const key=[W,H,season,Math.round(S.day*40),Math.round(S.gold*20),Math.round(W_.cloud*10),W_.fog,qh].join();
+  const d=now(), qh=Math.floor((d.getHours()*60+d.getMinutes())/3);
+  const key=[W,H,season,Math.round(S.day*40),Math.round(S.gold*20),Math.round(W_.cloud*10),W_.fog,qh,Math.round(SNOWC*8),Math.round(SUNGLOW*10)].join();
   if (key===terrainKey) return; terrainKey=key;
   terrain = terrain || document.createElement("canvas");
   terrain.width=W*DPR|0; terrain.height=H*DPR|0;
   const g=terrain.getContext("2d"); g.setTransform(DPR,0,0,DPR,0,0); g.clearRect(0,0,W,H);
-  const u=H, X=f=>f*W, Y=f=>f*H, night=1-S.day, snow=season==="winter";
+  const u=H, X=f=>f*W, Y=f=>f*H, night=1-S.day, snow=SNOWC>.5;
   const fol=FOLIAGE[season];
-  const hh=d.getHours()+d.getMinutes()/60, share= night<.5 ? 0 : hh>=17||hh<1 ? .55 : hh<5 ? .08 : .25;
+  const hh=d.getHours()+d.getMinutes()/60, share=windowShare(hh,night);
   const winNight=[255,204,128];
 
   // distant city and hills on the horizon
@@ -291,14 +308,16 @@ function paintTerrain(S, season, W_){
     world.tv={x:tx, top, base:b};
   }
   // the sea of roofs, back to front, over a dusky base so no sky shows between them
-  world.chimneys=[];
+  world.chimneys=[]; world.roofs=[]; world.wins=[]; world.treeSpots=[];
   { const gr=g.createLinearGradient(0,Y(.5),0,H); gr.addColorStop(0,rgb(lit([150,120,110],S,.6,W_))); gr.addColorStop(1,rgb(lit([110,80,70],S,.1,W_))); g.fillStyle=gr; g.fillRect(0,Y(.5),W,H); }
   const drawRow=(row)=>{
     const by=Y(row.y), sc=row.sc, hz=row.haze;
     for(const it of row.items){
       const x0=X(it.x), w=X(it.w);
+      if (it.tree && sc>.4) world.treeSpots.push({x:x0+w/2,y:by-u*it.h*.6,r:u*it.h*.7});
       if (it.tree){ for(let k=0;k<4;k++){ g.fillStyle=rgb(lit(fol[(k+((it.p*9)|0))%fol.length],S,hz,W_)); g.beginPath(); g.arc(x0+w*(.2+k*.2),by-u*it.h*(.5+.3*Math.sin(k*2+it.p*6)),u*it.h*.55,0,7); g.fill(); } continue; }
-      const fh=u*it.fh, rd=u*it.rd, top=by-fh, face=lit(it.face,S,hz,W_), roof=lit(snow?[236,238,242]:it.roof,S,hz,W_), roofDark=mix(roof,[0,0,0],.18);
+      const fh=u*it.fh, rd=u*it.rd, top=by-fh, face=mix(lit(it.face,S,hz,W_),[255,170,130],SUNGLOW*.38*(1-hz)), roof=lit(mix(it.roof,[236,238,242],SNOWC),S,hz,W_), roofDark=mix(roof,[0,0,0],.18);
+      if (sc>.4) world.roofs.push({x0,w,top,rd,sc,tin:it.roof[0]<145&&Math.abs(it.roof[0]-it.roof[2])<16});
       g.fillStyle=rgb(face); g.fillRect(x0,top,w+.6,fh+u*.01);
       g.fillStyle=rgb(mix(face,[0,0,0],.25)); g.fillRect(x0+w-1,top,1.2,fh);
       if (it.hip) poly(g,[[x0-1,top],[x0+w+1,top],[x0+w*.82,top-rd],[x0+w*.18,top-rd]],roof);
@@ -306,10 +325,11 @@ function paintTerrain(S, season, W_){
       g.fillStyle=rgb(roofDark); g.fillRect(x0,top-1,w,1.2);
       for(const cf of it.chim){ const cx=x0+w*cf, cy=top-rd*.6, cw=Math.max(1.5,u*.006*sc), ch=Math.max(2,u*.012*sc);
         g.fillStyle=rgb(lit([196,96,62],S,hz,W_)); g.fillRect(cx-cw/2,cy-ch,cw,ch); if (sc>.5) world.chimneys.push([cx,cy-ch]); }
-      if (sc>.35 && !snow && it.hip && rd>u*.03){ g.fillStyle=rgb(lit([230,236,240],S,hz,W_)); for(let k=0;k<3;k++) g.fillRect(x0+w*(.3+k*.15),top-rd*.5,Math.max(1.5,u*.006*sc),Math.max(1.5,u*.005*sc)); }  // skylights
+      if (sc>.35 && SNOWC<.3 && it.hip && rd>u*.03){ g.fillStyle=rgb(lit([230,236,240],S,hz,W_)); for(let k=0;k<3;k++) g.fillRect(x0+w*(.3+k*.15),top-rd*.5,Math.max(1.5,u*.006*sc),Math.max(1.5,u*.005*sc)); }  // skylights
       if (sc>.22){ const n=it.wins, rowsN=Math.min(it.floors,Math.max(1,Math.floor(fh/(u*.014*sc)))), ww=w/n*.42, wh=fh/rowsN*.45;
         for(let a=0;a<rowsN;a++) for(let b=0;b<n;b++){ const on=night>.5 && it.lit[(a*n+b)%24]<share;
-          g.fillStyle=rgb(on?mix(winNight,[255,236,190],it.lit[(b*5+a)%24]*.5):lit([96,98,108],S,hz,W_)); g.fillRect(x0+w/n*(b+.29),top+fh/rowsN*(a+.28),ww,wh); } }
+          g.fillStyle=rgb(on?mix(winNight,[255,236,190],it.lit[(b*5+a)%24]*.5):lit([96,98,108],S,hz,W_)); g.fillRect(x0+w/n*(b+.29),top+fh/rowsN*(a+.28),ww,wh);
+          if (sc>.45) world.wins.push({x:x0+w/n*(b+.29),y:top+fh/rowsN*(a+.28),w:ww,h:wh,on,sc}); } }
     }
   };
   world.rows.forEach((row,k)=>{
@@ -327,7 +347,7 @@ function smallTower(g,S,W_,u,cx,base,hz){
 }
 function dominican(g,S,W_,u,X,Y,snow){
   const cx=X(.915), b=Y(.705), hz=.32;
-  const stone=lit([226,212,186],S,hz,W_,.35), stone2=lit([206,190,164],S,hz,W_,.3), domeC=lit(snow?[226,226,232]:[132,92,76],S,hz,W_,.15), cu=lit([110,150,128],S,hz,W_,.2);
+  const stone=lit([226,212,186],S,hz,W_,.35), stone2=lit([206,190,164],S,hz,W_,.3), domeC=lit(mix([132,92,76],[226,226,232],SNOWC*.8),S,hz,W_,.15), cu=lit([110,150,128],S,hz,W_,.2);
   g.fillStyle=rgb(stone2); g.fillRect(cx-u*.075,b-u*.07,u*.15,u*.07);
   g.fillStyle=rgb(stone); g.fillRect(cx-u*.05,b-u*.12,u*.1,u*.055);
   g.fillStyle=rgb(mix(stone,[0,0,0],.25)); for(let k=0;k<5;k++) g.fillRect(cx-u*.04+k*u*.02,b-u*.11,u*.006,u*.03);
@@ -342,9 +362,9 @@ function dominican(g,S,W_,u,X,Y,snow){
 }
 function cityHall(g,S,W_,u,X,Y,snow,night){
   const cx=X(.37), tw=u*.125, side=u*.032, topY=Y(.39);
-  const white=lit([244,238,226],S,.02,W_,.5), shade=mix(white,[40,40,60],.28), trim=lit([224,214,196],S,.02,W_,.4), dark=lit([70,70,80],S,.02,W_);
+  const white=mix(lit([244,238,226],S,.02,W_,.5),[255,176,136],SUNGLOW*.45), shade=mix(white,[40,40,60],.28), trim=lit([224,214,196],S,.02,W_,.4), dark=lit([70,70,80],S,.02,W_);
   // the City Hall roofs around the tower's foot
-  const roof=lit(snow?[230,232,238]:[86,88,96],S,.03,W_), roofR=lit(snow?[230,232,238]:[150,72,52],S,.03,W_);
+  const roof=lit(mix([86,88,96],[230,232,238],SNOWC),S,.03,W_), roofR=lit(mix([150,72,52],[230,232,238],SNOWC),S,.03,W_);
   poly(g,[[X(.13),Y(1.02)],[X(.2),Y(.84)],[X(.36),Y(.84)],[X(.36),Y(1.02)]],roofR);
   poly(g,[[X(.36),Y(.84)],[X(.6),Y(.8)],[X(.78),Y(.84)],[X(.95),Y(1.02)],[X(.36),Y(1.02)]],roof);
   poly(g,[[X(.78),Y(.84)],[X(.95),Y(1.02)],[X(1.02),Y(1.02)],[X(1.02),Y(.84)]],lit([234,226,210],S,.03,W_,.4));   // the City Hall's side wall
@@ -356,6 +376,7 @@ function cityHall(g,S,W_,u,X,Y,snow,night){
   g.fillStyle=rgb(shade); g.fillRect(cx+tw/2,topY+u*.035+u*.004,side,H-topY);
   for(const y of [.47,.66,.73]){ g.fillStyle=rgb(trim); g.fillRect(cx-tw/2-u*.004,Y(y),tw+side+u*.008,u*.007); }
   // clock faces (hands drawn live)
+  world.tower={cx,topY,tw,side};
   world.clock={x:cx, y:Y(.535), r:u*.026, sx:cx+tw/2+side/2, sr:u*.02};
   g.fillStyle=rgb(lit([250,248,240],S,.02,W_,.6)); g.beginPath(); g.arc(cx,Y(.535),u*.028,0,7); g.fill();
   g.fillStyle=rgb(dark); g.beginPath(); g.arc(cx,Y(.535),u*.025,0,7); g.fill();
@@ -409,6 +430,10 @@ function frame(ms){
   }
   if (mp.el>-3){ drawMoon(sky(mp), moonPhase(d), (1-W_.cloud*.8)*(.35+.65*night)); }
 
+  // things in the sky: real stars, the ISS, aurora, fireworks, geese, the dragon
+  SUNGLOW = S.gold*(sp.az>180?1:.55)*(1-W_.cloud*.7);
+  lifeSky(dt, d, S, W_, sp, mp, starA, night);
+
   // clouds
   drawClouds(W_, S, dt);
 
@@ -416,6 +441,7 @@ function frame(ms){
   paintTerrain(S, season, W_);
   ctx.drawImage(terrain,0,0,W,H);
   houseLife(d, S, W_, dt);
+  lifeTown(dt, d, S, W_, sp, mp, night, season);
 
   // trees sway in the wind
   drawTrees(S, season, W_);
@@ -427,6 +453,7 @@ function frame(ms){
   // weather in front
   precip(W_, S, dt);
   if (W_.fog) fog(S);
+  lifeFront(dt, d, S, W_, sp, night, season);
   if (W_.storm) lightning(dt);
 
   // HUD
@@ -482,7 +509,7 @@ function houseLife(d, S, W_, dt){
   // chimney smoke when it is cold
   if (W_.temp<10 && world.chimneys && world.chimneys.length){
     world.smokeT=(world.smokeT||0)+dt; if (world.smokeT>.4){ world.smokeT=0; const c=world.chimneys[Math.random()*world.chimneys.length|0]; world.smoke.push({x:c[0],y:c[1],a:.45,r:u*.004,j:Math.random()*6}); }
-    const c=mix([210,210,215],[70,74,90],night);
+    const c=mix(SMOKE_TINT||[210,210,215],[70,74,90],night);
     for(const p of world.smoke){ p.y-=dt*u*.022; p.x+=dt*u*(.008+W_.wind*.07)+Math.sin(tsec*1.5+p.j)*.25; p.r+=dt*u*.007; p.a-=dt*.07;
       ctx.fillStyle=rgb(c,Math.max(0,p.a)*.35); ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
     world.smoke=world.smoke.filter(p=>p.a>0);
@@ -524,7 +551,7 @@ function birds(dt){
     ctx.beginPath(); ctx.moveTo(x-6,y-f); ctx.quadraticCurveTo(x-2,y-2,x,y); ctx.quadraticCurveTo(x+2,y-2,x+6,y-f); ctx.stroke(); }
 }
 function shootingStar(a,dt){
-  if (!world.shoot && Math.random()<dt*.012) world.shoot={x:Math.random()*.7+.1,y:Math.random()*.25,t:0};
+  if (!world.shoot && Math.random()<dt*.012*METEOR_RATE) world.shoot={x:Math.random()*.7+.1,y:Math.random()*.25,t:0};
   const s=world.shoot; if(!s) return; s.t+=dt*1.4; if (s.t>1){ world.shoot=null; return; }
   const x=(s.x+s.t*.18)*W, y=(s.y+s.t*.09)*H, g=ctx.createLinearGradient(x,y,x-60,y-30);
   g.addColorStop(0,`rgba(255,255,255,${a*(1-s.t)})`); g.addColorStop(1,"rgba(255,255,255,0)");
@@ -553,7 +580,8 @@ function toast(t){ const el=$("toast"); el.textContent=t; el.style.opacity=1; cl
 
 function openPanel(){ $("panel").classList.add("open"); }
 function closePanel(){ $("panel").classList.remove("open"); }
-cv.addEventListener("click", openPanel);
+cv.addEventListener("click", e=>{ if (!lifeTap(e.clientX,e.clientY)) openPanel(); });
+$("menuBtn").addEventListener("click", openPanel);
 $("hud").addEventListener("click", openPanel);
 $("close").addEventListener("click", closePanel);
 $("optClock").checked=settings.clock; $("optDim").checked=settings.dim;
@@ -577,7 +605,8 @@ window.onAppResume = ()=>{ loadWeather(); };
 
 /* ============ start ============ */
 addEventListener("resize", resize);
-resize(); applySettings(); renderDiary(); loadWeather();
+resize(); applySettings(); renderDiary(); loadWeather(); lifeInit();
+if (Q.get("dream")) { $("menuBtn").hidden=true; }
 setInterval(loadWeather, 15*60*1000);
 requestAnimationFrame(frame);
 </script>
