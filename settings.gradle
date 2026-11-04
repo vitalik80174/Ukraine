@@ -1,4 +1,4 @@
 pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
 dependencyResolutionManagement { repositories { google(); mavenCentral() } }
 rootProject.name = "Nebo"
-include ":app", ":sunrise", ":vikno", ":pisok"
+include ":app", ":sunrise", ":vikno", ":pisok", ":ruina"
