@@ -213,41 +213,49 @@ function resize(){
   W=innerWidth; H=innerHeight; cv.width=W*DPR|0; cv.height=H*DPR|0; ctx.setTransform(DPR,0,0,DPR,0,0);
   build(); terrainKey="";
 }
-/* ============ the Lviv panorama ============
-   Everything is placed in screen fractions across (x) and heights in fractions of the screen height,
-   so towers keep their shape on any screen. Static parts are painted into an offscreen canvas once a
-   minute; the TV-tower lights, street lamps, tram and smoke move every frame. */
-const BASE_MID=.665, BASE_HOUSE=.885;
-const PLASTER=[[232,208,164],[216,182,140],[198,212,186],[236,214,196],[196,166,132],[224,198,172],[210,190,150],[186,196,204]];
-const ROOFS=[[150,72,52],[132,62,48],[96,66,58],[120,132,110]];
+/* ============ Lviv from above ============
+   The view of the photo from the City Hall: a sea of roofs in perspective, the City Hall tower close up
+   with its clock and flag, the wooded High Castle hill with the TV tower behind, the Dominican dome on
+   the right. x is a fraction of the width, heights are fractions of the screen height (so towers keep
+   their shape). Static parts are painted once a minute; the clock hands, flag, TV-tower lights and
+   chimney smoke move every frame. */
+const ROOFS=[[168,74,52],[150,62,46],[182,96,64],[140,140,144],[118,120,126],[78,80,90]];
+const FACADES=[[234,220,196],[226,206,172],[214,190,152],[238,228,212],[206,186,160],[222,200,170],[200,196,186]];
 function build(){
   const r=rng(seed);
-  const stars=Array.from({length:260},()=>({x:r(),y:r()*.55,s:r()<.08?1.6:r()*1.1+.3,p:r()*6}));
-  // a row of old-town houses
-  const houses=[]; let x=-.02;
-  while(x<1.02){ const w=(.05+r()*.05)*H/W, h=.075+r()*.075;
-    houses.push({x, w, h, col:PLASTER[r()*PLASTER.length|0], roof:ROOFS[r()<.8?(r()*2|0):2+(r()*2|0)], kind:r()<.55?"gable":r()<.6?"mansard":"flat",
-      rows:2+(r()*3|0), cols:Math.max(2,Math.round(w*W/H/.016)), lit:Array.from({length:30},()=>r()), chim:r()<.4?.2+r()*.6:null, dorm:r()<.5});
-    x+=w+(r()<.15?.004:0); }
-  const lamps=[]; for(let lx=.07; lx<1; lx+=.16+r()*.04) lamps.push(lx);
-  const trees=[]; for(const tx of [.03+r()*.05, .44+r()*.08, .95-r()*.05]) trees.push({x:tx, h:.13+r()*.04, p:r()*6});
-  const clouds=Array.from({length:14},()=>{ const c={x:r()*1.4-.2,y:.04+r()*.26,s:.6+r()*.9,blobs:[]};
+  const stars=Array.from({length:260},()=>({x:r(),y:r()*.45,s:r()<.08?1.6:r()*1.1+.3,p:r()*6}));
+  // rows of houses from the horizon (small, hazy) down to just under the window (big, sharp)
+  const rows=[]; const NR=11;
+  for(let k=0;k<NR;k++){
+    const f=k/(NR-1), y=lerp(.505,1.02,Math.pow(f,1.35)), sc=lerp(.16,1.25,Math.pow(f,1.25)), items=[];
+    let x=-.05-r()*.05;
+    while(x<1.05){ const w=(.05+r()*.06)*sc*H/W, gap=r()<.12?w*.3:0;
+      const treeChance = (x>.5? .32:.12)*(1-f*.6);
+      items.push(r()<treeChance ? {tree:true,x,w:w*1.3,h:(.03+r()*.03)*sc,p:r()}
+        : {x,w,fh:(.035+r()*.035)*sc,rd:(.02+r()*.03)*sc,face:FACADES[r()*FACADES.length|0],roof:ROOFS[r()<.55?(r()*3|0):3+(r()*3|0)],
+           hip:r()<.6, chim:r()<.6?[.15+r()*.3,.55+r()*.3]:[.3+r()*.4], wins:Math.max(2,Math.round(w*W/H/(.016*sc))), floors:2+(r()*3|0), lit:Array.from({length:24},()=>r())});
+      x+=w+gap; }
+    rows.push({y,sc,haze:Math.pow(1-f,1.6)*.6,items});
+  }
+  const clouds=Array.from({length:14},()=>{ const c={x:r()*1.4-.2,y:.04+r()*.22,s:.6+r()*.9,blobs:[]};
     const n=5+(r()*4|0); for(let k=0;k<n;k++) c.blobs.push({dx:(k-n/2)*.035*c.s+(r()-.5)*.02,dy:-(r()*.025)*c.s,r:(.025+r()*.03)*c.s}); return c; });
-  world={stars,houses,lamps,trees,clouds,drops:[],smoke:[],flies:Array.from({length:22},()=>({x:r(),y:.8+r()*.08,p:r()*6})),
-         birds:null, shoot:null, flash:0, tram:null, tramNext:20+r()*60};
+  const crowns=Array.from({length:260},()=>({f:r(),s:.6+r()*.8,c:r()}));
+  world={stars,rows,crowns,clouds,drops:[],smoke:[],flies:Array.from({length:22},()=>({x:r(),y:.75+r()*.15,p:r()*6})),
+         birds:null, shoot:null, flash:0};
 }
 
 /* colour of a thing at distance `haze` (0 near … 1 far) under the current light */
 function lit(c, S, haze, W_, glowAtNight=0){
   const night=1-S.day;
   let k=mix(c,S.hor,haze*(.55+.45*S.day));
-  k=mix(k,[12,16,32],night*(.82-haze*.25));
-  k=mix(k,[255,170,110],S.gold*.16*(1-haze));
-  if (glowAtNight) k=mix(k,[255,196,130],night*glowAtNight);     // floodlit landmarks
+  k=mix(k,[12,16,32],night*(.8-haze*.2));
+  k=mix(k,[255,168,100],S.gold*.22*(1-haze*.5));
+  if (glowAtNight) k=mix(k,[255,200,140],night*glowAtNight);   // floodlit at night
   if (W_.fog) k=mix(k,S.hor,.3+haze*.45);
   return k;
 }
 function poly(g, pts, col){ g.fillStyle=rgb(col); g.beginPath(); pts.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y)); g.closePath(); g.fill(); }
+const FOLIAGE={spring:[[110,160,80],[140,180,96]],summer:[[66,108,56],[88,128,64]],autumn:[[176,104,48],[120,120,56],[200,132,64],[150,70,40]],late:[[110,86,64],[90,80,64],[128,100,70]],winter:[[150,150,156],[120,118,124]]};
 
 function paintTerrain(S, season, W_){
   const d=now(), qh=Math.floor((d.getHours()*60+d.getMinutes())/15);
@@ -256,141 +264,117 @@ function paintTerrain(S, season, W_){
   terrain = terrain || document.createElement("canvas");
   terrain.width=W*DPR|0; terrain.height=H*DPR|0;
   const g=terrain.getContext("2d"); g.setTransform(DPR,0,0,DPR,0,0); g.clearRect(0,0,W,H);
-  const snow = season==="winter";
-  const u=H;                                   // height unit
-  const X=f=>f*W, Y=f=>f*H;
-  const pal=SEASON[season].map(hex);
+  const u=H, X=f=>f*W, Y=f=>f*H, night=1-S.day, snow=season==="winter";
+  const fol=FOLIAGE[season];
+  const hh=d.getHours()+d.getMinutes()/60, share= night<.5 ? 0 : hh>=17||hh<1 ? .55 : hh<5 ? .08 : .25;
+  const winNight=[255,204,128];
 
-  // far: the hills of Lviv with the High Castle and its TV tower
-  { const c=lit(mix(pal[0],[90,110,110],.3),S,.7,W_);
-    g.fillStyle=rgb(c); g.beginPath(); g.moveTo(0,Y(.7));
-    for(let k=0;k<=60;k++){ const f=k/60, hill=.075*Math.exp(-Math.pow((f-.2)/.11,2))+.03*Math.exp(-Math.pow((f-.78)/.2,2))+.012*Math.sin(f*19);
-      g.lineTo(X(f),Y(.64-hill)); }
-    g.lineTo(W,H); g.lineTo(0,H); g.fill();
-    const tx=X(.2), top=Y(.29), base=Y(.565);
-    const steel=lit([150,154,160],S,.6,W_);
-    g.strokeStyle=rgb(steel); g.lineWidth=Math.max(1.5,u*.004);
-    g.beginPath(); g.moveTo(tx-u*.012,base); g.lineTo(tx,top); g.lineTo(tx+u*.012,base); g.stroke();
-    for(let k=1;k<6;k++){ const yy=lerp(base,top,k/6), w=lerp(u*.012,0,k/6); g.beginPath(); g.moveTo(tx-w,yy); g.lineTo(tx+w,yy); g.stroke(); }
-    world.tv={x:tx, top, base};
-    // the castle mound flag
-    const fx=X(.235), fy=Y(.57); g.fillStyle=rgb(lit([120,110,100],S,.6,W_)); g.fillRect(fx-1,fy-u*.03,2,u*.03);
+  // distant city and hills on the horizon
+  { const c=lit([170,150,140],S,.85,W_); g.fillStyle=rgb(c); g.beginPath(); g.moveTo(0,H);
+    for(let k=0;k<=80;k++){ const f=k/80; g.lineTo(X(f),Y(.485-.012*Math.sin(f*7)-.006*Math.sin(f*31)+(f>.4?.01:0))); }
+    g.lineTo(W,H); g.fill(); }
+  // the High Castle hill: a wooded mound with the TV tower
+  { const hx=.7, hill=f=>.375+.14*Math.pow(Math.min(1,Math.abs(f-hx)/.34),1.5)+.005*Math.sin(f*90);
+    const base=lit(fol[0],S,.38,W_);
+    g.fillStyle=rgb(base); g.beginPath(); g.moveTo(X(.34),Y(.53));
+    for(let f=.34; f<=1.04; f+=.005) g.lineTo(X(f),Y(Math.min(.53,hill(f))));
+    g.lineTo(X(1.04),Y(.6)); g.lineTo(X(.36),Y(.6)); g.fill();
+    for(const cr of world.crowns){ const f=.36+cr.f*.68, y=Math.min(.53,hill(f))+cr.s*.04*cr.c; const col=lit(mix(fol[(cr.c*fol.length)|0],[0,0,0],cr.s*.15),S,.36,W_);
+      g.fillStyle=rgb(col); g.beginPath(); g.arc(X(f),Y(y)+u*.006,u*.014*cr.s,0,7); g.fill(); }
+    // a white building on the hillside
+    g.fillStyle=rgb(lit([236,232,222],S,.4,W_)); g.fillRect(X(.86),Y(.455),u*.08,u*.016);
+    const tx=X(hx-.01), top=Y(.2), b=Y(.385), steel=lit([196,176,166],S,.35,W_);
+    g.strokeStyle=rgb(steel); g.lineWidth=Math.max(1.2,u*.002);
+    g.beginPath(); g.moveTo(tx-u*.016,b); g.lineTo(tx-u*.002,top+u*.05); g.lineTo(tx,top); g.lineTo(tx+u*.002,top+u*.05); g.lineTo(tx+u*.016,b); g.stroke();
+    for(let k=1;k<9;k++){ const yy=lerp(b,top+u*.05,k/9), w=lerp(u*.016,u*.002,k/9), w2=lerp(u*.016,u*.002,(k-1)/9), y2=lerp(b,top+u*.05,(k-1)/9);
+      g.beginPath(); g.moveTo(tx-w,yy); g.lineTo(tx+w,yy); g.moveTo(tx-w2,y2); g.lineTo(tx+w,yy); g.moveTo(tx+w2,y2); g.lineTo(tx-w,yy); g.stroke(); }
+    world.tv={x:tx, top, base:b};
   }
-
-  // middle: the landmarks of the old town
-  const B=Y(BASE_MID), hz=.33;
-  const stone=lit([214,204,186],S,hz,W_,.35), stone2=lit([196,186,170],S,hz,W_,.3), copper=lit([104,150,128],S,hz,W_,.2),
-        dark=lit([70,72,78],S,hz,W_,.1), roofc=lit([140,78,60],S,hz,W_,.12), gold=lit([224,186,96],S,hz,W_,.4);
-  // a soft belt of rooftops behind the landmarks
-  { const c=lit([150,110,96],S,.42,W_); g.fillStyle=rgb(c); g.beginPath(); g.moveTo(0,H);
-    for(let f=0;f<=1.001;f+=.01){ g.lineTo(X(f),B-u*(.02+.018*Math.abs(Math.sin(f*47))+.01*Math.sin(f*13))); } g.lineTo(W,H); g.fill(); }
-  const tower=(cx,w,top,col)=>{ g.fillStyle=rgb(col); g.fillRect(cx-w/2,top,w,B-top+2); };
-  const bulb=(cx,y,w,h,col)=>{ g.fillStyle=rgb(col); g.beginPath(); g.moveTo(cx-w/2,y); g.bezierCurveTo(cx-w*.75,y-h*.45,cx-w*.1,y-h*.7,cx,y-h); g.bezierCurveTo(cx+w*.1,y-h*.7,cx+w*.75,y-h*.45,cx+w/2,y); g.closePath(); g.fill(); };
-  const cross=(cx,y,h,col)=>{ g.fillStyle=rgb(col); g.fillRect(cx-.6,y-h,1.2,h); g.fillRect(cx-h*.3,y-h*.72,h*.6,1.2); };
-  const dome=(cx,y,rw,rh,col)=>{ g.fillStyle=rgb(col); g.beginPath(); g.ellipse(cx,y,rw,rh,0,Math.PI,0); g.closePath(); g.fill(); };
-  const winrow=(x0,x1,y,h,n,col)=>{ g.fillStyle=rgb(col); const w=(x1-x0)/n; for(let k=0;k<n;k++) g.fillRect(x0+w*k+w*.3,y,w*.4,h); };
-  const winDark=lit([60,62,72],S,hz,W_), winNight=[255,206,130];
-  const night=1-S.day;
-  const wcol= night>.5 ? winNight : winDark;
-
-  // St George's Cathedral on its hill (left)
-  { const cx=X(.075); g.fillStyle=rgb(lit([150,140,120],S,.38,W_)); g.beginPath(); g.ellipse(cx,B+u*.01,u*.13,u*.05,0,Math.PI,0); g.fill();
-    const b=B-u*.03; g.fillStyle=rgb(stone); g.fillRect(cx-u*.06,b-u*.06,u*.12,u*.06+u*.04);
-    poly(g,[[cx-u*.065,b-u*.06],[cx,b-u*.09],[cx+u*.065,b-u*.06]],stone2);
-    g.fillStyle=rgb(stone); g.fillRect(cx-u*.022,b-u*.13,u*.044,u*.05);
-    dome(cx,b-u*.13,u*.026,u*.03,copper); g.fillStyle=rgb(stone); g.fillRect(cx-u*.004,b-u*.175,u*.008,u*.02); cross(cx,b-u*.175,u*.02,gold);
-    for(const s2 of [-1,1]){ g.fillStyle=rgb(stone2); g.fillRect(cx+s2*u*.05-u*.008,b-u*.085,u*.016,u*.03); bulb(cx+s2*u*.05,b-u*.085,u*.02,u*.025,copper); }
-    winrow(cx-u*.05,cx+u*.05,b-u*.045,u*.018,5,wcol); }
-
-  // Bernardine church
-  { const cx=X(.255); g.fillStyle=rgb(stone2); g.fillRect(cx-u*.05,B-u*.1,u*.1,u*.1);
-    poly(g,[[cx-u*.052,B-u*.1],[cx,B-u*.135],[cx+u*.052,B-u*.1]],roofc);
-    tower(cx+u*.03,u*.03,B-u*.22,stone); bulb(cx+u*.03,B-u*.22,u*.036,u*.05,copper); cross(cx+u*.03,B-u*.27,u*.02,gold);
-    winrow(cx-u*.04,cx+u*.01,B-u*.07,u*.03,3,wcol); }
-
-  // Latin Cathedral
-  { const cx=X(.37); g.fillStyle=rgb(stone2); g.fillRect(cx-u*.06,B-u*.11,u*.12,u*.11);
-    poly(g,[[cx-u*.064,B-u*.11],[cx,B-u*.18],[cx+u*.064,B-u*.11]],roofc);
-    tower(cx-u*.04,u*.032,B-u*.25,stone); poly(g,[[cx-u*.058,B-u*.25],[cx-u*.04,B-u*.3],[cx-u*.022,B-u*.25]],stone2);
-    bulb(cx-u*.04,B-u*.3,u*.022,u*.045,copper); cross(cx-u*.04,B-u*.345,u*.022,gold);
-    g.fillStyle=rgb(wcol); for(let k=0;k<4;k++) g.fillRect(cx-u*.03+k*u*.02,B-u*.08,u*.008,u*.045); }
-
-  // City Hall tower — the tallest, with the clock and the flag
-  { const cx=X(.5); g.fillStyle=rgb(stone2); g.fillRect(cx-u*.1,B-u*.085,u*.2,u*.085);
-    poly(g,[[cx-u*.102,B-u*.085],[cx-u*.09,B-u*.1],[cx+u*.09,B-u*.1],[cx+u*.102,B-u*.085]],roofc);
-    winrow(cx-u*.095,cx+u*.095,B-u*.07,u*.022,9,wcol); winrow(cx-u*.095,cx+u*.095,B-u*.035,u*.022,9,wcol);
-    tower(cx,u*.05,B-u*.33,stone);
-    g.fillStyle=rgb(stone2); g.fillRect(cx-u*.032,B-u*.335,u*.064,u*.012);                    // balustrade
-    g.fillStyle=rgb(mix(stone,[255,255,255],.25)); g.beginPath(); g.arc(cx,B-u*.29,u*.013,0,7); g.fill();   // clock
-    g.strokeStyle=rgb(dark); g.lineWidth=1; g.beginPath(); g.moveTo(cx,B-u*.29); g.lineTo(cx,B-u*.299); g.moveTo(cx,B-u*.29); g.lineTo(cx+u*.006,B-u*.29); g.stroke();
-    g.fillStyle=rgb(stone); g.fillRect(cx-u*.02,B-u*.375,u*.04,u*.04);                        // octagon drum
-    g.fillStyle=rgb(wcol); g.fillRect(cx-u*.012,B-u*.367,u*.006,u*.022); g.fillRect(cx+u*.006,B-u*.367,u*.006,u*.022);
-    dome(cx,B-u*.375,u*.022,u*.018,copper);
-    g.fillStyle=rgb(stone); g.fillRect(cx-u*.006,B-u*.405,u*.012,u*.014); dome(cx,B-u*.405,u*.008,u*.008,copper);
-    g.fillStyle=rgb(dark); g.fillRect(cx-.7,B-u*.455,1.4,u*.045);
-    world.flag={x:cx+.7, y:B-u*.455, w:u*.03, h:u*.019}; }
-
-  // Dominican Cathedral with its great green dome
-  { const cx=X(.615); g.fillStyle=rgb(stone2); g.fillRect(cx-u*.075,B-u*.095,u*.15,u*.095);
-    g.fillStyle=rgb(stone); g.fillRect(cx-u*.045,B-u*.14,u*.09,u*.05);
-    dome(cx,B-u*.14,u*.05,u*.06,copper); g.fillStyle=rgb(stone); g.fillRect(cx-u*.008,B-u*.215,u*.016,u*.018); dome(cx,B-u*.215,u*.01,u*.012,copper); cross(cx,B-u*.227,u*.02,gold);
-    for(const s2 of [-1,1]){ g.fillStyle=rgb(stone); g.fillRect(cx+s2*u*.065-u*.012,B-u*.155,u*.024,u*.06); bulb(cx+s2*u*.065,B-u*.155,u*.026,u*.03,copper); }
-    winrow(cx-u*.065,cx+u*.065,B-u*.07,u*.03,5,wcol); }
-
-  // Korniakt Tower with its Renaissance tiers
-  { const cx=X(.695); tower(cx,u*.034,B-u*.24,stone2);
-    g.fillStyle=rgb(stone); g.fillRect(cx-u*.022,B-u*.245,u*.044,u*.008);
-    g.fillStyle=rgb(stone2); g.fillRect(cx-u*.014,B-u*.28,u*.028,u*.035); dome(cx,B-u*.28,u*.016,u*.012,copper);
-    g.fillStyle=rgb(stone); g.fillRect(cx-u*.006,B-u*.305,u*.012,u*.014); dome(cx,B-u*.305,u*.008,u*.01,copper); cross(cx,B-u*.315,u*.016,gold);
-    for(let k=0;k<4;k++){ g.fillStyle=rgb(wcol); g.fillRect(cx-u*.006,B-u*(.07+k*.045),u*.012,u*.02); } }
-
-  // the Opera House with Glory on top
-  { const cx=X(.795); g.fillStyle=rgb(stone); g.fillRect(cx-u*.1,B-u*.08,u*.2,u*.08);
-    g.fillStyle=rgb(stone2); g.fillRect(cx-u*.05,B-u*.11,u*.1,u*.03); dome(cx,B-u*.105,u*.06,u*.03,copper);
-    g.fillStyle=rgb(gold); for(const [dx,h] of [[0,.05],[-.045,.03],[.045,.03]]){ const fx=cx+u*dx, fy=B-u*(dx?.11:.135);
-      g.fillRect(fx-u*.004,fy-u*h*.6,u*.008,u*h*.6); g.beginPath(); g.arc(fx,fy-u*h*.65,u*.005,0,7); g.fill();
-      if (!dx){ g.fillRect(fx+u*.003,fy-u*h,u*.003,u*h*.5); g.fillRect(fx-u*.012,fy-u*h*.55,u*.01,u*.003); } }
-    winrow(cx-u*.095,cx+u*.095,B-u*.06,u*.028,10,wcol); }
-
-  // Church of Sts Olha and Elizabeth — neo-Gothic spires on the right
-  { const cx=X(.935); g.fillStyle=rgb(stone2); g.fillRect(cx-u*.05,B-u*.1,u*.1,u*.1);
-    poly(g,[[cx-u*.052,B-u*.1],[cx,B-u*.15],[cx+u*.052,B-u*.1]],roofc);
-    for(const [dx,h,w] of [[-.032,.27,.026],[.032,.22,.022],[0,.17,.012]]){ const tx=cx+u*dx;
-      tower(tx,u*w,B-u*h,stone); poly(g,[[tx-u*w*.62,B-u*h],[tx,B-u*(h+.07)],[tx+u*w*.62,B-u*h]],dark); cross(tx,B-u*(h+.07),u*.014,gold); }
-    g.fillStyle=rgb(wcol); g.beginPath(); g.arc(cx,B-u*.07,u*.012,0,7); g.fill(); }
-
-  // near: the old-town houses
-  const HB=Y(BASE_HOUSE), hh=d.getHours()+d.getMinutes()/60;
-  const share = night<.5 ? 0 : hh>=17||hh<1 ? .72 : hh<5 ? .12 : .32;       // how many windows are lit
+  // the sea of roofs, back to front, over a dusky base so no sky shows between them
   world.chimneys=[];
-  for(const h of world.houses){
-    const x0=X(h.x), w=X(h.w), top=HB-u*h.h, wall=lit(h.col,S,.06,W_), roof=lit(h.roof,S,.06,W_);
-    g.fillStyle=rgb(wall); g.fillRect(x0,top,w+1,HB-top+2);
-    g.fillStyle=rgb(mix(wall,[0,0,0],.12)); g.fillRect(x0,top,1,HB-top);                     // party wall line
-    let peak=top;
-    if (h.kind==="gable"){ peak=top-u*.05; poly(g,[[x0-1,top],[x0+w/2,peak],[x0+w+1,top]],roof); if (snow) poly(g,[[x0+w*.12,top-u*.008],[x0+w/2,peak],[x0+w*.88,top-u*.008],[x0+w/2,peak+u*.012]],lit([240,244,250],S,.06,W_)); }
-    else if (h.kind==="mansard"){ peak=top-u*.035; poly(g,[[x0-1,top],[x0+w*.12,peak],[x0+w*.88,peak],[x0+w+1,top]],roof); if (snow) g.fillStyle=rgb(lit([240,244,250],S,.06,W_)), g.fillRect(x0+w*.12,peak-2,w*.76,3); }
-    else { g.fillStyle=rgb(mix(wall,[0,0,0],.15)); g.fillRect(x0,top-u*.006,w+1,u*.006); peak=top-u*.006; if (snow){ g.fillStyle=rgb(lit([240,244,250],S,.06,W_)); g.fillRect(x0,top-u*.009,w+1,u*.004); } }
-    if (h.dorm && h.kind!=="flat"){ const dx=x0+w*.42, dy=top-u*.022; g.fillStyle=rgb(wall); g.fillRect(dx,dy,w*.16,u*.016); g.fillStyle=rgb(night>.5&&h.lit[29]<share?winNight:lit([60,64,74],S,.06,W_)); g.fillRect(dx+w*.04,dy+u*.004,w*.08,u*.009); }
-    if (h.chim){ const cx=x0+w*h.chim, cy=(h.kind==="gable"? lerp(top,peak,1-Math.abs(h.chim-.5)*2) : peak); g.fillStyle=rgb(mix(roof,[60,40,40],.3)); g.fillRect(cx-u*.006,cy-u*.025,u*.012,u*.03); world.chimneys.push([cx,cy-u*.025]); }
-    // windows: tall Lviv windows in neat rows
-    const rows=h.rows, cols=h.cols, ww=w/cols*.42, wh=(HB-top-u*.03)/rows*.55;
-    for(let rI=0;rI<rows;rI++) for(let cI=0;cI<cols;cI++){
-      const wx=x0+w/cols*(cI+.29), wy=top+u*.012+(HB-top-u*.03)/rows*rI;
-      const on = night>.5 && h.lit[(rI*cols+cI)%29] < share;
-      g.fillStyle=rgb(on?mix(winNight,[255,236,190],h.lit[(cI*3+rI)%29]*.5):lit([70,76,90],S,.06,W_)); g.fillRect(wx,wy,ww,wh);
-      if (!on){ g.fillStyle=rgb(mix(wall,[255,255,255],.2)); g.fillRect(wx-1,wy+wh,ww+2,1.5); }
+  { const gr=g.createLinearGradient(0,Y(.5),0,H); gr.addColorStop(0,rgb(lit([150,120,110],S,.6,W_))); gr.addColorStop(1,rgb(lit([110,80,70],S,.1,W_))); g.fillStyle=gr; g.fillRect(0,Y(.5),W,H); }
+  const drawRow=(row)=>{
+    const by=Y(row.y), sc=row.sc, hz=row.haze;
+    for(const it of row.items){
+      const x0=X(it.x), w=X(it.w);
+      if (it.tree){ for(let k=0;k<4;k++){ g.fillStyle=rgb(lit(fol[(k+((it.p*9)|0))%fol.length],S,hz,W_)); g.beginPath(); g.arc(x0+w*(.2+k*.2),by-u*it.h*(.5+.3*Math.sin(k*2+it.p*6)),u*it.h*.55,0,7); g.fill(); } continue; }
+      const fh=u*it.fh, rd=u*it.rd, top=by-fh, face=lit(it.face,S,hz,W_), roof=lit(snow?[236,238,242]:it.roof,S,hz,W_), roofDark=mix(roof,[0,0,0],.18);
+      g.fillStyle=rgb(face); g.fillRect(x0,top,w+.6,fh+u*.01);
+      g.fillStyle=rgb(mix(face,[0,0,0],.25)); g.fillRect(x0+w-1,top,1.2,fh);
+      if (it.hip) poly(g,[[x0-1,top],[x0+w+1,top],[x0+w*.82,top-rd],[x0+w*.18,top-rd]],roof);
+      else { poly(g,[[x0-1,top],[x0+w+1,top],[x0+w+1,top-rd],[x0-1,top-rd]],roof); g.fillStyle=rgb(roofDark); g.fillRect(x0,top-rd,w,Math.max(1,rd*.12)); }
+      g.fillStyle=rgb(roofDark); g.fillRect(x0,top-1,w,1.2);
+      for(const cf of it.chim){ const cx=x0+w*cf, cy=top-rd*.6, cw=Math.max(1.5,u*.006*sc), ch=Math.max(2,u*.012*sc);
+        g.fillStyle=rgb(lit([196,96,62],S,hz,W_)); g.fillRect(cx-cw/2,cy-ch,cw,ch); if (sc>.5) world.chimneys.push([cx,cy-ch]); }
+      if (sc>.35 && !snow && it.hip && rd>u*.03){ g.fillStyle=rgb(lit([230,236,240],S,hz,W_)); for(let k=0;k<3;k++) g.fillRect(x0+w*(.3+k*.15),top-rd*.5,Math.max(1.5,u*.006*sc),Math.max(1.5,u*.005*sc)); }  // skylights
+      if (sc>.22){ const n=it.wins, rowsN=Math.min(it.floors,Math.max(1,Math.floor(fh/(u*.014*sc)))), ww=w/n*.42, wh=fh/rowsN*.45;
+        for(let a=0;a<rowsN;a++) for(let b=0;b<n;b++){ const on=night>.5 && it.lit[(a*n+b)%24]<share;
+          g.fillStyle=rgb(on?mix(winNight,[255,236,190],it.lit[(b*5+a)%24]*.5):lit([96,98,108],S,hz,W_)); g.fillRect(x0+w/n*(b+.29),top+fh/rowsN*(a+.28),ww,wh); } }
     }
-    if (h.lit[0]<.35 && night<.5){ g.fillStyle=rgb(lit([120,60,50],S,.06,W_)); g.fillRect(x0+w*.4,HB-u*.028,w*.2,u*.028); }  // a door
-  }
-  // the street: pavement and cobbles
-  { const pave=lit([150,146,140],S,.02,W_); g.fillStyle=rgb(pave); g.fillRect(0,HB,W,u*.012);
-    const cob=lit([84,82,86],S,0,W_); g.fillStyle=rgb(cob); g.fillRect(0,HB+u*.012,W,H-HB);
-    g.fillStyle=rgb(mix(cob,[0,0,0],.18)); const step=Math.max(5,u*.012);
-    for(let yy=HB+u*.016, row=0; yy<H; yy+=step*.7, row++) for(let xx=(row%2)*step/2; xx<W; xx+=step) g.fillRect(xx,yy,step*.85,1);
-    if (snow){ g.fillStyle=rgb(lit([236,240,246],S,0,W_),.85); g.fillRect(0,HB,W,u*.016); }
-    g.fillStyle=rgb(mix(cob,[200,200,205],.25)); g.fillRect(0,Y(.955),W,1.5); g.fillRect(0,Y(.975),W,1.5);  // tram rails
-  }
+  };
+  world.rows.forEach((row,k)=>{
+    drawRow(row);
+    if (k===3) dominican(g,S,W_,u,X,Y,snow);      // the Dominican dome rises from the middle distance
+    if (k===2) smallTower(g,S,W_,u,X(.235),Y(.61),.55);
+  });
+  cityHall(g,S,W_,u,X,Y,snow,night);
+}
+function smallTower(g,S,W_,u,cx,base,hz){
+  const st=lit([226,214,190],S,hz,W_,.3), cu=lit([110,150,130],S,hz,W_,.2);
+  g.fillStyle=rgb(st); g.fillRect(cx-u*.008,base-u*.07,u*.016,u*.07);
+  g.beginPath(); g.ellipse(cx,base-u*.07,u*.01,u*.012,0,Math.PI,0); g.fillStyle=rgb(cu); g.fill();
+  g.fillRect(cx-.5,base-u*.095,1,u*.014);
+}
+function dominican(g,S,W_,u,X,Y,snow){
+  const cx=X(.915), b=Y(.705), hz=.32;
+  const stone=lit([226,212,186],S,hz,W_,.35), stone2=lit([206,190,164],S,hz,W_,.3), domeC=lit(snow?[226,226,232]:[132,92,76],S,hz,W_,.15), cu=lit([110,150,128],S,hz,W_,.2);
+  g.fillStyle=rgb(stone2); g.fillRect(cx-u*.075,b-u*.07,u*.15,u*.07);
+  g.fillStyle=rgb(stone); g.fillRect(cx-u*.05,b-u*.12,u*.1,u*.055);
+  g.fillStyle=rgb(mix(stone,[0,0,0],.25)); for(let k=0;k<5;k++) g.fillRect(cx-u*.04+k*u*.02,b-u*.11,u*.006,u*.03);
+  g.fillStyle=rgb(domeC); g.beginPath(); g.ellipse(cx,b-u*.12,u*.055,u*.065,0,Math.PI,0); g.fill();
+  g.strokeStyle=rgb(mix(domeC,[0,0,0],.25)); g.lineWidth=1; for(const k of [-.6,-.25,.25,.6]){ g.beginPath(); g.ellipse(cx,b-u*.12,u*.055*Math.abs(k),u*.065,0,Math.PI*(k<0?1:1.5),Math.PI*(k<0?1.5:2)); g.stroke(); }
+  g.fillStyle=rgb(stone); g.fillRect(cx-u*.008,b-u*.205,u*.016,u*.022);
+  g.fillStyle=rgb(cu); g.beginPath(); g.ellipse(cx,b-u*.205,u*.011,u*.013,0,Math.PI,0); g.fill(); g.fillRect(cx-.6,b-u*.235,1.2,u*.02);
+  // the bell tower with a green cupola to its left
+  const tx=cx-u*.105; g.fillStyle=rgb(stone); g.fillRect(tx-u*.015,b-u*.13,u*.03,u*.13);
+  g.fillStyle=rgb(mix(stone,[0,0,0],.3)); g.fillRect(tx-u*.005,b-u*.11,u*.01,u*.018);
+  g.fillStyle=rgb(cu); g.beginPath(); g.ellipse(tx,b-u*.13,u*.017,u*.02,0,Math.PI,0); g.fill(); g.fillRect(tx-.6,b-u*.165,1.2,u*.018);
+}
+function cityHall(g,S,W_,u,X,Y,snow,night){
+  const cx=X(.37), tw=u*.125, side=u*.032, topY=Y(.39);
+  const white=lit([244,238,226],S,.02,W_,.5), shade=mix(white,[40,40,60],.28), trim=lit([224,214,196],S,.02,W_,.4), dark=lit([70,70,80],S,.02,W_);
+  // the City Hall roofs around the tower's foot
+  const roof=lit(snow?[230,232,238]:[86,88,96],S,.03,W_), roofR=lit(snow?[230,232,238]:[150,72,52],S,.03,W_);
+  poly(g,[[X(.13),Y(1.02)],[X(.2),Y(.84)],[X(.36),Y(.84)],[X(.36),Y(1.02)]],roofR);
+  poly(g,[[X(.36),Y(.84)],[X(.6),Y(.8)],[X(.78),Y(.84)],[X(.95),Y(1.02)],[X(.36),Y(1.02)]],roof);
+  poly(g,[[X(.78),Y(.84)],[X(.95),Y(1.02)],[X(1.02),Y(1.02)],[X(1.02),Y(.84)]],lit([234,226,210],S,.03,W_,.4));   // the City Hall's side wall
+  for(let k=0;k<4;k++){ const wx=X(.93)+k*X(.022); g.fillStyle=rgb(night>.5&&k%2?[255,204,128]:dark); g.beginPath(); g.ellipse(wx,Y(.9+k*.012),u*.006,u*.012,0,0,7); g.fill(); }
+  for(const [fx,fy] of [[.42,.88],[.47,.86],[.52,.85],[.66,.83],[.25,.9],[.3,.88]]){ g.fillStyle=rgb(lit([200,98,64],S,.03,W_)); g.fillRect(X(fx),Y(fy),u*.016,u*.02); world.chimneys.push([X(fx)+u*.008,Y(fy)]); }
+  if (!snow){ g.fillStyle=rgb(lit([210,220,230],S,.03,W_)); for(let k=0;k<6;k++) for(let j=0;j<2;j++) g.fillRect(X(.44)+k*X(.05),Y(.9)+j*Y(.045),u*.012,u*.012); }
+  // tower shaft: lit front and a shaded side
+  g.fillStyle=rgb(white); g.fillRect(cx-tw/2,topY+u*.035,tw,H-topY);
+  g.fillStyle=rgb(shade); g.fillRect(cx+tw/2,topY+u*.035+u*.004,side,H-topY);
+  for(const y of [.47,.66,.73]){ g.fillStyle=rgb(trim); g.fillRect(cx-tw/2-u*.004,Y(y),tw+side+u*.008,u*.007); }
+  // clock faces (hands drawn live)
+  world.clock={x:cx, y:Y(.535), r:u*.026, sx:cx+tw/2+side/2, sr:u*.02};
+  g.fillStyle=rgb(lit([250,248,240],S,.02,W_,.6)); g.beginPath(); g.arc(cx,Y(.535),u*.028,0,7); g.fill();
+  g.fillStyle=rgb(dark); g.beginPath(); g.arc(cx,Y(.535),u*.025,0,7); g.fill();
+  g.fillStyle=rgb(lit([250,248,240],S,.02,W_,.7)); for(let k=0;k<12;k++){ const a=k/12*Math.PI*2; g.fillRect(cx+Math.cos(a)*u*.021-1,Y(.535)+Math.sin(a)*u*.021-1,2,2); }
+  g.fillStyle=rgb(mix(shade,[0,0,0],.3)); g.beginPath(); g.ellipse(cx+tw/2+side/2,Y(.535),side*.38,u*.022,0,0,7); g.fill();
+  // windows: a door-like window, a medallion and the tall arched window
+  g.fillStyle=rgb(night>.5?[255,206,140]:dark); g.fillRect(cx-u*.014,Y(.585),u*.028,u*.06);
+  g.strokeStyle=rgb(trim); g.lineWidth=1.5; g.beginPath(); g.arc(cx,Y(.7),u*.009,0,7); g.stroke();
+  g.fillStyle=rgb(dark); g.beginPath(); g.moveTo(cx-u*.02,Y(.88)); g.lineTo(cx-u*.02,Y(.8)); g.arc(cx,Y(.8),u*.02,Math.PI,0); g.lineTo(cx+u*.02,Y(.88)); g.fill();
+  g.fillStyle=rgb(white); g.fillRect(cx-1,Y(.79),2,Y(.09));
+  // the gallery at the top, crenellated balustrade, the pavilion and the flagpole
+  g.fillStyle=rgb(trim); g.fillRect(cx-tw/2-u*.008,topY+u*.03,tw+side+u*.016,u*.008);
+  g.fillStyle=rgb(white); g.fillRect(cx-tw/2-u*.006,topY,tw+u*.012,u*.03); g.fillStyle=rgb(shade); g.fillRect(cx+tw/2+u*.006,topY+u*.002,side,u*.03);
+  g.fillStyle=rgb(mix(white,[0,0,0],.18)); for(let k=0;k<12;k++) g.fillRect(cx-tw/2+k*tw/12+u*.002,topY+u*.006,u*.004,u*.016);
+  g.fillStyle=rgb(dark); for(const dx of [-.035,-.012,.012,.035]) g.fillRect(cx+u*dx-1,topY-u*.026,2,u*.026);
+  poly(g,[[cx-u*.058,topY-u*.024],[cx-u*.03,topY-u*.04],[cx+u*.03,topY-u*.04],[cx+u*.058,topY-u*.024]],lit([92,96,104],S,.02,W_));
+  g.fillStyle=rgb(dark); g.fillRect(cx-1,topY-u*.2,2,u*.16);
+  world.flag={x:cx+1, y:topY-u*.198, w:u*.055, h:u*.033};
+  if (night>.4){ const gl=g.createRadialGradient(cx,Y(.6),0,cx,Y(.6),u*.3); gl.addColorStop(0,`rgba(255,200,130,${.12*night})`); gl.addColorStop(1,"rgba(255,200,130,0)"); g.fillStyle=gl; g.fillRect(cx-u*.3,Y(.3),u*.6,u*.6); }
 }
 
 /* ============ drawing per frame ============ */
@@ -415,7 +399,7 @@ function frame(ms){
   }
 
   // sun & moon positions: azimuth 90..270 maps across the window (we look south)
-  const sky=(p)=>({x:W*clamp((p.az-90)/180,-.2,1.2), y:H*(.6-p.el/70)});
+  const sky=(p)=>({x:W*clamp((p.az-90)/180,-.2,1.2), y:H*(.5-p.el/80)});
   if (sp.el>-8){ const p=sky(sp), a=(1-W_.cloud*.85)*(1-W_.fog*.7);
     const r=Math.min(W,H)*.045, glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*7);
     const sc=mix([255,250,230],[255,170,90],S.gold);
@@ -478,68 +462,31 @@ function drawClouds(W_, S, dt){
   }
 }
 
-function drawTrees(S, season, W_){ // chestnuts along the street
-  const night=1-S.day, sway=W_.wind*.9;
-  for(const t of world.trees){
-    const x=t.x*W, y=BASE_HOUSE*H+H*.012, h=t.h*H;
-    const bend=Math.sin(tsec*(1.2+W_.wind*2)+t.p)*sway*h*.05 + sway*h*.04;
-    const dark=(c)=>mix(c,[10,14,28],night*.82);
-    ctx.strokeStyle=rgb(dark([70,50,36])); ctx.lineWidth=Math.max(2.5,h*.07); ctx.lineCap="round";
-    ctx.beginPath(); ctx.moveTo(x,y); ctx.quadraticCurveTo(x,y-h*.5,x+bend*.6,y-h*.7); ctx.stroke();
-    const leaves={spring:[110,168,78],summer:[58,106,50],autumn:[206,138,52],late:null,winter:null}[season];
-    if (leaves){ for(let k=0;k<7;k++){ const lx=x+bend+Math.cos(k*1.9+t.p)*h*.2, ly=y-h*.78+Math.sin(k*2.3+t.p)*h*.13;
-        ctx.fillStyle=rgb(dark(season==="autumn"&&k%3===0?[186,82,40]:mix(leaves,[0,0,0],k%2*.12))); ctx.beginPath(); ctx.arc(lx,ly,h*.17,0,7); ctx.fill(); }
-      if (season==="spring"){ ctx.fillStyle=rgb(dark([250,240,236])); for(let k=0;k<6;k++){ ctx.fillRect(x+bend+Math.cos(k*2.7+t.p)*h*.22,y-h*.85+Math.sin(k*1.3)*h*.12,2.5,5); } }  // chestnut candles
-    } else { ctx.lineWidth=Math.max(1,h*.02);
-      for(let k=0;k<7;k++){ const by=y-h*(.42+k*.07), dir=k%2?1:-1;
-        ctx.beginPath(); ctx.moveTo(x+bend*(.4+k*.1),by); ctx.lineTo(x+bend*(.6+k*.1)+dir*h*(.24-k*.025),by-h*.13); ctx.stroke(); } }
-  }
-}
+function drawTrees(){ /* the trees are part of the roofscape now */ }
 
 function houseLife(d, S, W_, dt){
   const night=1-S.day, u=H;
   // the Ukrainian flag over the City Hall
-  if (world.flag){ const f=world.flag, k=.55+.45*S.day+night*.25, wave=t=>Math.sin(tsec*3+t*5)*f.h*.12*(.4+W_.wind);
+  if (world.flag){ const f=world.flag, k=.6+.4*S.day+night*.2, wave=t=>Math.sin(tsec*3.2+t*5)*f.h*.14*(.4+W_.wind*1.5)*t;
     for(const [c,o] of [[[0,87,183],0],[[255,215,0],.5]]){ ctx.fillStyle=rgb(mix(c,[12,16,32],(1-k)*.8)); ctx.beginPath();
-      ctx.moveTo(f.x,f.y+f.h*o); for(let t=0;t<=1;t+=.25) ctx.lineTo(f.x+f.w*t,f.y+f.h*o+wave(t)); for(let t=1;t>=0;t-=.25) ctx.lineTo(f.x+f.w*t,f.y+f.h*(o+.5)+wave(t)); ctx.fill(); } }
+      ctx.moveTo(f.x,f.y+f.h*o); for(let t=0;t<=1.001;t+=.2) ctx.lineTo(f.x+f.w*t,f.y+f.h*o+wave(t)); for(let t=1;t>=-.001;t-=.2) ctx.lineTo(f.x+f.w*t,f.y+f.h*(o+.5)+wave(t)); ctx.fill(); } }
+  // the City Hall clock keeps real time
+  if (world.clock){ const c=world.clock, hrs=d.getHours()%12+d.getMinutes()/60, mins=d.getMinutes()+d.getSeconds()/60;
+    ctx.strokeStyle=rgb(mix([248,244,232],[255,214,150],night*.5)); ctx.lineCap="round";
+    ctx.lineWidth=Math.max(2,c.r*.12); ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(c.x+Math.sin(hrs/12*Math.PI*2)*c.r*.5, c.y-Math.cos(hrs/12*Math.PI*2)*c.r*.5); ctx.stroke();
+    ctx.lineWidth=Math.max(1.2,c.r*.07); ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(c.x+Math.sin(mins/60*Math.PI*2)*c.r*.78, c.y-Math.cos(mins/60*Math.PI*2)*c.r*.78); ctx.stroke(); }
   // red lights on the TV tower blink after dusk
   if (world.tv && night>.3){ const on=(tsec%1.6)<.8;
-    for(let k=0;k<3;k++){ const y=lerp(world.tv.base,world.tv.top,.35+k*.32); ctx.fillStyle=`rgba(255,50,40,${on?.95:.25})`; ctx.beginPath(); ctx.arc(world.tv.x,y,on?2.2:1.6,0,7); ctx.fill();
+    for(let k=0;k<3;k++){ const y=lerp(world.tv.base,world.tv.top,.3+k*.35); ctx.fillStyle=`rgba(255,50,40,${on?.95:.25})`; ctx.beginPath(); ctx.arc(world.tv.x,y,on?2.2:1.5,0,7); ctx.fill();
       if (on){ const gl=ctx.createRadialGradient(world.tv.x,y,0,world.tv.x,y,10); gl.addColorStop(0,"rgba(255,60,40,.5)"); gl.addColorStop(1,"rgba(255,60,40,0)"); ctx.fillStyle=gl; ctx.fillRect(world.tv.x-10,y-10,20,20); } } }
-  // the tram: every few minutes one rolls along the street
-  world.tramNext-=dt;
-  if (!world.tram && world.tramNext<=0){ const dir=Math.random()<.5?1:-1; world.tram={dir, x:dir>0?-.4:1.1, v:.045+Math.random()*.02}; }
-  const T_=world.tram;
-  if (T_){ T_.x+=T_.dir*T_.v*dt; if (T_.x>1.15||T_.x<-.45){ world.tram=null; world.tramNext=90+Math.random()*150; }
-    else drawTram(T_.x*W, H*.965, u, S, night); }
-  // street lamps: Lviv's old lanterns
-  const on = night>.35;
-  for(const lx of world.lamps){ const x=lx*W, base=BASE_HOUSE*H+u*.01, top=base-u*.11;
-    ctx.fillStyle=rgb(mix([40,42,48],[12,14,24],night*.5)); ctx.fillRect(x-u*.003,top,u*.006,base-top);
-    ctx.fillRect(x-u*.012,top-u*.002,u*.024,u*.004);
-    ctx.fillStyle= on ? "rgba(255,214,140,.98)" : rgb(mix([90,96,110],[20,24,40],night));
-    ctx.beginPath(); ctx.moveTo(x-u*.008,top-u*.004); ctx.lineTo(x+u*.008,top-u*.004); ctx.lineTo(x+u*.011,top-u*.028); ctx.lineTo(x-u*.011,top-u*.028); ctx.fill();
-    ctx.fillStyle=rgb(mix([40,42,48],[12,14,24],night*.5)); ctx.beginPath(); ctx.moveTo(x-u*.013,top-u*.028); ctx.lineTo(x,top-u*.04); ctx.lineTo(x+u*.013,top-u*.028); ctx.fill();
-    if (on){ const gl=ctx.createRadialGradient(x,top-u*.016,0,x,top-u*.016,u*.09); gl.addColorStop(0,"rgba(255,200,120,.35)"); gl.addColorStop(1,"rgba(255,200,120,0)"); ctx.fillStyle=gl; ctx.fillRect(x-u*.09,top-u*.1,u*.18,u*.2);
-      const pool=ctx.createRadialGradient(x,base+u*.03,0,x,base+u*.03,u*.08); pool.addColorStop(0,"rgba(255,200,120,.18)"); pool.addColorStop(1,"rgba(255,200,120,0)"); ctx.fillStyle=pool; ctx.fillRect(x-u*.08,base-u*.02,u*.16,u*.12); } }
   // chimney smoke when it is cold
-  if (W_.temp<10 && world.chimneys){
-    world.smokeT=(world.smokeT||0)+dt; if (world.smokeT>.5){ world.smokeT=0; const c=world.chimneys[Math.random()*world.chimneys.length|0]; if (c) world.smoke.push({x:c[0],y:c[1],a:.5,r:u*.005,j:Math.random()*6}); }
-    const c=mix([200,200,205],[70,74,90],night);
-    for(const p of world.smoke){ p.y-=dt*u*.025; p.x+=dt*u*(.01+W_.wind*.08)+Math.sin(tsec*1.5+p.j)*.3; p.r+=dt*u*.008; p.a-=dt*.08;
+  if (W_.temp<10 && world.chimneys && world.chimneys.length){
+    world.smokeT=(world.smokeT||0)+dt; if (world.smokeT>.4){ world.smokeT=0; const c=world.chimneys[Math.random()*world.chimneys.length|0]; world.smoke.push({x:c[0],y:c[1],a:.45,r:u*.004,j:Math.random()*6}); }
+    const c=mix([210,210,215],[70,74,90],night);
+    for(const p of world.smoke){ p.y-=dt*u*.022; p.x+=dt*u*(.008+W_.wind*.07)+Math.sin(tsec*1.5+p.j)*.25; p.r+=dt*u*.007; p.a-=dt*.07;
       ctx.fillStyle=rgb(c,Math.max(0,p.a)*.35); ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
     world.smoke=world.smoke.filter(p=>p.a>0);
   }
-}
-function drawTram(x, rail, u, S, night){ // a two-tone Lviv tram with a pantograph and lit windows at night
-  const len=u*.34, h=u*.06, top=rail-h-u*.006, body=mix([226,180,40],[30,30,40],night*.6), stripe=mix([196,40,40],[30,20,30],night*.6);
-  ctx.fillStyle=rgb(body); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x,top,len,h,u*.01) : ctx.rect(x,top,len,h); ctx.fill();
-  ctx.fillStyle=rgb(stripe); ctx.fillRect(x,top+h*.62,len,h*.2);
-  const win = night>.4 ? "rgba(255,230,170,.95)" : rgb(mix([80,100,120],[20,24,40],night));
-  ctx.fillStyle=win; for(let k=0;k<7;k++) ctx.fillRect(x+len*(.05+k*.13),top+h*.14,len*.09,h*.36);
-  ctx.fillStyle=rgb(mix([40,40,44],[10,10,16],night)); ctx.fillRect(x+len*.15,rail-u*.008,u*.02,u*.008); ctx.fillRect(x+len*.75,rail-u*.008,u*.02,u*.008);
-  ctx.strokeStyle=rgb(mix([60,60,66],[20,20,30],night)); ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x+len*.45,top); ctx.lineTo(x+len*.55,top-u*.035); ctx.lineTo(x+len*.62,top-u*.035); ctx.stroke();
-  if (night>.4){ const gl=ctx.createRadialGradient(x+len/2,top+h/2,0,x+len/2,top+h/2,len*.7); gl.addColorStop(0,"rgba(255,220,150,.12)"); gl.addColorStop(1,"rgba(255,220,150,0)"); ctx.fillStyle=gl; ctx.fillRect(x-len*.2,top-h,len*1.4,h*3); }
 }
 
 function precip(W_, S, dt){
