@@ -5,552 +5,145 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Пісочниця</title>
 <style>
-/* Пісочниця: the world fills the screen; a floating palette sits at the bottom; a diary panel slides in from the right. */
+/* Пісочниця: the world fills the screen; controls float top-right; a two-row palette dock sits at the bottom;
+   the "Більше" panel slides in from the right with experiments, saved worlds, settings and the diary. */
 :root{
-  --fg:#f3efe6; --dim:rgba(243,239,230,.62); --panel:rgba(16,18,26,.9); --line:rgba(255,255,255,.12); --accent:#e8c077;
+  --fg:#f3efe6; --dim:rgba(243,239,230,.62); --panel:rgba(16,18,26,.88); --line:rgba(255,255,255,.12); --accent:#e8c077; --on:rgba(255,255,255,.1);
   --f:"Golos Text","Roboto",system-ui,sans-serif; color-scheme:dark;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0;height:100%;overflow:hidden;background:#11131b;color:var(--fg);font:14px/1.4 var(--f);-webkit-tap-highlight-color:transparent;user-select:none;touch-action:none}
 canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
-.bar{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:6px;align-items:center;padding:6px;border-radius:20px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);max-width:calc(100vw - 24px);overflow-x:auto;scrollbar-width:none}
-.bar::-webkit-scrollbar{display:none}
-.mat,.tool{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:54px;padding:7px 6px 6px;border-radius:14px;border:1px solid transparent;background:none;color:var(--dim);font:500 11.5px var(--f);cursor:pointer}
-.mat i{width:24px;height:24px;border-radius:8px;display:block;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}
-.mat.on{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);color:var(--fg)}
-.tool.on{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);color:var(--fg)}
-.tool b{font:600 18px/24px var(--f);height:24px;color:var(--fg)}
-.sep{width:1px;align-self:stretch;background:var(--line);margin:4px 2px;flex:none}
+button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.toast{position:fixed;top:max(16px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);padding:8px 14px;border-radius:999px;font-size:13px;color:var(--dim);transition:opacity .5s;pointer-events:none;white-space:nowrap}
-.panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column;padding:max(20px,env(safe-area-inset-top)) 20px 20px}
+.glass{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+
+/* top-right controls */
+.ctl{position:fixed;top:max(10px,env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));display:flex;gap:4px;padding:4px;border-radius:16px}
+.ctl button{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:62px;padding:6px 6px 5px;border-radius:12px;border:1px solid transparent;background:none;color:var(--dim);font-size:11px}
+.ctl button b{font:600 15px/18px var(--f);color:var(--fg)}
+.ctl button.on{background:var(--on);border-color:rgba(255,255,255,.2);color:var(--fg)}
+
+/* palette dock */
+.dock{position:fixed;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(980px,calc(100vw - 20px));border-radius:20px;padding:6px;display:flex;flex-direction:column;gap:4px}
+.row{display:flex;gap:4px;align-items:center;overflow-x:auto;scrollbar-width:none}
+.row::-webkit-scrollbar{display:none}
+.tab{flex:none;border:0;background:none;color:var(--dim);font:600 12.5px var(--f);padding:6px 11px;border-radius:999px}
+.tab.on{background:var(--accent);color:#2a1a06}
+.mat{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:62px;padding:6px 4px 5px;border-radius:14px;border:1px solid transparent;background:none;color:var(--dim);font:500 11.5px var(--f)}
+.mat i{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}
+.mat i u{text-decoration:none;font:700 15px var(--f);color:#14161f;font-style:normal}
+.mat.on{background:var(--on);border-color:rgba(255,255,255,.22);color:var(--fg)}
+.sep{width:1px;align-self:stretch;background:var(--line);margin:4px 2px;flex:none}
+.mini{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:54px;padding:6px 4px 5px;border-radius:14px;border:1px solid transparent;background:none;color:var(--dim);font-size:11.5px}
+.mini b{width:26px;height:26px;display:grid;place-items:center;font:600 16px var(--f);color:var(--fg)}
+#size b::after{content:"";width:var(--d);height:var(--d);border-radius:50%;background:var(--fg)}
+#size::after{content:"Пензель"}
+.mini.on{background:var(--on);border-color:rgba(255,255,255,.22);color:var(--fg)}
+
+.toast{position:fixed;top:max(76px,calc(env(safe-area-inset-top) + 66px));left:50%;transform:translateX(-50%);padding:8px 14px;border-radius:999px;font-size:13px;color:var(--fg);transition:opacity .5s;pointer-events:none;max-width:calc(100vw - 40px);text-align:center}
+.tip{position:fixed;padding:7px 11px;border-radius:12px;font-size:13px;pointer-events:none;white-space:nowrap}
+.legend{position:fixed;top:max(76px,calc(env(safe-area-inset-top) + 66px));right:max(10px,env(safe-area-inset-right));border-radius:12px;padding:8px 10px;font-size:11.5px;color:var(--dim);pointer-events:none}
+.legend i{display:block;width:150px;height:8px;border-radius:4px;margin:5px 0 3px}
+.legend span{display:flex;justify-content:space-between}
+.legend em{font-style:normal}
+.flash{position:fixed;inset:0;background:#e6efff;opacity:0;pointer-events:none}
+
+/* panel */
+.panel{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column;padding:max(20px,env(safe-area-inset-top)) 20px 20px;border-width:0 0 0 1px}
 .panel.open{transform:none}
-.panel h1{font:600 24px/1.1 var(--f);margin:0}
+.panel h1{font:700 24px/1.1 var(--f);margin:0}
 .panel .sub{color:var(--dim);font-size:13px;margin-top:4px}
-.panel h2{font:600 11px/1 var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:22px 0 8px}
-.how{color:var(--dim);font-size:13.5px;margin:0;padding-left:18px}
+.panel h2{font:600 11px/1 var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:22px 0 10px}
+.panel .scroll{overflow:auto;flex:1;margin-right:-10px;padding-right:10px;touch-action:pan-y}
+.close{position:absolute;top:max(14px,env(safe-area-inset-top));right:12px;background:none;border:0;color:var(--dim);font-size:26px;padding:6px 10px;line-height:1}
+.scenes{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.scene{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:none;text-align:left}
+.scene span{color:var(--dim);font-size:12px}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.slot{border:1px solid var(--line);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--dim);background:none}
+.slot img{width:100%;border-radius:7px;image-rendering:pixelated;aspect-ratio:16/10;object-fit:cover;background:#0d0f16}
+.slot div{display:flex;gap:4px}
+.slot .ld{flex:1;border:0;border-radius:8px;background:var(--on);color:var(--fg);padding:6px;font-size:12px}
+.slot .rm{border:0;border-radius:8px;background:none;color:var(--dim);padding:4px 8px;font-size:16px}
+.slot.add{align-items:center;justify-content:center;min-height:110px;border-style:dashed}
+.slot.add b{font-size:28px;color:var(--fg);font-weight:300}
+.opts{display:flex;flex-direction:column}
+.opts label{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.opts input{width:20px;height:20px;accent-color:var(--accent)}
+.how{color:var(--dim);font-size:13px;margin:0;padding-left:18px}
 .how li{margin:5px 0}
 .how b{color:var(--fg);font-weight:600}
-.scenes{display:flex;flex-direction:column;gap:6px}
-.scene{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;border:1px solid var(--line)}
-.scene span{color:var(--dim);font-size:12.5px}
-.scene:focus-visible{outline:2px solid var(--accent)}
-.panel .scroll{overflow:auto;flex:1;margin-right:-8px;padding-right:8px}
-.diary{}
 .entry{padding:12px 0;border-bottom:1px solid var(--line)}
 .entry .d{color:var(--accent);font-size:12px;font-weight:600;letter-spacing:.04em}
 .entry b{display:block;font-weight:600}
 .entry p{margin:6px 0 0;color:var(--dim);font-size:13.5px}
-.close{position:absolute;top:max(14px,env(safe-area-inset-top));right:12px;background:none;border:0;color:var(--dim);font-size:26px;cursor:pointer;padding:6px 10px;line-height:1}
 .foot{color:var(--dim);font-size:11.5px;margin-top:12px}
-.legend{position:fixed;top:max(14px,env(safe-area-inset-top));right:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:11.5px;color:var(--dim);pointer-events:none}
-.legend i{display:block;width:140px;height:8px;border-radius:4px;margin:5px 0 3px;background:linear-gradient(90deg,#1e3a8a,#22c3ee,#facc15,#ef4444,#fff)}
-.legend span{display:flex;justify-content:space-between}
+@media (max-width:620px){ .ctl button{min-width:44px;font-size:0;gap:0} .scenes{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div class="bar" id="bar" role="toolbar" aria-label="Матеріали"></div>
-<div class="toast" id="toast" style="opacity:0"></div>
-<div class="legend" id="legend" hidden>Тиск<i></i><span><em>атмосфера</em><em>розрив</em></span></div>
+<div class="flash" id="flash"></div>
 
-<aside class="panel" id="panel" aria-label="Меню">
+<div class="ctl glass" role="toolbar" aria-label="Керування">
+  <button id="btnView"></button>
+  <button id="btnSpeed"></button>
+  <button id="btnPause"></button>
+  <button id="btnClear"><b>↺</b>Очистити</button>
+  <button id="btnMore"><b>⋯</b>Більше</button>
+</div>
+
+<div class="dock glass">
+  <div class="row" id="tabs" aria-label="Групи матеріалів"></div>
+  <div class="row">
+    <button class="mini" id="size" aria-label="Розмір пензля"></button>
+    <button class="mini" id="over" aria-label="Малювати поверх"><b>⧉</b>Поверх</button>
+    <span class="sep"></span>
+    <div class="row" id="mats" style="flex:1"></div>
+  </div>
+</div>
+
+<div class="toast glass" id="toast" style="opacity:0"></div>
+<div class="tip glass" id="tip" hidden></div>
+<div class="legend glass" id="legend" hidden></div>
+
+<aside class="panel glass" id="panel" aria-label="Більше">
   <button class="close" id="close" aria-label="Закрити">×</button>
   <h1>Пісочниця</h1>
   <div class="sub" id="dayline">Світ із живих матеріалів</div>
   <div class="scroll">
-  <h2>Досліди</h2>
-  <div class="scenes">
-    <button class="scene" data-scene="boiler"><b>Котел під тиском</b><span>Вода в металевому баку над лавою, зверху скляна кришка</span></button>
-    <button class="scene" data-scene="fuse"><b>Порохова доріжка</b><span>Гніт, бочка пороху і кам'яна стіна</span></button>
-    <button class="scene" data-scene="oil"><b>Нафта на воді</b><span>Олія плаває, а від іскри — горить</span></button>
-    <button class="scene" data-scene="acid"><b>Кислота в склянці</b><span>Скло тримає кислоту, а камінь — ні</span></button>
-    <button class="scene" data-scene="demo"><b>Пагорби й ставок</b><span>Початкова сцена</span></button>
+    <h2>Досліди</h2>
+    <div class="scenes" id="scenes"></div>
+    <h2>Мої світи</h2>
+    <div class="slots" id="slots"></div>
+    <h2>Налаштування</h2>
+    <div class="opts">
+      <label>Світіння вогню й лави <input type="checkbox" id="optGlow"></label>
+      <label>Звук <input type="checkbox" id="optSound"></label>
+      <label>Вібрація <input type="checkbox" id="optVibro"></label>
+    </div>
+    <h2>Як усе влаштовано</h2>
+    <ul class="how">
+      <li><b>Температура.</b> Кожна клітинка має свою температуру; тепло тече металом швидко, повітрям повільно. Кнопка «Температура» вгорі показує її кольором, «Термометр» — числом</li>
+      <li><b>Вода</b> кипить при 100°, замерзає при 0°. Солона — при 102° і −20°, а коли википає, лишає сіль</li>
+      <li><b>Займання:</b> олія з 180°, рослини з 200°, дерево з 260° (горить довго й стає попелом), вугілля з 320° (дуже жарке)</li>
+      <li><b>Вибухи:</b> газ, порох і нітро вибухають від тепла чи іскри; ударна хвиля розкидає все довкола</li>
+      <li><b>Лава</b> холоне в камінь нижче 700°, камінь плавиться вище 1150°, пісок стає склом вище 1100°</li>
+      <li><b>Тиск.</b> Пара в закритій посудині тисне на стінки: скло тріскає, з дірки б'є струмінь. Метал витримує все</li>
+      <li><b>Струм</b> від іскри чи блискавки біжить металом і водою, підпалює, підриває газ і б'є рибок</li>
+      <li><b>Живе:</b> насіння проростає на мокрому піску чи попелі й цвіте; мурахи риють ходи й плодяться, коли знаходять насіння; риби живуть лише у воді від 0° до 45°</li>
+      <li><b>Кислота</b> роз'їдає майже все, крім скла. <b>Цемент</b> твердне в камінь. <b>Клонер</b> безкінечно копіює те, що його торкнулось, <b>чорна діра</b> поглинає</li>
+    </ul>
+    <h2>Щоденник змін</h2>
+    <div id="diary"></div>
+    <div class="foot" id="foot">Лабораторія Claude</div>
   </div>
-  <h2>Що з чим буває</h2>
-  <ul class="how">
-    <li><b>Тиск:</b> пара й гази в закритій посудині тиснуть на стінки. Скло тріскає, сильний вибух кришить навіть камінь, метал витримує все</li>
-    <li>Тиск штовхає пісок, воду й гази туди, де він нижчий — з дірки б'є струмінь. Атмосфера — вгорі та з боків екрана</li>
-    <li>Порох від вогню вибухає ударною хвилею</li>
-    <li>Метал гріється від вогню й лави, передає тепло далі, розжарюється і кип'ятить воду</li>
-    <li>Олія легша за воду, плаває зверху і горить довго</li>
-    <li>Кислота роз'їдає камінь, метал, пісок і рослини; скло — ні. Вода її розбавляє</li>
-    <li>Лід заморожує воду поруч і тане від тепла</li>
-    <li>Лава плавить пісок у скло; з водою застигає в камінь</li>
-    <li>Рослини п'ють воду й ростуть; вогонь їх спалює</li>
-    <li>Пара під стелею стає дощем; сніг тане біля вогню</li>
-  </ul>
-  <h2>Щоденник змін</h2>
-  <div class="diary" id="diary"></div>
-  </div>
-  <div class="foot" id="foot">Лабораторія Claude</div>
 </aside>
 
 <script src="changelog.js"></script>
-<script>
-"use strict";
-const app = window.Pisok || null;
-const store = {
-  get(k,d){ try{ const v=localStorage.getItem("pisok."+k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
-  set(k,v){ try{ localStorage.setItem("pisok."+k, JSON.stringify(v)); }catch(e){} }
-};
-
-/* ============ materials ============ */
-const E=0, SAND=1, WATER=2, STONE=3, FIRE=4, PLANT=5, LAVA=6, STEAM=7, SNOW=8, SMOKE=9,
-      METAL=10, GLASS=11, OIL=12, ACID=13, POWDER=14, ICE=15;
-const N=16;
-const tbl=(pairs,d)=>{ const a=new Array(N).fill(d); for(const [k,v] of pairs) a[k]=v; return a; };
-const DENS  = tbl([[SAND,3],[WATER,1],[STONE,9],[FIRE,.3],[PLANT,9],[LAVA,1.6],[STEAM,.2],[SNOW,1.4],[SMOKE,.1],
-                   [METAL,9],[GLASS,9],[OIL,.8],[ACID,1.1],[POWDER,2.5],[ICE,9]],0);
-const FLUID = tbl([[E,1],[WATER,1],[FIRE,1],[LAVA,1],[STEAM,1],[SMOKE,1],[OIL,1],[ACID,1]],0);   // others may sink/rise through
-const WALL  = tbl([[STONE,1],[METAL,1],[GLASS,1],[ICE,1]],0);                                   // pressure cannot pass
-const GAS   = tbl([[STEAM,1],[SMOKE,1],[FIRE,1]],0);
-const RHO   = tbl([[STEAM,1],[SMOKE,.7],[FIRE,.9]],0);                                          // how much a cell "presses"
-const MOVES = tbl([[SAND,1],[WATER,1],[STEAM,1],[SMOKE,1],[FIRE,1],[SNOW,1],[OIL,1],[ACID,1],[POWDER,1],[LAVA,.3]],0); // pushed by pressure
-const ACIDEATS = tbl([[STONE,.05],[SAND,.08],[PLANT,.15],[METAL,.03],[ICE,.1],[SNOW,.2],[POWDER,.1]],0);
-const MATS = [
-  {id:SAND,  name:"Пісок",   col:[232,192,119], v:18, fill:.35},
-  {id:WATER, name:"Вода",    col:[62,143,214],  v:10, fill:.5},
-  {id:PLANT, name:"Рослина", col:[93,176,90],   v:26, fill:.6},
-  {id:FIRE,  name:"Вогонь",  col:[255,138,61],  v:0,  fill:.5},
-  {id:LAVA,  name:"Лава",    col:[255,96,36],   v:24, fill:.5},
-  {id:OIL,   name:"Олія",    col:[92,64,34],    v:8,  fill:.5},
-  {id:ACID,  name:"Кислота", col:[150,236,62],  v:16, fill:.5},
-  {id:POWDER,name:"Порох",   col:[70,68,74],    v:22, fill:.45},
-  {id:SNOW,  name:"Сніг",    col:[238,244,255], v:8,  fill:.25},
-  {id:ICE,   name:"Лід",     col:[178,222,246], v:12, fill:1},
-  {id:STONE, name:"Камінь",  col:[92,96,110],   v:12, fill:1},
-  {id:METAL, name:"Метал",   col:[150,156,170], v:7,  fill:1},
-  {id:GLASS, name:"Скло",    col:[176,226,240], v:6,  fill:1},
-  {id:STEAM, name:"Пара",    col:[205,214,228], v:8,  fill:.4},
-  {id:E,     name:"Гумка",   col:[40,44,58],    v:0,  fill:1}
-];
-const BASE=[]; MATS.forEach(m=>BASE[m.id]=m); BASE[SMOKE]={col:[74,74,84],v:10};
-
-/* ============ world ============ */
-const cv=document.getElementById("c"), ctx=cv.getContext("2d");
-let GW=0, GH=0, CELL=4, T, S, L, M, P, Pn, img, buf, bg, off, offCtx;
-const rnd=Math.random;
-function makeWorld(){
-  const w=innerWidth, h=innerHeight;
-  CELL=Math.max(3, Math.floor(Math.min(w,h)/170));
-  GW=Math.ceil(w/CELL); GH=Math.ceil(h/CELL);
-  const n=GW*GH;
-  T=new Uint8Array(n); S=new Uint8Array(n); L=new Uint16Array(n); M=new Uint8Array(n);
-  P=new Float32Array(n); Pn=new Float32Array(n);
-  off=document.createElement("canvas"); off.width=GW; off.height=GH; offCtx=off.getContext("2d");
-  img=offCtx.createImageData(GW,GH); buf=new Uint32Array(img.data.buffer);
-  bg=new Uint32Array(GH);
-  for(let y=0;y<GH;y++){ const t=y/GH; bg[y]=pack(lerp(14,24,t),lerp(16,22,t),lerp(26,30,t)); }
-  cv.width=GW; cv.height=GH;
-}
-const lerp=(a,b,t)=>a+(b-a)*t;
-function pack(r,g,b){ return (255<<24)|((b&255)<<16)|((g&255)<<8)|(r&255); }
-
-function put(i,t){ T[i]=t; S[i]=(rnd()*256)|0; L[i]= t===FIRE?40+rnd()*50 : t===STEAM?160+rnd()*200 : t===SMOKE?40+rnd()*60 : 0; }
-const at=(x,y)=> (x<0||y<0||x>=GW||y>=GH) ? STONE : T[y*GW+x];
-function swap(i,j){
-  const t=T[i]; T[i]=T[j]; T[j]=t; const s=S[i]; S[i]=S[j]; S[j]=s; const l=L[i]; L[i]=L[j]; L[j]=l;
-  M[i]=1; M[j]=1;
-}
-function sinks(t, x, y){ // can a falling t move into (x,y)?
-  if (x<0||x>=GW||y<0||y>=GH) return false;
-  const u=T[y*GW+x]; return u===E || (FLUID[u] && DENS[t]>DENS[u]);
-}
-function rises(x, y){ // can a gas move into (x,y)?
-  if (x<0||x>=GW||y<0||y>=GH) return false;
-  const u=T[y*GW+x]; return u===E || u===WATER || u===LAVA || u===OIL || u===ACID;
-}
-function nbs(x,y){ return [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]; }
-function near(x,y,t){ return at(x+1,y)===t||at(x-1,y)===t||at(x,y+1)===t||at(x,y-1)===t; }
-function hot(x,y){ // fire, lava or glowing metal next to (x,y)
-  for(const [nx,ny] of nbs(x,y)){ const u=at(nx,ny); if (u===FIRE||u===LAVA) return 255; if (u===METAL && L[ny*GW+nx]>90) return L[ny*GW+nx]; }
-  return 0;
-}
-
-/* ============ pressure ============
-   P is extra gas pressure in each open cell. Every bit of steam that boils off and every explosion adds
-   to it; it spreads through all cells that are not walls and leaks into the atmosphere at the top and
-   sides of the screen. In the open it drains away at once; inside a sealed vessel it keeps building up
-   until a wall gives way. */
-let bumped=0;
-function pressure(){
-  for(let it=0;it<4;it++){
-    for(let y=0;y<GH;y++){ const row=y*GW;
-      for(let x=0;x<GW;x++){ const i=row+x, t=T[i];
-        if (WALL[t]){ Pn[i]=0; continue; }
-        let sum=P[i], n=1;
-        if (x===0) n++; else if (!WALL[T[i-1]]) { sum+=P[i-1]; n++; }
-        if (x===GW-1) n++; else if (!WALL[T[i+1]]) { sum+=P[i+1]; n++; }
-        if (y===0) n++; else if (!WALL[T[i-GW]]) { sum+=P[i-GW]; n++; }
-        if (y<GH-1 && !WALL[T[i+GW]]) { sum+=P[i+GW]; n++; }
-        Pn[i]=.9996*sum/n;
-      }
-    }
-    const tmp=P; P=Pn; Pn=tmp;
-  }
-  equalize();
-}
-/* Inside a sealed space pressure evens out almost instantly (sound is fast), so every closed pocket
-   gets its average pressure each frame. Pockets that reach the screen edge are open to the air. */
-let LAB, STK;
-function equalize(){
-  const n=GW*GH; if (!LAB || LAB.length!==n){ LAB=new Int32Array(n); STK=new Int32Array(n); }
-  LAB.fill(-1); let id=0;
-  for(let s0=0;s0<n;s0++){
-    if (LAB[s0]!==-1 || WALL[T[s0]]) continue;
-    let sp=0, sum=0, cnt=0, open=false; STK[sp++]=s0; LAB[s0]=id;
-    while(sp){ const i=STK[--sp], x=i%GW, y=(i/GW)|0; sum+=P[i]; cnt++;
-      if (x===0||x===GW-1||y===0) open=true;
-      if (x>0 && LAB[i-1]===-1 && !WALL[T[i-1]]){ LAB[i-1]=id; STK[sp++]=i-1; }
-      if (x<GW-1 && LAB[i+1]===-1 && !WALL[T[i+1]]){ LAB[i+1]=id; STK[sp++]=i+1; }
-      if (y>0 && LAB[i-GW]===-1 && !WALL[T[i-GW]]){ LAB[i-GW]=id; STK[sp++]=i-GW; }
-      if (y<GH-1 && LAB[i+GW]===-1 && !WALL[T[i+GW]]){ LAB[i+GW]=id; STK[sp++]=i+GW; } }
-    if (!open){ const avg=sum/cnt;                    // second pass: spread the average over the pocket
-      sp=0; STK[sp++]=s0; LAB[s0]=-2;
-      while(sp){ const i=STK[--sp], x=i%GW, y=(i/GW)|0; P[i]=avg;
-        if (x>0 && LAB[i-1]===id){ LAB[i-1]=-2; STK[sp++]=i-1; }
-        if (x<GW-1 && LAB[i+1]===id){ LAB[i+1]=-2; STK[sp++]=i+1; }
-        if (y>0 && LAB[i-GW]===id){ LAB[i-GW]=-2; STK[sp++]=i-GW; }
-        if (y<GH-1 && LAB[i+GW]===id){ LAB[i+GW]=-2; STK[sp++]=i+GW; } } }
-    id++;
-  }
-}
-function addP(i,v){ P[i]+=v; }
-const pAt=(i,j,x,y)=> (x<0||y<0||x>=GW||y>=GH) ? (y>=GH?P[i]:0) : (WALL[T[j]]?P[i]:P[j]);
-function push(i,x,y,t){ // move one cell down the pressure slope
-  const gx=pAt(i,i-1,x-1,y)-pAt(i,i+1,x+1,y), gy=pAt(i,i-GW,x,y-1)-pAt(i,i+GW,x,y+1);
-  const ax=Math.abs(gx), ay=Math.abs(gy), g=ax+ay;
-  if (g<.04 || rnd()>Math.min(.95,(g-.04)*(GAS[t]?9:5)*MOVES[t])) return;
-  let dx=0, dy=0; if (ax>ay) dx=gx>0?1:-1; else dy=gy>0?1:-1;
-  const nx=x+dx, ny=y+dy; if (nx<0||ny<0||nx>=GW||ny>=GH) return;
-  const j=ny*GW+nx, u=T[j];
-  if (u===E || (GAS[u] && !GAS[t]) || (FLUID[u] && !GAS[t] && DENS[t]>DENS[u])) swap(i,j);
-}
-function explode(cx,cy,power){
-  const r=Math.round(3+power*2);
-  for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){ const d=Math.hypot(dx,dy); if (d>r) continue;
-    const x=cx+dx, y=cy+dy; if (x<0||y<0||x>=GW||y>=GH) continue; const j=y*GW+x;
-    if (!WALL[T[j]]) P[j]+=power*1.6*(1-d/(r+1));
-    if (d<r*.5 && (T[j]===E||T[j]===SMOKE) && rnd()<.5) put(j,FIRE); }
-  // the blast flings loose stuff outward, farthest first so nothing blocks itself
-  const R=r+3, cells=[];
-  for(let dy=-R;dy<=R;dy++) for(let dx=-R;dx<=R;dx++){ const d=Math.hypot(dx,dy); if (d<1||d>R) continue;
-    const x=cx+dx, y=cy+dy; if (x<0||y<0||x>=GW||y>=GH) continue; const t=T[y*GW+x];
-    if (MOVES[t] && !GAS[t] && t!==POWDER) cells.push([d,dx,dy]); }
-  cells.sort((a,b)=>b[0]-a[0]);
-  for(const [d,dx,dy] of cells){ const x=cx+dx, y=cy+dy, i=y*GW+x, k=Math.round((R+2-d)*power*1.3);
-    for(let s=k;s>=1;s--){ const tx=Math.round(x+dx/d*s), ty=Math.round(y+dy/d*s-s*.4);
-      if (tx<0||ty<0||tx>=GW||ty>=GH) continue; const j=ty*GW+tx; if (T[j]===E){ swap(i,j); break; } } }
-  if (app && frame-bumped>8){ bumped=frame; app.tick(25); }
-}
-
-/* ============ simulation ============ */
-let frame=0, paused=false;
-function step(){
-  M.fill(0); frame++;
-  pressure();
-  const ltr=frame&1;
-  for(let y=GH-1;y>=0;y--){
-    for(let k=0;k<GW;k++){
-      const x=ltr?k:GW-1-k, i=y*GW+x, t=T[i];
-      if (t===E || M[i]) continue;
-      switch(t){
-        case SAND: powder(i,x,y,t,.5); break;
-        case POWDER: if (hot(x,y)){ put(i,FIRE); L[i]=25; M[i]=1; explode(x,y,.45); } else powder(i,x,y,t,.5); break;
-        case SNOW: snow(i,x,y); break;
-        case WATER: water(i,x,y); break;
-        case OIL: oil(i,x,y); break;
-        case ACID: acid(i,x,y); break;
-        case LAVA: lava(i,x,y); break;
-        case FIRE: fire(i,x,y); break;
-        case STEAM: gas(i,x,y,true); break;
-        case SMOKE: gas(i,x,y,false); break;
-        case PLANT: plant(i,x,y); break;
-        case METAL: metal(i,x,y); break;
-        case ICE: ice(i,x,y); break;
-        case GLASS: crack(i,x,y,.5,.6); break;
-        case STONE: if ((frame+i)%5===0) crack(i,x,y,5,.15); break;
-      }
-      if (MOVES[t] && T[i]===t && !M[i]) push(i,x,y,t);
-    }
-  }
-}
-function maxP(x,y){ let m=0; for(const [nx,ny] of nbs(x,y)){ if(nx<0||ny<0||nx>=GW||ny>=GH) continue; const j=ny*GW+nx; if(!WALL[T[j]] && P[j]>m) m=P[j]; } return m; }
-function crack(i,x,y,limit,rate){
-  const p=maxP(x,y); if (p<limit || rnd()>(p-limit)*rate) return;
-  if (T[i]===GLASS){ if (rnd()<.35) put(i,SAND); else T[i]=E;
-    if (p>limit*1.3) for(const [nx,ny] of nbs(x,y)) if (at(nx,ny)===GLASS && rnd()<.7){ const j=ny*GW+nx; T[j]=E; M[j]=1; P[j]=p; } }  // a hard burst shatters a whole patch
-  else put(i,SAND);                                          // stone crumbles into gravel
-  M[i]=1; P[i]=p*.8;
-  if (app && frame-bumped>10){ bumped=frame; app.tick(12); }
-}
-function powder(i,x,y,t,slowInFluid){
-  const b=at(x,y+1);
-  if (sinks(t,x,y+1)){ if (b!==E && rnd()<slowInFluid) return; swap(i,i+GW); return; }
-  const d=rnd()<.5?-1:1;
-  if (sinks(t,x+d,y+1) && !WALL[at(x+d,y)]){ swap(i,i+GW+d); return; }
-  if (sinks(t,x-d,y+1) && !WALL[at(x-d,y)]){ swap(i,i+GW-d); }
-}
-function snow(i,x,y){
-  if (hot(x,y)){ put(i,WATER); M[i]=1; return; }
-  if (rnd()<.55) return;
-  const d=rnd()<.5?-1:1;
-  if (sinks(SNOW,x,y+1)){ if (rnd()<.25 && sinks(SNOW,x+d,y+1)) swap(i,i+GW+d); else swap(i,i+GW); return; }
-  if (sinks(SNOW,x+d,y+1)) swap(i,i+GW+d);
-}
-function flow(i,x,y,t,disp){
-  if (sinks(t,x,y+1)){ swap(i,i+GW); return true; }
-  const d=rnd()<.5?-1:1;
-  if (sinks(t,x+d,y+1)){ swap(i,i+GW+d); return true; }
-  if (sinks(t,x-d,y+1)){ swap(i,i+GW-d); return true; }
-  for (const dir of [d,-d]){
-    let last=-1;
-    for(let s=1;s<=disp;s++){ const nx=x+dir*s; if (nx<0||nx>=GW) break; const u=T[y*GW+nx]; if (u!==E && !(GAS[u])) break; last=nx; }
-    if (last>=0){ swap(i,y*GW+last); return true; }
-  }
-  return false;
-}
-function water(i,x,y){
-  for(const [nx,ny] of nbs(x,y)){ if(nx<0||ny<0||nx>=GW||ny>=GH) continue; const j=ny*GW+nx, u=T[j];
-    if (u===FIRE){ put(j, rnd()<.6?STEAM:SMOKE); addP(j,.3); M[j]=1; if (rnd()<.2){ put(i,STEAM); addP(i,.3); M[i]=1; return; } }
-    else if (u===LAVA){ put(j,STONE); put(i,STEAM); addP(i,.6); M[i]=M[j]=1; return; }
-    else if (u===METAL && L[j]>80 && rnd()<L[j]/255*.09){ put(i,STEAM); addP(i,2.2); L[j]=Math.max(0,L[j]-6); M[i]=1; return; } }
-  flow(i,x,y,WATER,4);
-}
-function oil(i,x,y){
-  if (hot(x,y) && rnd()<.35){ put(i,FIRE); L[i]=110+rnd()*80; M[i]=1; return; }   // oil burns long
-  flow(i,x,y,OIL,3);
-}
-function acid(i,x,y){
-  const [nx,ny]=nbs(x,y)[rnd()*4|0];
-  if (nx>=0&&ny>=0&&nx<GW&&ny<GH){ const j=ny*GW+nx, u=T[j];
-    if (ACIDEATS[u] && rnd()<ACIDEATS[u]){ if (rnd()<.3) put(j,SMOKE); else T[j]=E; M[j]=1; if (rnd()<.35){ T[i]=E; M[i]=1; return; } }
-    else if (u===WATER && rnd()<.01){ put(i,WATER); M[i]=1; return; } }
-  flow(i,x,y,ACID,3);
-}
-function lava(i,x,y){
-  for(const [nx,ny] of nbs(x,y)){ if(nx<0||ny<0||nx>=GW||ny>=GH) continue; const j=ny*GW+nx, u=T[j];
-    if (u===PLANT && rnd()<.3){ put(j,FIRE); M[j]=1; }
-    else if (u===SNOW||u===ICE){ put(j,WATER); M[j]=1; }
-    else if (u===SAND && rnd()<.006){ put(j,GLASS); M[j]=1; }          // sand melts into glass
-    else if (u===METAL){ L[j]=Math.min(255,L[j]+14); } }
-  if (y>0 && T[i-GW]===E && rnd()<.004){ put(i-GW,FIRE); M[i-GW]=1; }
-  if (rnd()<.35) flow(i,x,y,LAVA,2);
-}
-function fire(i,x,y){
-  L[i] -= (at(x,y+1)===E ? 3 : 1);
-  if (L[i]<=0 || L[i]>1000){ if (rnd()<.35) put(i,SMOKE); else T[i]=E; M[i]=1; return; }
-  for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1],[x+1,y-1],[x-1,y-1]]){ if(nx<0||ny<0||nx>=GW||ny>=GH) continue; const j=ny*GW+nx, u=T[j];
-    if (u===PLANT && rnd()<.09){ put(j,FIRE); M[j]=1; }
-    else if (u===OIL && rnd()<.2){ put(j,FIRE); L[j]=110+rnd()*80; M[j]=1; }
-    else if ((u===SNOW||u===ICE) && rnd()<.2){ put(j,WATER); M[j]=1; }
-    else if (u===METAL){ L[j]=Math.min(255,L[j]+6); } }
-  if (rnd()<.45){ const d=(rnd()*3|0)-1; const nx=x+d, ny=y-1;
-    if (ny>=0 && nx>=0 && nx<GW && T[ny*GW+nx]===E) swap(i,ny*GW+nx); }
-}
-function gas(i,x,y,steam){
-  L[i]--;
-  if (L[i]<=0 || L[i]>1000){ if (steam && rnd()<.45) put(i,WATER); else T[i]=E; M[i]=1; return; }
-  if (steam && y===0 && rnd()<.012){ put(i,WATER); M[i]=1; return; }
-  const d=(rnd()*3|0)-1;
-  if (rnd()<.75 && rises(x+d,y-1)) { swap(i,(y-1)*GW+x+d); return; }
-  const s=rnd()<.5?-1:1; if (x+s>=0 && x+s<GW && T[i+s]===E) swap(i,i+s);
-}
-function plant(i,x,y){
-  if (rnd()>.06) return;
-  const nb=[[x,y-1],[x+1,y-1],[x-1,y-1],[x+1,y],[x-1,y],[x,y+1]];
-  const [nx,ny]=nb[rnd()*nb.length|0];
-  if (nx<0||ny<0||nx>=GW||ny>=GH) return; const j=ny*GW+nx;
-  if (T[j]===WATER){ put(j,PLANT); M[j]=1; }
-}
-function metal(i,x,y){ // L is temperature: heated by fire and lava, shared with touching metal, slowly cooling
-  const [nx,ny]=nbs(x,y)[rnd()*4|0];
-  if (nx>=0&&ny>=0&&nx<GW&&ny<GH){ const j=ny*GW+nx;
-    if (T[j]===METAL){ const a=(L[i]+L[j])>>1; L[i]=a; L[j]=a; }
-    else if (L[i]>120){ const u=T[j];
-      if ((u===ICE||u===SNOW) && rnd()<.2) put(j,WATER);
-      else if (u===PLANT && L[i]>170 && rnd()<.05) put(j,FIRE);
-      else if (u===OIL && L[i]>150 && rnd()<.1){ put(j,FIRE); L[j]=120; } } }
-  if (L[i]>0 && rnd()<.25) L[i]--;
-}
-function ice(i,x,y){
-  const h=hot(x,y); if (h && rnd()<.03+h/255*.1){ put(i,WATER); M[i]=1; return; }
-  crack(i,x,y,.8,.3); if (T[i]!==ICE) return;
-  if (rnd()<.004){ const [nx,ny]=nbs(x,y)[rnd()*4|0]; if (at(nx,ny)===WATER && nx>=0&&ny>=0&&nx<GW&&ny<GH){ put(ny*GW+nx,ICE); M[ny*GW+nx]=1; } }
-}
-
-/* ============ drawing ============ */
-let showP=false;
-function heat(p){ // pressure colour ramp: deep blue → cyan → yellow → red → white
-  const stops=[[30,58,138],[34,195,238],[250,204,21],[239,68,68],[255,255,255]], v=Math.max(0,Math.min(.999,p/1.4))*4, k=v|0, f=v-k;
-  const a=stops[k], b=stops[k+1]; return [lerp(a[0],b[0],f),lerp(a[1],b[1],f),lerp(a[2],b[2],f)];
-}
-function render(){
-  const tick=frame;
-  for(let y=0;y<GH;y++){ const row=y*GW, b=bg[y];
-    for(let x=0;x<GW;x++){ const i=row+x, t=T[i];
-      let r,g,bl;
-      if (t===E){ if (!showP){ buf[i]=b; continue; } r=b&255; g=(b>>8)&255; bl=(b>>16)&255; }
-      else { const s=(S[i]-128)/128;
-        if (t===FIRE){ const l=Math.min(1,L[i]/70); r=255; g=lerp(70,230,l)+s*20; bl=lerp(20,90,l*l); }
-        else if (t===LAVA){ const f=.5+.5*Math.sin(tick*.08+S[i]*.1); r=255; g=70+f*60+s*20; bl=20+f*20; }
-        else if (t===STEAM||t===SMOKE){ const c=BASE[t].col, a=Math.min(1,L[i]/(t===STEAM?120:60))*(t===STEAM?.55:.7);
-          const br=b&255, bgc=(b>>8)&255, bb=(b>>16)&255; r=lerp(br,c[0],a); g=lerp(bgc,c[1],a); bl=lerp(bb,c[2],a); }
-        else if (t===GLASS){ const c=BASE[GLASS].col, br=b&255, bgc=(b>>8)&255, bb=(b>>16)&255, a=.42+s*.08; r=lerp(br,c[0],a); g=lerp(bgc,c[1],a); bl=lerp(bb,c[2],a); }
-        else if (t===METAL){ const c=BASE[METAL].col, h=Math.min(1,L[i]/255); r=lerp(c[0],255,h)+s*7; g=lerp(c[1],h>.6?170:90,h)+s*7; bl=lerp(c[2],40,h)+s*7; }
-        else { const c=BASE[t].col, v=BASE[t].v; r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v;
-          if (t===WATER||t===ACID||t===OIL){ const w=Math.sin(tick*.05+x*.3+y*.2)*(t===OIL?3:6); r+=w; g+=w; bl+=w;
-            if (y>0 && T[i-GW]===E){ r+=t===OIL?20:40; g+=t===OIL?18:40; bl+=t===OIL?10:30; } } } }
-      if (showP && !WALL[t]){ const h=heat(P[i]), a=t===E?.75:.35; r=lerp(r,h[0],a); g=lerp(g,h[1],a); bl=lerp(bl,h[2],a); }
-      buf[i]=pack(Math.max(0,Math.min(255,r)),Math.max(0,Math.min(255,g)),Math.max(0,Math.min(255,bl)));
-    }
-  }
-  offCtx.putImageData(img,0,0);
-  ctx.drawImage(off,0,0);
-}
-
-/* ============ painting with fingers ============ */
-let current=SAND, sizes=[2,4,7], sizeIx=1;
-const pointers=new Map();
-function stamp(cx,cy,mat){
-  const r=sizes[sizeIx], fill=BASE[mat].fill ?? .5;
-  for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){
-    if (dx*dx+dy*dy>r*r) continue; const x=cx+dx, y=cy+dy; if (x<0||y<0||x>=GW||y>=GH) continue;
-    const i=y*GW+x;
-    if (mat===E){ T[i]=E; continue; }
-    if (T[i]!==E && !WALL[mat]) continue;
-    if (rnd()<fill) put(i,mat);
-  }
-}
-function toCell(e){ return [Math.floor(e.clientX/innerWidth*GW), Math.floor(e.clientY/innerHeight*GH)]; }
-function line(a,b,mat){
-  const n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/Math.max(1,sizes[sizeIx]*.6)));
-  for(let k=0;k<=n;k++) stamp(Math.round(lerp(a[0],b[0],k/n)), Math.round(lerp(a[1],b[1],k/n)), mat);
-}
-cv.addEventListener("pointerdown",e=>{ cv.setPointerCapture(e.pointerId); const p=toCell(e); pointers.set(e.pointerId,p); stamp(p[0],p[1],current); });
-cv.addEventListener("pointermove",e=>{ const last=pointers.get(e.pointerId); if(!last) return; const p=toCell(e); line(last,p,current); pointers.set(e.pointerId,p); });
-const up=e=>pointers.delete(e.pointerId);
-cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
-
-/* ============ toolbar ============ */
-const $=id=>document.getElementById(id);
-const bar=$("bar");
-function buildBar(){
-  const keep=bar.scrollLeft;
-  bar.innerHTML="";
-  for(const m of MATS){
-    const b=document.createElement("button"); b.className="mat"+(m.id===current?" on":""); b.setAttribute("aria-pressed", m.id===current);
-    const c=m.id===E?"repeating-linear-gradient(45deg,#3a3f52 0 4px,#262a38 4px 8px)":`rgb(${m.col})`;
-    b.innerHTML=`<i style="background:${c}"></i>${m.name}`;
-    b.onclick=()=>{ current=m.id; buildBar(); if(app) app.tick(8); };
-    bar.appendChild(b);
-  }
-  bar.insertAdjacentHTML("beforeend",'<span class="sep"></span>');
-  const tools=[
-    ["size",["•","●","⬤"][sizeIx],["Тонко","Пензель","Широко"][sizeIx],()=>{ sizeIx=(sizeIx+1)%3; buildBar(); },false],
-    ["press","◎","Тиск",()=>{ showP=!showP; $("legend").hidden=!showP; buildBar(); },showP],
-    ["pause",paused?"▶":"❚❚",paused?"Далі":"Пауза",()=>{ paused=!paused; buildBar(); toast(paused?"Світ завмер":"Світ живе"); },false],
-    ["clear","↺","Очистити",clearAsk,false],
-    ["menu","⋯","Більше",()=>$("panel").classList.add("open"),false]
-  ];
-  for(const [id,icon,label,fn,on] of tools){ const b=document.createElement("button"); b.className="tool"+(on?" on":""); b.innerHTML=`<b>${icon}</b>${label}`; b.onclick=fn; bar.appendChild(b); }
-  bar.scrollLeft=keep;
-}
-let clearArmed=0;
-function clearAsk(){
-  if (Date.now()-clearArmed<2500){ T.fill(0); P.fill(0); clearArmed=0; toast("Чисто"); saveWorld(); return; }
-  clearArmed=Date.now(); toast("Торкніться ще раз, щоб очистити");
-}
-function toast(t){ const el=$("toast"); el.textContent=t; el.style.opacity=1; clearTimeout(toast.h); toast.h=setTimeout(()=>el.style.opacity=0,2200); }
-$("close").onclick=()=>$("panel").classList.remove("open");
-document.querySelectorAll(".scene").forEach(b=>b.onclick=()=>{ loadScene(b.dataset.scene); $("panel").classList.remove("open"); toast(b.querySelector("b").textContent); });
-
-function renderDiary(){
-  const log=(window.CHANGELOG||[]).slice().sort((a,b)=>b.day-a.day);
-  $("diary").innerHTML=log.map(e=>`<div class="entry"><span class="d">ДЕНЬ ${e.day} · ${e.date.split("-").reverse().join(".")}</span><b>${e.title}</b><p>${e.text}</p></div>`).join("");
-  if (log.length) $("dayline").textContent=`День ${log[0].day} · щоранку щось нове`;
-  const v=app?app.version():""; if (v) $("foot").textContent=`Версія ${v} · Лабораторія Claude`;
-  const seen=store.get("seenDay",0); if (log.length && log[0].day>seen){ store.set("seenDay",log[0].day); if (seen) setTimeout(()=>toast(`Нове: ${log[0].title}`),1200); }
-}
-
-/* ============ save / restore ============ */
-function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); }
-function unb64(s){ const b=atob(s), u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
-window.saveWorld=function(){ store.set("world",{w:GW,h:GH,t:b64(T)}); };
-function loadWorld(){
-  const w=store.get("world",null);
-  if (!w || w.w!==GW || w.h!==GH) return false;
-  try{ const t=unb64(w.t); for(let i=0;i<t.length;i++) if (t[i] && t[i]<N) put(i,t[i]); return true; }catch(e){ return false; }
-}
-
-/* ============ scenes ============ */
-function rect(x0,y0,x1,y1,t,fill=1){ for(let y=Math.max(0,y0);y<Math.min(GH,y1);y++) for(let x=Math.max(0,x0);x<Math.min(GW,x1);x++) if (rnd()<fill) put(y*GW+x,t); }
-function floor(h){ rect(0,GH-h,GW,GH,STONE); }
-function loadScene(name){
-  T.fill(0); P.fill(0); L.fill(0);
-  const cx=GW>>1, g=GH-Math.round(GH*.2);
-  if (name==="boiler"){
-    floor(Math.round(GH*.2));
-    const w=Math.round(GW*.22), h=Math.round(GH*.32), x0=cx-(w>>1), y0=g-h-10;
-    rect(x0-6,g-12,x0+w+6,g,STONE); rect(x0-3,g-10,x0+w+3,g,LAVA);                     // lava hearth
-    rect(x0,y0,x0+w,y0+h,METAL); rect(x0+3,y0,x0+w-3,y0+h-3,E);                           // open-top metal tank
-    rect(x0+3,y0+Math.round(h*.45),x0+w-3,y0+h-3,WATER);                                   // half full of water
-    rect(x0-1,y0-3,x0+w+1,y0,GLASS);                                                      // glass lid seals it
-    rect(x0-30,y0-14,x0-10,y0+h,SAND,.9); rect(x0+w+10,y0+h-16,x0+w+30,y0+h,SNOW,.6);
-  } else if (name==="fuse"){
-    floor(Math.round(GH*.2));
-    const x0=Math.round(GW*.12), x1=Math.round(GW*.62);
-    rect(x0,g-2,x1,g,POWDER);                                                              // the fuse
-    rect(x1,g-22,x1+22,g,POWDER);                                                          // the barrel
-    rect(x1+28,g-50,x1+34,g,STONE);                                                        // a wall
-    rect(x1+40,g-30,x1+80,g,SAND,.9);
-    rect(x0-4,g-8,x0,g,FIRE);                                                               // the spark
-  } else if (name==="oil"){
-    floor(Math.round(GH*.2));
-    const x0=Math.round(GW*.2), x1=Math.round(GW*.8);
-    rect(x0-3,g-40,x0,g,STONE); rect(x1,g-40,x1+3,g,STONE);
-    rect(x0,g-26,x1,g,WATER); rect(x0,g-34,x1,g-26,OIL);
-    rect(x0+10,g-60,x0+20,g-52,LAVA);
-  } else if (name==="acid"){
-    floor(Math.round(GH*.2));
-    const x0=Math.round(GW*.25), w=34;
-    rect(x0,g-44,x0+3,g,GLASS); rect(x0+w,g-44,x0+w+3,g,GLASS); rect(x0,g-3,x0+w+3,g,GLASS);
-    rect(x0+3,g-30,x0+w,g-3,ACID);
-    const x1=Math.round(GW*.6);
-    rect(x1,g-44,x1+3,g,STONE); rect(x1+w,g-44,x1+w+3,g,STONE); rect(x1,g-3,x1+w+3,g,STONE);
-    rect(x1+3,g-30,x1+w,g-3,ACID);
-    rect(x1+60,g-30,x1+66,g,METAL); rect(x1+56,g-50,x1+70,g-40,ACID);
-  } else demo();
-  saveWorld();
-}
-function demo(){
-  const ground=x=>Math.round(GH*(.74 - .07*Math.sin(x/GW*Math.PI*2.2+.6) - .03*Math.sin(x/GW*17)));
-  for(let x=0;x<GW;x++){ for(let y=ground(x);y<GH;y++) put(y*GW+x,STONE); }
-  const pool=Math.round(GW*.62);
-  for(let x=pool-34;x<pool+34;x++){ const g=ground(x); for(let y=g-14;y<g+10;y++) if(y>0&&y<GH){ const i=y*GW+x; if (y<g) T[i]=E; } }
-  for(let x=pool-32;x<pool+32;x++) for(let y=ground(pool)-4;y<ground(pool)+9;y++) if (T[y*GW+x]===E && rnd()<.9) put(y*GW+x,WATER);
-  for(let x=Math.round(GW*.18);x<GW*.3;x++){ const h=Math.round(16-Math.abs(x-GW*.24)*.9); for(let y=ground(x)-h;y<ground(x);y++) if(y>0) put(y*GW+x,SAND); }
-  for(const fx of [.4,.45,.85,.9]){ const cx=Math.round(GW*fx), g=ground(cx);
-    for(let y=g-10;y<g;y++) put(y*GW+cx,PLANT);
-    for(let k=0;k<40;k++){ const a=rnd()*6.3, r=rnd()*5; const x=Math.round(cx+Math.cos(a)*r), y=Math.round(g-11+Math.sin(a)*r*.8); if(x>=0&&x<GW&&y>0&&T[y*GW+x]===E) put(y*GW+x,PLANT); } }
-}
-
-/* ============ start ============ */
-const Q=new URLSearchParams(location.search);
-function start(){ makeWorld(); if (Q.get("scene")) loadScene(Q.get("scene")); else if (!loadWorld()) demo(); }
-let resizeT; addEventListener("resize",()=>{ clearTimeout(resizeT); resizeT=setTimeout(()=>{ saveWorld(); start(); },300); });
-document.addEventListener("visibilitychange",()=>{ if (document.hidden) saveWorld(); });
-setInterval(saveWorld, 15000);
-start(); if (Q.get("p")){ showP=true; $("legend").hidden=false; } buildBar(); renderDiary();
-function loop(){
-  requestAnimationFrame(loop);
-  for (const p of pointers.values()) stamp(p[0],p[1],current);
-  if (!paused) step();
-  render();
-}
-requestAnimationFrame(loop);
-</script>
+<script src="sim.js"></script>
+<script src="ui.js"></script>
 </body>
 </html>
