@@ -18,17 +18,18 @@ jobs:
         with:
           gradle-version: '8.7'
       - run: gradle assembleDebug --no-daemon
-      - run: cp app/build/outputs/apk/debug/app-debug.apk Nebo.apk && cp sunrise/build/outputs/apk/debug/sunrise-debug.apk Svitanok.apk
+      - run: cp app/build/outputs/apk/debug/app-debug.apk Nebo.apk && cp sunrise/build/outputs/apk/debug/sunrise-debug.apk Svitanok.apk && cp vikno/build/outputs/apk/debug/vikno-debug.apk Vikno.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Nebo-apk
           path: |
             Nebo.apk
             Svitanok.apk
+            Vikno.apk
       - name: Опублікувати за постійним посиланням
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v1.${{ github.run_number }}" Nebo.apk Svitanok.apk \
+          gh release create "v1.${{ github.run_number }}" Nebo.apk Svitanok.apk Vikno.apk \
             --title "Небо 1.${{ github.run_number }}" \
-            --notes "Nebo.apk: «Небо». Svitanok.apk: світанковий будильник. Встановлюйте поверх попередніх версій." --latest
+            --notes "Nebo.apk: «Небо». Svitanok.apk: світанковий будильник. Vikno.apk: «Вікно», живий пейзаж, що щоранку покращується. Встановлюйте поверх попередніх версій." --latest

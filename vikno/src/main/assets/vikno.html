@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Вікно</title>
+<style>
+/* Вікно: full-screen canvas world; a quiet clock in the corner; a side panel on tap. */
+:root{
+  --fg:#f6efe4; --dim:rgba(246,239,228,.68); --panel:rgba(12,16,30,.86); --line:rgba(255,255,255,.12); --warm:#ffc27a;
+  --f:"Golos Text","Roboto",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:var(--fg);font:15px/1.45 var(--f);-webkit-tap-highlight-color:transparent;user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.shade{position:fixed;left:0;bottom:0;width:70vw;height:42vh;pointer-events:none;background:radial-gradient(ellipse at 0% 100%,rgba(0,0,0,.34),rgba(0,0,0,0) 70%);transition:opacity .8s}
+.hud{position:fixed;left:max(28px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));pointer-events:none;text-shadow:0 2px 18px rgba(0,0,0,.45);transition:opacity .8s}
+.clock{font:200 min(16vw,128px)/0.95 var(--f);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.clock small{font-size:.38em;font-weight:300;opacity:.7;margin-left:.08em}
+.line{font-size:min(3.4vw,19px);color:var(--dim);margin-top:8px;font-weight:400}
+.toast{position:fixed;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);padding:8px 14px;border-radius:999px;font-size:13px;color:var(--dim);transition:opacity .6s;pointer-events:none}
+.panel{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .35s ease;display:flex;flex-direction:column;padding:max(20px,env(safe-area-inset-top)) 20px 20px}
+.panel.open{transform:none}
+.panel h1{font:600 24px/1.1 var(--f);margin:0}
+.panel .sub{color:var(--dim);font-size:13px;margin-top:4px}
+.panel h2{font:600 11px/1 var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:22px 0 10px}
+.rows{display:flex;flex-direction:column;gap:2px}
+.opt{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.opt span{display:flex;flex-direction:column}
+.opt span em{font-style:normal;color:var(--dim);font-size:12.5px}
+.switch{position:relative;width:48px;height:28px;flex:none}
+.switch input{opacity:0;position:absolute;inset:0;margin:0;cursor:pointer}
+.switch i{position:absolute;inset:0;border-radius:14px;background:#2b3150;pointer-events:none;transition:background .2s}
+.switch i::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked+i{background:var(--warm)}
+.switch input:checked+i::after{transform:translateX(20px)}
+.switch input:focus-visible+i{outline:2px solid var(--warm);outline-offset:2px}
+.btn{font:600 14px var(--f);color:#2a1606;background:var(--warm);border:0;border-radius:12px;padding:12px 14px;cursor:pointer;width:100%}
+.btn.ghost{background:none;color:var(--fg);border:1px solid var(--line)}
+.btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.diary{overflow:auto;flex:1;margin-right:-8px;padding-right:8px}
+.entry{padding:12px 0;border-bottom:1px solid var(--line)}
+.entry b{display:block;font-weight:600}
+.entry .d{color:var(--warm);font-size:12px;font-weight:600;letter-spacing:.04em}
+.entry p{margin:6px 0 0;color:var(--dim);font-size:13.5px}
+.close{position:absolute;top:max(14px,env(safe-area-inset-top));right:12px;background:none;border:0;color:var(--dim);font-size:26px;cursor:pointer;padding:6px 10px;line-height:1}
+.foot{color:var(--dim);font-size:11.5px;margin-top:12px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="shade" id="shade"></div>
+<div class="hud" id="hud">
+  <div class="clock" id="clock">--:--</div>
+  <div class="line" id="line">Вікно відчиняється…</div>
+</div>
+<div class="toast" id="toast" style="opacity:0"></div>
+
+<aside class="panel" id="panel" aria-label="Меню">
+  <button class="close" id="close" aria-label="Закрити">×</button>
+  <h1>Вікно</h1>
+  <div class="sub" id="dayline">Живий пейзаж, що росте щодня</div>
+
+  <h2>Подивитись</h2>
+  <div class="btns">
+    <button class="btn" id="lapse">Таймлапс доби</button>
+    <button class="btn ghost" id="now">Повернути «зараз»</button>
+  </div>
+
+  <h2>Налаштування</h2>
+  <div class="rows">
+    <label class="opt"><span>Годинник<em>Час і погода в кутку</em></span><span class="switch"><input type="checkbox" id="optClock"><i></i></span></label>
+    <label class="opt"><span>Не гасити екран<em>Вікно світиться, поки відкрите</em></span><span class="switch"><input type="checkbox" id="optAwake"><i></i></span></label>
+    <label class="opt"><span>Приглушувати вночі<em>Темніший екран після заходу</em></span><span class="switch"><input type="checkbox" id="optDim"><i></i></span></label>
+  </div>
+
+  <h2>Щоденник змін</h2>
+  <div class="diary" id="diary"></div>
+  <div class="foot" id="foot">Погода: Open-Meteo</div>
+</aside>
+
+<script src="changelog.js"></script>
+<script>
+"use strict";
+/* ============ settings & helpers ============ */
+const LAT = 49.8397, LON = 24.0297;              // Львів
+const Q = new URLSearchParams(location.search);   // ?h=21.5&m=7&wx=snow&speed=600 for previews
+const app = window.Vikno || null;
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("vikno."+k); return v===null? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("vikno."+k, JSON.stringify(v)); }catch(e){} }
+};
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t);};
+const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const mix=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+const rgb=(c,a=1)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+function rng(seed){ let s=seed>>>0||1; return ()=>{ s^=s<<13; s^=s>>>17; s^=s<<5; return ((s>>>0)%100000)/100000; }; }
+let seed = store.get("seed", 0); if(!seed){ seed = (Math.random()*1e9)|0; store.set("seed", seed); }
+const firstRun = store.get("born", 0) || (store.set("born", Date.now()), Date.now());
+
+/* ============ time (real, or time-lapse) ============ */
+let lapse = null; // {from: realMs, simFrom: simMs, rate}
+if (Q.get("speed")) lapse = {from: Date.now(), simFrom: Date.now(), rate: +Q.get("speed")};
+function now(){
+  let t = Date.now();
+  if (lapse) t = lapse.simFrom + (Date.now()-lapse.from)*lapse.rate;
+  const d = new Date(t);
+  if (Q.get("h")) { const h=+Q.get("h"); d.setHours(Math.floor(h), Math.round((h%1)*60), 0, 0); }
+  if (Q.get("m")) d.setMonth(+Q.get("m")-1, 15);
+  return d;
+}
+
+/* ============ astronomy ============ */
+function sunPos(date){ // NOAA approximation → elevation & azimuth in degrees
+  const rad=Math.PI/180, jd=date.getTime()/86400000+2440587.5, n=jd-2451545.0;
+  const L=(280.46+0.9856474*n)%360, g=(357.528+0.9856003*n)%360*rad;
+  const lam=(L+1.915*Math.sin(g)+0.02*Math.sin(2*g))*rad, eps=(23.439-0.0000004*n)*rad;
+  const ra=Math.atan2(Math.cos(eps)*Math.sin(lam),Math.cos(lam)), dec=Math.asin(Math.sin(eps)*Math.sin(lam));
+  const gmst=(18.697374558+24.06570982441908*n)%24, lst=(gmst*15+LON)*rad, ha=lst-ra;
+  const la=LAT*rad;
+  const el=Math.asin(Math.sin(la)*Math.sin(dec)+Math.cos(la)*Math.cos(dec)*Math.cos(ha));
+  const az=Math.atan2(-Math.sin(ha), Math.tan(dec)*Math.cos(la)-Math.sin(la)*Math.cos(ha));
+  return {el:el/rad, az:(az/rad+360)%360};
+}
+function moonPhase(date){ // 0 new → .5 full → 1 new
+  const syn=29.530588853, ref=Date.UTC(2000,0,6,18,14);
+  return (((date.getTime()-ref)/86400000)%syn+syn)%syn/syn;
+}
+function moonPos(date){ // the moon trails the sun by its phase (good enough for a window)
+  return sunPos(new Date(date.getTime()-moonPhase(date)*24.84*3600000));
+}
+
+/* ============ weather ============ */
+const WX = {
+  0:"ясно",1:"переважно ясно",2:"мінлива хмарність",3:"хмарно",45:"туман",48:"паморозь і туман",
+  51:"мряка",53:"мряка",55:"густа мряка",56:"крижана мряка",57:"крижана мряка",
+  61:"невеликий дощ",63:"дощ",65:"злива",66:"крижаний дощ",67:"крижаний дощ",
+  71:"невеликий сніг",73:"сніг",75:"снігопад",77:"снігова крупа",
+  80:"короткий дощ",81:"зливи",82:"сильні зливи",85:"снігові заряди",86:"сильні снігові заряди",
+  95:"гроза",96:"гроза з градом",99:"гроза з градом"
+};
+let weather = store.get("weather", null);
+const PRESETS = {
+  clear:{code:0,cloud:5,wind:6,temp:18}, cloudy:{code:3,cloud:95,wind:14,temp:9},
+  rain:{code:63,cloud:100,wind:18,temp:8,rain:2}, snow:{code:73,cloud:100,wind:8,temp:-3,snow:1.5},
+  fog:{code:45,cloud:80,wind:2,temp:4}, storm:{code:95,cloud:100,wind:30,temp:16,rain:4}
+};
+if (Q.get("wx") && PRESETS[Q.get("wx")]) weather = Object.assign({t:Date.now()}, PRESETS[Q.get("wx")]);
+async function loadWeather(){
+  if (Q.get("wx")) return;
+  try{
+    const u=`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m,rain,showers,snowfall&timezone=auto`;
+    const r=await fetch(u); const j=await r.json(); const c=j.current;
+    weather={t:Date.now(),code:c.weather_code,cloud:c.cloud_cover,wind:c.wind_speed_10m,temp:c.temperature_2m,rain:(c.rain||0)+(c.showers||0),snow:c.snowfall||0};
+    store.set("weather", weather);
+  }catch(e){ /* offline: keep the last known sky */ }
+}
+function wx(){
+  const w = weather || {code:2,cloud:40,wind:8,temp:10};
+  const c = w.code;
+  const rainy = [51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99].includes(c);
+  const snowy = [71,73,75,77,85,86].includes(c) || (rainy && w.temp<=0);
+  const intensity = c>=95?1 : [65,67,82,75,86].includes(c)?.9 : [63,73,81,85].includes(c)?.6 : [61,71,80,53,55].includes(c)?.35 : .2;
+  return {
+    cloud: clamp((w.cloud ?? 40)/100), wind: clamp((w.wind ?? 8)/40), temp: w.temp ?? 10,
+    rain: rainy && !snowy ? intensity : 0, snow: snowy ? intensity : 0,
+    fog: (c===45||c===48) ? 1 : 0, storm: c>=95, code:c
+  };
+}
+
+/* ============ seasons ============ */
+// ground palettes per month: [far, mid, near, front]
+const SEASON = {
+  winter:["#8d99ad","#b9c3cf","#dfe6ee","#f1f5f9"],
+  spring:["#6f8a8f","#6e9a63","#86b35a","#5d8a3f"],
+  summer:["#5e7d86","#4f7f4a","#5d913f","#3f6e2c"],
+  autumn:["#6f7480","#8a7a4f","#b0763a","#7a5130"],
+  late:  ["#6b7280","#706a58","#80684a","#54442f"]
+};
+function seasonOf(d, W){
+  const m=d.getMonth()+1;
+  if (W.snow>0 || W.temp < -2 || m===1 || m===2 || m===12) return (W.snow>0||W.temp<0||m===1||m===2)?"winter":"late";
+  if (m>=3&&m<=5) return "spring"; if (m>=6&&m<=8) return "summer"; if (m===9||m===10) return "autumn"; return "late";
+}
+
+/* ============ sky colours by sun elevation ============ */
+const SKY = [ // [elevation, top, horizon]
+  [-18,"#03050f","#0b1028"],[-10,"#070b22","#1a2147"],[-5,"#16204a","#5b3f63"],
+  [-1,"#2a3a76","#e2875f"],[3,"#4766a8","#f4b06b"],[10,"#4f86cf","#bcd7ef"],[30,"#3a78d1","#a8d0f2"]
+];
+function skyColors(el, W){
+  let i=0; while(i<SKY.length-1 && el>SKY[i+1][0]) i++;
+  const a=SKY[i], b=SKY[Math.min(i+1,SKY.length-1)], t=a===b?0:clamp((el-a[0])/(b[0]-a[0]));
+  let top=mix(hex(a[1]),hex(b[1]),t), hor=mix(hex(a[2]),hex(b[2]),t);
+  const grey=W.cloud*0.65 + W.fog*0.3, day=smooth(-6,8,el);
+  const g=mix([24,26,34],[150,158,170],day);
+  top=mix(top,mix(g,[90,98,112],.3),grey*0.85); hor=mix(hor,g,grey*0.8);
+  if (W.storm){ top=mix(top,[30,32,40],.5); hor=mix(hor,[60,62,72],.5); }
+  return {top, hor, day, gold: smooth(-6,0,el)*(1-smooth(4,14,el))};
+}
+
+/* ============ canvas & world ============ */
+const cv=document.getElementById("c"), ctx=cv.getContext("2d");
+let W=0,H=0,DPR=1, world=null, terrain=null, terrainKey="";
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,1.5);
+  W=innerWidth; H=innerHeight; cv.width=W*DPR|0; cv.height=H*DPR|0; ctx.setTransform(DPR,0,0,DPR,0,0);
+  build(); terrainKey="";
+}
+function ridge(r, n, base, amp, rough){ // smooth random ridge: array of y values across width
+  const pts=[]; let ph=[r()*6,r()*6,r()*6];
+  for(let i=0;i<=n;i++){ const x=i/n;
+    pts.push(base + amp*(0.55*Math.sin(x*3.1+ph[0]) + 0.3*Math.sin(x*7.3+ph[1])*rough + 0.15*Math.sin(x*17+ph[2])*rough)); }
+  return pts;
+}
+function build(){
+  const r=rng(seed);
+  const layers=[
+    {base:.56,amp:.07,rough:1.0,haze:.62}, {base:.64,amp:.05,rough:.8,haze:.42},
+    {base:.72,amp:.04,rough:.6,haze:.2},   {base:.84,amp:.03,rough:.4,haze:0}
+  ].map(L=>({...L, ys:ridge(r,80,L.base,L.amp,L.rough)}));
+  const stars=Array.from({length:260},()=>({x:r(),y:r()*.62,s:r()<.08?1.6:r()*1.1+.3,p:r()*6}));
+  const trees=[]; const tr=rng(seed+7);
+  for(let i=0;i<16;i++) trees.push({x:tr(), h:.07+tr()*.07, kind: tr()<.45?"pine":"leaf", p:tr()*6, layer: tr()<.55?3:2});
+  trees.sort((a,b)=>a.layer-b.layer);
+  const houseX = .28 + r()*.44;
+  const clouds=Array.from({length:14},()=>{ const c={x:r()*1.4-.2,y:.06+r()*.34,s:.6+r()*.9,blobs:[]};
+    const n=5+(r()*4|0); for(let k=0;k<n;k++) c.blobs.push({dx:(k-n/2)*.035*c.s+(r()-.5)*.02,dy:-(r()*.025)*c.s,r:(.025+r()*.03)*c.s}); return c; });
+  world={layers,stars,trees,houseX,clouds,drops:[],smoke:[],flies:Array.from({length:22},()=>({x:r(),y:.72+r()*.18,p:r()*6})),
+         birds:null, shoot:null, flash:0};
+}
+function yAt(L, x){ const n=L.ys.length-1, f=clamp(x)*n, i=Math.min(n-1,f|0), t=f-i; return lerp(L.ys[i],L.ys[i+1],t)*H; }
+
+/* static terrain is re-painted once a minute (light changes slowly) */
+function paintTerrain(S, season, W_){
+  const key=[W,H,season,Math.round(S.day*40),Math.round(S.gold*20),Math.round(W_.cloud*10),W_.fog].join();
+  if (key===terrainKey) return; terrainKey=key;
+  terrain = terrain || document.createElement("canvas");
+  terrain.width=W*DPR|0; terrain.height=H*DPR|0;
+  const g=terrain.getContext("2d"); g.setTransform(DPR,0,0,DPR,0,0); g.clearRect(0,0,W,H);
+  const pal=SEASON[season].map(hex), night=1-S.day;
+  world.layers.forEach((L,i)=>{
+    let c=mix(pal[i],S.hor,L.haze*(.6+.4*S.day));
+    c=mix(c,[10,14,30],night*(.78-i*.06));
+    c=mix(c,[255,170,110],S.gold*.12*(1-L.haze));
+    if (W_.fog) c=mix(c,S.hor,.35+L.haze*.4);
+    g.fillStyle=rgb(c); g.beginPath(); g.moveTo(0,H);
+    for(let k=0;k<L.ys.length;k++) g.lineTo(k/(L.ys.length-1)*W, L.ys[k]*H);
+    g.lineTo(W,H); g.closePath(); g.fill();
+    // soft highlight along the ridge
+    const grd=g.createLinearGradient(0,L.base*H-L.amp*H,0,L.base*H+40);
+    grd.addColorStop(0,rgb(mix(c,[255,240,220],.06*S.day),1)); grd.addColorStop(1,rgb(c,0));
+    g.fillStyle=grd; g.fill();
+    if (i===2) paintHouse(g, L, c, S);
+  });
+}
+function paintHouse(g, L, ground, S){
+  const x=world.houseX*W, y=yAt(L, world.houseX)+3, s=Math.max(26,Math.min(W,H)*.055);
+  const wall=mix(mix([168,124,92],ground,.35),[12,14,28],(1-S.day)*.7), roof=mix(mix([92,52,44],ground,.3),[8,10,22],(1-S.day)*.7);
+  g.fillStyle=rgb(wall); g.fillRect(x-s*.6,y-s*.75,s*1.2,s*.75);
+  g.fillStyle=rgb(roof); g.beginPath(); g.moveTo(x-s*.78,y-s*.72); g.lineTo(x,y-s*1.25); g.lineTo(x+s*.78,y-s*.72); g.closePath(); g.fill();
+  g.fillRect(x+s*.28,y-s*1.18,s*.14,s*.3); // chimney
+  world.house={x,y,s,chimney:[x+s*.35,y-s*1.2]};
+}
+
+/* ============ drawing per frame ============ */
+let last=0, lastHud=-1e9, tsec=0, dimmed=false;
+function frame(ms){
+  requestAnimationFrame(frame);
+  if (ms-last < 33) return;  // ~30 fps is plenty for a window
+  const dt=Math.min(.1,(ms-last)/1000); last=ms; tsec+=dt;
+  const d=now(), W_=wx(), sp=sunPos(d), mp=moonPos(d), S=skyColors(sp.el,W_), season=seasonOf(d,W_);
+  const night=1-S.day;
+
+  // sky
+  const g=ctx.createLinearGradient(0,0,0,H*.75);
+  g.addColorStop(0,rgb(S.top)); g.addColorStop(1,rgb(S.hor));
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  // stars
+  const starA=smooth(-4,-12,sp.el)*(1-W_.cloud*.9)*(1-W_.fog);
+  if (starA>0.01){ for(const s of world.stars){ const tw=.6+.4*Math.sin(tsec*1.3+s.p*7);
+    ctx.fillStyle=`rgba(255,250,235,${Math.min(1,starA*tw*(s.s>1.2?1.2:.9))})`; ctx.fillRect(s.x*W,s.y*H,s.s*1.3,s.s*1.3); }
+    shootingStar(starA,dt);
+  }
+
+  // sun & moon positions: azimuth 90..270 maps across the window (we look south)
+  const sky=(p)=>({x:W*clamp((p.az-90)/180,-.2,1.2), y:H*(.62-p.el/70)});
+  if (sp.el>-8){ const p=sky(sp), a=(1-W_.cloud*.85)*(1-W_.fog*.7);
+    const r=Math.min(W,H)*.045, glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*7);
+    const sc=mix([255,250,230],[255,170,90],S.gold);
+    glow.addColorStop(0,rgb(sc,.55*a)); glow.addColorStop(1,rgb(sc,0));
+    ctx.fillStyle=glow; ctx.fillRect(p.x-r*7,p.y-r*7,r*14,r*14);
+    ctx.fillStyle=rgb(mix(sc,[255,255,255],.4),Math.max(.15,a)); ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fill();
+  }
+  if (mp.el>-3){ drawMoon(sky(mp), moonPhase(d), (1-W_.cloud*.8)*(.35+.65*night)); }
+
+  // clouds
+  drawClouds(W_, S, dt);
+
+  // terrain + house
+  paintTerrain(S, season, W_);
+  ctx.drawImage(terrain,0,0,W,H);
+  houseLife(d, S, W_, dt);
+
+  // trees sway in the wind
+  drawTrees(S, season, W_);
+
+  // living things
+  if (season==="summer" && night>.7) fireflies();
+  if (S.day>.7 && !W_.rain && !W_.snow) birds(dt);
+
+  // weather in front
+  precip(W_, S, dt);
+  if (W_.fog) fog(S);
+  if (W_.storm) lightning(dt);
+
+  // HUD
+  if (ms-lastHud>500){ lastHud=ms; hud(d, W_); }
+  nightDim(night);
+}
+
+function drawMoon(p, ph, a){
+  if (a<.02) return; const r=Math.min(W,H)*.032;
+  const glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*5);
+  glow.addColorStop(0,`rgba(220,230,255,${.22*a})`); glow.addColorStop(1,"rgba(220,230,255,0)");
+  ctx.fillStyle=glow; ctx.fillRect(p.x-r*5,p.y-r*5,r*10,r*10);
+  ctx.save(); ctx.translate(p.x,p.y);
+  const night=1-smooth(-6,8,sunPos(now()).el);
+  ctx.fillStyle=`rgba(40,46,70,${.55*a*night})`; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+  // lit half (right while waxing), then a terminator ellipse: dark for a crescent, lit for a gibbous moon
+  const k=Math.cos(ph*2*Math.PI), waxing=ph<.5, lit=`rgba(244,240,222,${a})`, dark=`rgba(40,46,70,${a*night})`;
+  ctx.fillStyle=lit; ctx.beginPath(); ctx.arc(0,0,r,-Math.PI/2,Math.PI/2,!waxing); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=k>0?dark:lit; ctx.beginPath(); ctx.ellipse(0,0,Math.abs(k)*r+.5,r+.5,0,0,7); ctx.fill();
+  ctx.restore();
+}
+
+function drawClouds(W_, S, dt){
+  const n=Math.round(W_.cloud*world.clouds.length + (W_.rain||W_.snow?3:0));
+  const lit=mix([40,44,64],[250,250,252],S.day), warm=mix(lit,[255,186,140],S.gold*.6);
+  const col=mix(warm,[110,116,128],W_.cloud>.85?.45:0), a=.55+W_.cloud*.35;
+  for(let i=0;i<Math.min(n,world.clouds.length);i++){ const c=world.clouds[i];
+    c.x+=(.004+W_.wind*.03)*dt*(.6+c.s*.4); if (c.x>1.25) c.x=-.25;
+    for(const b of c.blobs){ const x=(c.x+b.dx)*W, y=(c.y+b.dy)*H, r=b.r*Math.min(W,H)*1.8;
+      const gr=ctx.createRadialGradient(x,y,0,x,y,r);
+      gr.addColorStop(0,rgb(col,a)); gr.addColorStop(.6,rgb(col,a*.6)); gr.addColorStop(1,rgb(col,0));
+      ctx.fillStyle=gr; ctx.fillRect(x-r,y-r,r*2,r*2); }
+  }
+}
+
+function drawTrees(S, season, W_){
+  const night=1-S.day, sway=W_.wind*.9;
+  for(const t of world.trees){
+    const L=world.layers[t.layer], x=t.x*W, y=yAt(L,t.x)+4, h=t.h*H*(t.layer===3?1:.7);
+    const bend=Math.sin(tsec*(1.2+W_.wind*2)+t.p)*sway*h*.06 + sway*h*.05;
+    const dark=(c)=>mix(mix(c,[10,14,28],night*.8),S.hor,t.layer===2?.15:0);
+    ctx.strokeStyle=rgb(dark([70,48,34])); ctx.lineWidth=Math.max(2,h*.06); ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.quadraticCurveTo(x,y-h*.5,x+bend*.6,y-h*.85); ctx.stroke();
+    if (t.kind==="pine"){
+      const c=dark(season==="winter"?[52,78,70]:[38,72,52]);
+      ctx.fillStyle=rgb(c);
+      for(let k=0;k<3;k++){ const ty=y-h*(.25+k*.25), w=h*(.32-k*.08), off=bend*(.3+k*.25);
+        ctx.beginPath(); ctx.moveTo(x-w+off*.5,ty+h*.12); ctx.lineTo(x+off,ty-h*.28); ctx.lineTo(x+w+off*.5,ty+h*.12); ctx.closePath(); ctx.fill(); }
+      if (season==="winter"){ ctx.fillStyle=rgb(mix([240,244,250],[30,36,56],night*.75),.9);
+        for(let k=0;k<3;k++){ const ty=y-h*(.25+k*.25), off=bend*(.3+k*.25); ctx.beginPath(); ctx.moveTo(x+off,ty-h*.28); ctx.lineTo(x+off-h*.08,ty-h*.12); ctx.lineTo(x+off+h*.08,ty-h*.12); ctx.closePath(); ctx.fill(); } }
+    } else {
+      const leaves={spring:[120,170,80],summer:[62,112,52],autumn:[214,132,48],late:null,winter:null}[season];
+      if (leaves){ ctx.fillStyle=rgb(dark(t.p>3&&season==="autumn"?[190,70,40]:leaves));
+        for(let k=0;k<4;k++){ ctx.beginPath(); ctx.arc(x+bend+Math.cos(k*1.7+t.p)*h*.13, y-h*.82+Math.sin(k*2.3+t.p)*h*.08, h*.17,0,7); ctx.fill(); }
+      } else { // bare branches
+        ctx.lineWidth=Math.max(1,h*.02);
+        for(let k=0;k<5;k++){ const by=y-h*(.45+k*.09), dir=k%2?1:-1;
+          ctx.beginPath(); ctx.moveTo(x+bend*(.4+k*.1),by); ctx.lineTo(x+bend*(.6+k*.1)+dir*h*(.18-k*.02),by-h*.12); ctx.stroke(); }
+      }
+    }
+  }
+}
+
+function houseLife(d, S, W_, dt){
+  const H_=world.house; if (!H_) return;
+  const hr=d.getHours()+d.getMinutes()/60;
+  const home = (S.day<.6) && !(hr>=0.5 && hr<6);           // lights on at dusk, off after half past midnight
+  const ws=H_.s*.22;
+  ctx.fillStyle = home ? "rgba(255,196,110,0.95)" : rgb(mix([60,70,90],[20,24,40],1-S.day),.9);
+  ctx.fillRect(H_.x-H_.s*.32,H_.y-H_.s*.52,ws,ws); ctx.fillRect(H_.x+H_.s*.1,H_.y-H_.s*.52,ws,ws);
+  if (home){ const gl=ctx.createRadialGradient(H_.x,H_.y-H_.s*.4,0,H_.x,H_.y-H_.s*.4,H_.s*1.4);
+    gl.addColorStop(0,"rgba(255,190,100,.22)"); gl.addColorStop(1,"rgba(255,190,100,0)"); ctx.fillStyle=gl; ctx.fillRect(H_.x-H_.s*1.4,H_.y-H_.s*1.8,H_.s*2.8,H_.s*2.8); }
+  // chimney smoke when it is cold
+  if (W_.temp<10){
+    world.smokeT=(world.smokeT||0)+dt; if (world.smokeT>.35){ world.smokeT=0; world.smoke.push({x:H_.chimney[0],y:H_.chimney[1],a:.55,r:H_.s*.07,j:Math.random()*6}); }
+    const c=mix([200,200,205],[70,74,90],1-S.day);
+    for(const p of world.smoke){ p.y-=dt*H_.s*.45; p.x+=dt*H_.s*(.15+W_.wind*1.6)+Math.sin(tsec*1.5+p.j)*.3; p.r+=dt*H_.s*.16; p.a-=dt*.09;
+      ctx.fillStyle=rgb(c,Math.max(0,p.a)*.35); ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+    world.smoke=world.smoke.filter(p=>p.a>0);
+  }
+}
+
+function precip(W_, S, dt){
+  const want = Math.round((W_.rain*420)+(W_.snow*300));
+  while (world.drops.length<want) world.drops.push({x:Math.random()*W*1.2-W*.1,y:Math.random()*H,v:.7+Math.random()*.6,p:Math.random()*6});
+  if (world.drops.length>want) world.drops.length=want;
+  if (!want) return;
+  const wind=W_.wind*(W_.snow?60:240);
+  if (W_.rain){ ctx.strokeStyle=rgb(mix([170,185,205],[80,90,120],1-S.day),.55); ctx.lineWidth=1; ctx.beginPath();
+    for(const d of world.drops){ d.y+=dt*H*1.6*d.v; d.x+=dt*wind; if(d.y>H){d.y=-20;d.x=Math.random()*W*1.2-W*.1;}
+      ctx.moveTo(d.x,d.y); ctx.lineTo(d.x-wind*.03,d.y-16*d.v); } ctx.stroke(); }
+  else { ctx.fillStyle=rgb(mix([255,255,255],[150,160,190],1-S.day),.85);
+    for(const d of world.drops){ d.y+=dt*H*.12*d.v; d.x+=dt*(wind+Math.sin(tsec+d.p)*30); if(d.y>H){d.y=-5;d.x=Math.random()*W*1.2-W*.1;}
+      ctx.beginPath(); ctx.arc(d.x,d.y,1.2+d.v*1.4,0,7); ctx.fill(); } }
+}
+function fog(S){
+  for(let i=0;i<3;i++){ const y=H*(.55+i*.13)+Math.sin(tsec*.1+i)*8, g=ctx.createLinearGradient(0,y-H*.12,0,y+H*.12);
+    g.addColorStop(0,rgb(S.hor,0)); g.addColorStop(.5,rgb(mix(S.hor,[200,205,210],.3),.45)); g.addColorStop(1,rgb(S.hor,0));
+    ctx.fillStyle=g; ctx.fillRect(0,y-H*.12,W,H*.24); }
+}
+function lightning(dt){
+  world.flash=Math.max(0,world.flash-dt*3);
+  if (world.flash<=0 && Math.random()<dt*.08) world.flash=1;
+  if (world.flash>0){ ctx.fillStyle=`rgba(230,235,255,${world.flash*(.35+.35*Math.sin(world.flash*40))})`; ctx.fillRect(0,0,W,H); }
+}
+function fireflies(){
+  for(const f of world.flies){ const x=(f.x+Math.sin(tsec*.3+f.p)*.02)*W, y=(f.y+Math.cos(tsec*.4+f.p)*.015)*H, a=.5+.5*Math.sin(tsec*2+f.p*3);
+    ctx.fillStyle=`rgba(220,255,140,${a})`; ctx.beginPath(); ctx.arc(x,y,1.8,0,7); ctx.fill(); }
+}
+function birds(dt){
+  if (!world.birds && Math.random()<dt*.02) world.birds={x:-.1,y:.15+Math.random()*.2,n:3+(Math.random()*5|0),v:.03+Math.random()*.02};
+  const b=world.birds; if(!b) return; b.x+=b.v*dt; if (b.x>1.15){ world.birds=null; return; }
+  ctx.strokeStyle="rgba(30,34,44,.7)"; ctx.lineWidth=1.4;
+  for(let i=0;i<b.n;i++){ const x=(b.x-Math.abs(i-b.n/2)*.012)*W, y=(b.y+(i-b.n/2)*.01)*H, f=Math.sin(tsec*9+i)*4;
+    ctx.beginPath(); ctx.moveTo(x-6,y-f); ctx.quadraticCurveTo(x-2,y-2,x,y); ctx.quadraticCurveTo(x+2,y-2,x+6,y-f); ctx.stroke(); }
+}
+function shootingStar(a,dt){
+  if (!world.shoot && Math.random()<dt*.012) world.shoot={x:Math.random()*.7+.1,y:Math.random()*.25,t:0};
+  const s=world.shoot; if(!s) return; s.t+=dt*1.4; if (s.t>1){ world.shoot=null; return; }
+  const x=(s.x+s.t*.18)*W, y=(s.y+s.t*.09)*H, g=ctx.createLinearGradient(x,y,x-60,y-30);
+  g.addColorStop(0,`rgba(255,255,255,${a*(1-s.t)})`); g.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.strokeStyle=g; ctx.lineWidth=1.6; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-60,y-30); ctx.stroke();
+}
+
+/* ============ HUD, panel, settings ============ */
+const $=id=>document.getElementById(id);
+const DOW=["неділя","понеділок","вівторок","середа","четвер","пʼятниця","субота"];
+const MON=["січня","лютого","березня","квітня","травня","червня","липня","серпня","вересня","жовтня","листопада","грудня"];
+function hud(d, W_){
+  const hh=String(d.getHours()).padStart(2,"0"), mm=String(d.getMinutes()).padStart(2,"0");
+  $("clock").innerHTML=`${hh}:${mm}`;
+  const w=weather; let line=`${DOW[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]}`;
+  if (w) line+=` · Львів ${w.temp>0?"+":""}${Math.round(w.temp)}° · ${WX[w.code]||""}`;
+  if (lapse) line+=" · таймлапс";
+  $("line").textContent=line;
+}
+function nightDim(night){
+  const want = settings.dim && night>.85 && !lapse;
+  if (want!==dimmed && app){ dimmed=want; app.brightness(want?0.08:-1); }
+}
+const settings = { clock: store.get("clock", true), dim: store.get("dim", true) };
+function applySettings(){ $("hud").style.opacity = $("shade").style.opacity = settings.clock?1:0; }
+function toast(t){ const el=$("toast"); el.textContent=t; el.style.opacity=1; clearTimeout(toast.h); toast.h=setTimeout(()=>el.style.opacity=0,2600); }
+
+function openPanel(){ $("panel").classList.add("open"); }
+function closePanel(){ $("panel").classList.remove("open"); }
+cv.addEventListener("click", openPanel);
+$("hud").addEventListener("click", openPanel);
+$("close").addEventListener("click", closePanel);
+$("optClock").checked=settings.clock; $("optDim").checked=settings.dim;
+$("optAwake").checked = app ? app.getAwake() : true;
+$("optClock").onchange=e=>{ settings.clock=e.target.checked; store.set("clock",settings.clock); applySettings(); };
+$("optDim").onchange=e=>{ settings.dim=e.target.checked; store.set("dim",settings.dim); if(!settings.dim&&app){app.brightness(-1);dimmed=false;} };
+$("optAwake").onchange=e=>{ if(app) app.setAwake(e.target.checked); };
+$("lapse").onclick=()=>{ const s=new Date(); s.setHours(0,0,0,0); lapse={from:Date.now(),simFrom:s.getTime(),rate:24*60}; closePanel(); toast("Доба за хвилину"); setTimeout(()=>{ if(lapse&&lapse.rate===1440){ lapse=null; toast("Знову зараз"); } },60000); };
+$("now").onclick=()=>{ lapse=null; closePanel(); toast("Знову зараз"); };
+
+function renderDiary(){
+  const log=(window.CHANGELOG||[]).slice().sort((a,b)=>b.day-a.day);
+  $("diary").innerHTML = log.map(e=>`<div class="entry"><span class="d">ДЕНЬ ${e.day} · ${e.date.split("-").reverse().join(".")}</span><b>${e.title}</b><p>${e.text}</p></div>`).join("");
+  const days=log.length?log[0].day:1;
+  $("dayline").textContent=`День ${days} експерименту · щоранку щось нове`;
+  const v = app ? app.version() : ""; if (v) $("foot").textContent=`Версія ${v} · Погода: Open-Meteo · Львів`;
+  // tell about a fresh entry once
+  const seen=store.get("seenDay",0); if (log.length && log[0].day>seen){ store.set("seenDay",log[0].day); if (seen) setTimeout(()=>toast(`Нове у вікні: ${log[0].title}`),1500); }
+}
+window.onAppResume = ()=>{ loadWeather(); };
+
+/* ============ start ============ */
+addEventListener("resize", resize);
+resize(); applySettings(); renderDiary(); loadWeather();
+setInterval(loadWeather, 15*60*1000);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
