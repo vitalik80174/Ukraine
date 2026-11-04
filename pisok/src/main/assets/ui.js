@@ -13,6 +13,7 @@ const pack=(r,g,b)=>(255<<24)|((b<0?0:b>255?255:b)<<16)|((g<0?0:g>255?255:g)<<8)
 const cv=$("c"), ctx=cv.getContext("2d");
 let off, offCtx, img, buf, eCv, eCtx, eImg, ebuf, bg;
 function makeWorld(){
+  undoStack=[];
   const w=innerWidth, h=innerHeight, cell=Math.max(3, Math.floor(Math.min(w,h)/150));
   makeArrays(Math.ceil(w/cell), Math.ceil(h/cell));
   cv.width=GW; cv.height=GH;
@@ -51,18 +52,22 @@ function render(){
           case PLANT:{ const stem=S[i]>=40&&S[i]<70; r=stem?70+s*10:c[0]+s*v; g=stem?130+s*10:c[1]+s*v; bl=stem?60:c[2]+s*v; break; }
           case CLONE:{ const f=.5+.5*Math.sin(tick*.1+x*.2); r=lerp(150,220,f); g=lerp(90,140,f); bl=lerp(190,240,f); break; }
           case VOID:{ const f=.5+.5*Math.sin(tick*.15+(x+y)*.4); r=10+f*30; g=6; bl=20+f*40; break; }
+          case LAMP:{ if (L[i]){ r=255; g=236; bl=170; er=255; eg=220; eb=140; } else { r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v; } break; }
+          case BATTERY:{ const on=((tick+S[i])%32)<4; r=on?255:c[0]+s*v; g=on?170:c[1]+s*v; bl=on?60:c[2]+s*v; if (on){ er=180; eg=100; } break; }
+          case MOLTEN:{ const f=.5+.5*Math.sin(tick*.1+S[i]*.1), k=Math.max(0,Math.min(1,(H[i]-1400)/400)); r=255; g=lerp(120,230,k)+f*20; bl=lerp(40,170,k); er=255; eg=g*.7; eb=bl*.5; break; }
+          case BIRD:{ const up=((tick>>2)+S[i])&1; r=up?235:160; g=up?238:166; bl=up?245:180; break; }
           case HEATER:{ const f=.5+.5*Math.sin(tick*.05+x*.3); r=200+f*40; g=80+f*30; bl=40; er=120*f; eg=40*f; break; }
           case COOLER:{ r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v; break; }
           default:{ r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v;
-            if (t===WATER||t===SALTWATER||t===ACID||t===OIL||t===NITRO){ const w=Math.sin(tick*.05+x*.3+y*.2)*(t===OIL?3:6); r+=w; g+=w; bl+=w;
+            if (t===WATER||t===SALTWATER||t===ACID||t===OIL||t===NITRO||t===MERCURY){ const w=Math.sin(tick*.05+x*.3+y*.2)*(t===OIL?3:6); r+=w; g+=w; bl+=w;
               if (y>0 && T[i-GW]===E){ r+=t===OIL?20:40; g+=t===OIL?18:40; bl+=t===OIL?10:30; } }
             if ((t===WOOD||t===COAL) && L[i]>0){ const f=.5+.5*Math.sin(tick*.3+S[i]); r=lerp(r,255,.5+f*.3); g=lerp(g,110,.5); bl=lerp(bl,30,.6); er=200; eg=80; eb=10; }
             if (t===FISH && (tick>>3)%2) { r+=20; g+=20; } }
         }
         // heat glow: anything solid glows as it gets hot
-        if (H[i]>380 && t!==FIRE && t!==LAVA && t!==SPARK && !GASK[t]){ const k=Math.min(1,(H[i]-380)/900); r=lerp(r,255,k*.8); g=lerp(g,k>.6?200:90,k*.7); bl=lerp(bl,40,k*.8); er=Math.max(er,255*k); eg=Math.max(eg,110*k); eb=Math.max(eb,20*k); }
+        if (H[i]>380 && t!==FIRE && t!==LAVA && t!==SPARK && t!==MOLTEN && !GASK[t]){ const k=Math.min(1,(H[i]-380)/900); r=lerp(r,255,k*.8); g=lerp(g,k>.6?200:90,k*.7); bl=lerp(bl,40,k*.8); er=Math.max(er,255*k); eg=Math.max(eg,110*k); eb=Math.max(eb,20*k); }
         // electricity
-        if (L[i] && CONDUCT[t]){ const k=Math.pow(L[i]/HEAD,2); r=lerp(r,140,k); g=lerp(g,230,k); bl=lerp(bl,255,k); er=90*k; eg=200*k; eb=255*k; }
+        if (L[i] && CONDUCT[t] && t!==LAMP){ const k=Math.pow(L[i]/HEAD,2); r=lerp(r,140,k); g=lerp(g,230,k); bl=lerp(bl,255,k); er=90*k; eg=200*k; eb=255*k; }
       }
       if (view===1 && !WALL[t]){ const h=ramp(PRAMP,P[i]/1.4), a=t===E?.75:.35; r=lerp(r,h[0],a); g=lerp(g,h[1],a); bl=lerp(bl,h[2],a); }
       else if (view===2){ const h=tcol(H[i]), a=t===E?.7:.6; r=lerp(r,h[0],a); g=lerp(g,h[1],a); bl=lerp(bl,h[2],a); }
@@ -78,12 +83,12 @@ function render(){
 
 /* ================= palette ================= */
 const CATS=[
-  {id:"powder",name:"Сипке",items:[SAND,SALT,SNOW,ASH,COAL,POWDER]},
-  {id:"liquid",name:"Рідини",items:[WATER,SALTWATER,OIL,ACID,LAVA,NITRO,CEMENT]},
+  {id:"powder",name:"Сипке",items:[SAND,WETSAND,CLAY,SALT,SNOW,ASH,COAL,POWDER,THERMITE]},
+  {id:"liquid",name:"Рідини",items:[WATER,SALTWATER,OIL,ACID,LAVA,MERCURY,MOLTEN,NITRO,CEMENT]},
   {id:"gas",name:"Гази",items:[STEAM,SMOKE,GAS,CLOUD]},
-  {id:"solid",name:"Тверде",items:[STONE,METAL,GLASS,ICE,WOOD]},
-  {id:"energy",name:"Енергія",items:[FIRE,SPARK,"bolt",HEATER,COOLER,"hot","cold"]},
-  {id:"life",name:"Живе",items:[SEED,PLANT,FLOWER,ANT,FISH]},
+  {id:"solid",name:"Тверде",items:[STONE,BRICK,METAL,GLASS,ICE,WOOD]},
+  {id:"energy",name:"Енергія",items:[FIRE,SPARK,"bolt",BATTERY,LAMP,HEATER,COOLER,"hot","cold"]},
+  {id:"life",name:"Живе",items:[SEED,PLANT,FLOWER,ANT,FISH,BIRD]},
   {id:"special",name:"Особливе",items:[CLONE,VOID]},
   {id:"tools",name:"Інструменти",items:["erase","wind","probe"]}
 ];
@@ -117,7 +122,7 @@ function buildDock(){
 const HINTS={bolt:"Торкніться — з неба вдарить блискавка",wind:"Проведіть пальцем — вітер понесе пісок, воду й дим",probe:"Торкніться, щоб дізнатись матеріал, температуру й тиск",
   hot:"Тримайте палець — усе під ним нагрівається",cold:"Тримайте палець — усе під ним холоне",[CLONE]:"Клонер копіює перше, що його торкнеться, і створює це безкінечно",
   [VOID]:"Чорна діра поглинає все, що торкається",[SPARK]:"Іскра запускає струм по металу й воді",[SEED]:"Насіння проростає на мокрому піску чи попелі",
-  [CEMENT]:"Цемент тече, а за кілька секунд твердне в камінь",[NITRO]:"Нітро вибухає від тепла чи іскри — дуже сильно",[CLOUD]:"Хмара пливе й поливає дощем, а в мороз — снігом",[SALT]:"Сіль розчиняється у воді й топить лід"};
+  [CEMENT]:"Цемент тече, а за кілька секунд твердне в камінь",[NITRO]:"Нітро вибухає від тепла чи іскри — дуже сильно",[CLOUD]:"Хмара пливе й поливає дощем, а в мороз — снігом",[BATTERY]:"Батарейка двічі на секунду шле струм у дроти, що її торкаються",[LAMP]:"Лампа світиться, коли через неї йде струм",[MERCURY]:"Ртуть — важка рідина, що проводить струм",[THERMITE]:"Терміт горить при 2600°, плавить метал і лишає рідке залізо",[WETSAND]:"Мокрий пісок тримає форму — можна ліпити замки",[CLAY]:"Глина ліпиться, а в жарі понад 500° випікається в цеглу",[BIRD]:"Птахи літають, тримаються над землею й клюють насіння",[MOLTEN]:"Рідкий метал застигає нижче 1400° і підпалює все навколо",[SALT]:"Сіль розчиняється у воді й топить лід"};
 function hint(it){ if (HINTS[it]) toast(HINTS[it]); }
 
 /* ================= fingers ================= */
@@ -163,6 +168,7 @@ function probe(e){
 cv.addEventListener("pointerdown",e=>{
   sfx.unlock(); cv.setPointerCapture(e.pointerId);
   const p=toCell(e); pointers.set(e.pointerId,{p,e});
+  if (current!=="probe" && pointers.size===1) snap();
   if (current==="bolt"){ lightning(p[0],p[1]); flashScreen(); return; }
   if (current==="probe"){ probe(e); return; }
   if (current!=="wind") stamp(p[0],p[1]);
@@ -177,6 +183,15 @@ cv.addEventListener("pointermove",e=>{
 const up=e=>{ pointers.delete(e.pointerId); if (current==="probe") $("tip").hidden=true; };
 cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
 function flashScreen(){ const f=$("flash"); f.style.transition="none"; f.style.opacity=.55; requestAnimationFrame(()=>{ f.style.transition="opacity .5s"; f.style.opacity=0; }); }
+
+/* ================= undo ================= */
+let undoStack=[];
+function snap(){ undoStack.push({T:T.slice(),S:S.slice(),L:L.slice(),H:H.slice(),w:GW}); if (undoStack.length>12) undoStack.shift(); $("btnUndo").disabled=false; }
+function undo(){
+  const h=undoStack.pop(); if (!h || h.w!==GW){ toast("Нема що повертати"); return; }
+  T.set(h.T); S.set(h.S); L.set(h.L); H.set(h.H); P.fill(0);
+  $("btnUndo").disabled=!undoStack.length; tick(8);
+}
 
 /* ================= sound ================= */
 const sfx=(()=>{
@@ -211,9 +226,29 @@ function sounds(){
   for (const k in EV) EV[k]=0;
 }
 
+/* ================= gravity & tilt ================= */
+const GMODES=[["↓","Вниз",0,1],["←","Вліво",-1,0],["↑","Вгору",0,-1],["→","Вправо",1,0],["⟲","Нахил",0,1]];
+let gmode=store.get("gmode",0), tiltSeen=0, tiltDir=[0,1];
+function applyGravity(){ const m=GMODES[gmode]; if (gmode<4) setGravity(m[2],m[3]); else setGravity(tiltDir[0],tiltDir[1]); buildTop(); }
+addEventListener("devicemotion",e=>{
+  const a=e.accelerationIncludingGravity; if (!a || a.x===null) return; tiltSeen=Date.now();
+  if (gmode!==4) return;
+  // gravity in the device's natural portrait frame (y down), then turned to match how the screen is rotated
+  let gx=-a.x, gy=a.y; const ang=-((screen.orientation&&screen.orientation.angle)||window.orientation||0)*Math.PI/180;
+  const sx=gx*Math.cos(ang)-gy*Math.sin(ang), sy=gx*Math.sin(ang)+gy*Math.cos(ang);
+  if (Math.hypot(sx,sy)<4) return;                                       // lying flat: keep what we had
+  const nd= Math.abs(sx)>Math.abs(sy)*1.25 ? [Math.sign(sx),0] : Math.abs(sy)>Math.abs(sx)*1.25 ? [0,Math.sign(sy)] : tiltDir;
+  if (nd[0]!==tiltDir[0]||nd[1]!==tiltDir[1]){ tiltDir=nd; setGravity(nd[0],nd[1]); buildTop(); tick(10); }
+});
+$("btnGrav").onclick=()=>{ gmode=(gmode+1)%GMODES.length; store.set("gmode",gmode); applyGravity();
+  toast(gmode===4 ? "Нахиляйте планшет — усе посиплеться туди, куди він нахилений" : "Гравітація: "+GMODES[gmode][1].toLowerCase());
+  if (gmode===4) setTimeout(()=>{ if (Date.now()-tiltSeen>1500) toast("Датчик нахилу не відповідає — оберіть напрям кнопкою"); },1800); };
+
 /* ================= top controls ================= */
 const VIEWS=[["Звичайний",""],["Тиск","pressure"],["Температура","heat"]];
 function buildTop(){
+  const gm=GMODES[gmode], arrow= gmode<4 ? gm[0] : ({"0,1":"↓","-1,0":"←","0,-1":"↑","1,0":"→"})[tiltDir.join()];
+  $("btnGrav").innerHTML=`<b>${arrow}</b>${gmode<4?"Гравітація":"Нахил"}`; $("btnGrav").classList.toggle("on",gmode>0);
   $("btnView").innerHTML=`<b>◐</b>${VIEWS[view][0]}`; $("btnView").classList.toggle("on",view>0);
   $("btnSpeed").innerHTML=`<b>${SPEEDS[speedIx]===.5?"½":SPEEDS[speedIx]}×</b>Швидкість`;
   $("btnPause").innerHTML=paused?"<b>▶</b>Далі":"<b>❚❚</b>Пауза"; $("btnPause").classList.toggle("on",paused);
@@ -224,7 +259,8 @@ function buildTop(){
 $("btnView").onclick=()=>{ view=(view+1)%3; buildTop(); };
 $("btnSpeed").onclick=()=>{ speedIx=(speedIx+1)%SPEEDS.length; buildTop(); };
 $("btnPause").onclick=()=>{ paused=!paused; buildTop(); };
-$("btnClear").onclick=()=>{ if (Date.now()-clearArmed<2500){ clearAll(); clearArmed=0; toast("Чисто"); saveWorld(); return; } clearArmed=Date.now(); toast("Торкніться ще раз, щоб очистити"); };
+$("btnUndo").onclick=undo;
+$("btnClear").onclick=()=>{ if (Date.now()-clearArmed<2500){ snap(); clearAll(); clearArmed=0; toast("Чисто"); saveWorld(); return; } clearArmed=Date.now(); toast("Торкніться ще раз, щоб очистити"); };
 let clearArmed=0;
 $("btnMore").onclick=()=>{ renderSlots(); $("panel").classList.add("open"); };
 $("close").onclick=()=>$("panel").classList.remove("open");
@@ -236,7 +272,7 @@ function toast(t){ const el=$("toast"); el.textContent=t; el.style.opacity=1; cl
 function buildScenes(){
   const box=$("scenes"); box.innerHTML="";
   for(const [id,name,desc] of SCENE_LIST){ const b=document.createElement("button"); b.className="scene"; b.innerHTML=`<b>${name}</b><span>${desc}</span>`;
-    b.onclick=()=>{ loadScene(id); saveWorld(); $("panel").classList.remove("open"); toast(name); }; box.appendChild(b); }
+    b.onclick=()=>{ snap(); loadScene(id); saveWorld(); $("panel").classList.remove("open"); toast(name); }; box.appendChild(b); }
 }
 function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); }
 function unb64(s){ const b=atob(s), u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
@@ -281,7 +317,7 @@ let resizeT; addEventListener("resize",()=>{ clearTimeout(resizeT); resizeT=setT
 document.addEventListener("visibilitychange",()=>{ if (document.hidden) saveWorld(); });
 setInterval(saveWorld,15000);
 start(); if (Q.get("view")) view=+Q.get("view");
-buildDock(); buildTop(); buildScenes(); renderDiary();
+buildDock(); applyGravity(); buildScenes(); renderDiary(); $("btnUndo").disabled=true;
 let acc=0;
 function loop(){
   requestAnimationFrame(loop);

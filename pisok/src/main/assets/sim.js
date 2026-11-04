@@ -4,8 +4,9 @@
 /* ================= materials ================= */
 const E=0, SAND=1, WATER=2, STONE=3, FIRE=4, PLANT=5, LAVA=6, STEAM=7, SNOW=8, SMOKE=9, METAL=10, GLASS=11, OIL=12, ACID=13,
       POWDER=14, ICE=15, SALT=16, SALTWATER=17, ASH=18, SEED=19, WOOD=20, COAL=21, GAS=22, NITRO=23, CEMENT=24, CLONE=25,
-      VOID=26, SPARK=27, ANT=28, FISH=29, FLOWER=30, HEATER=31, COOLER=32, CLOUD=33;
-const N=34;
+      VOID=26, SPARK=27, ANT=28, FISH=29, FLOWER=30, HEATER=31, COOLER=32, CLOUD=33, BATTERY=34, LAMP=35, MERCURY=36,
+      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42;
+const N=43;
 // kind: p powder, l liquid, g gas, w wall (static, pressure-tight), s static (porous)
 const MAT=[];
 function def(id,name,kind,col,v,dens,cond,extra={}){ MAT[id]=Object.assign({id,name,kind,col,v,dens,cond,fill:.5,t0:null,ign:null},extra); }
@@ -43,6 +44,15 @@ def(PLANT,"Рослина","s",[93,176,90],26,9,.1,{fill:.6,ign:200});
 def(FLOWER,"Квітка","s",[230,90,130],20,9,.1,{fill:.5,ign:200});
 def(ANT,"Мураха","p",[74,34,24],10,1.5,.1,{fill:.04});
 def(FISH,"Риба","p",[255,140,40],20,1.02,.2,{fill:.05});
+def(BIRD,"Птах","p",[44,48,64],10,.5,.1,{fill:.02});
+def(BATTERY,"Батарейка","w",[70,72,84],6,9,.3,{fill:1});
+def(LAMP,"Лампа","w",[110,104,84],6,9,.4,{fill:1});
+def(MERCURY,"Ртуть","l",[188,194,206],8,13.6,.5);
+def(MOLTEN,"Рідкий метал","l",[255,206,140],10,7,.9,{t0:1700});
+def(WETSAND,"Мокрий пісок","p",[160,124,74],14,3.1,.3,{fill:.35});
+def(CLAY,"Глина","p",[176,140,118],12,2.4,.2,{fill:.5});
+def(BRICK,"Цегла","w",[172,80,58],14,9,.2,{fill:1});
+def(THERMITE,"Терміт","p",[150,72,60],20,2.6,.15,{fill:.4,ign:600});
 
 const tbl=(f)=>{ const a=new Array(N); for(let i=0;i<N;i++) a[i]=f(MAT[i]); return a; };
 const DENS=tbl(m=>m.dens), COND=tbl(m=>m.cond), KIND=tbl(m=>m.kind), IGN=tbl(m=>m.ign);
@@ -52,8 +62,8 @@ const FLUID=tbl(m=>m.id===E||m.kind==="l"||m.kind==="g");
 const WALL=tbl(m=>m.kind==="w");
 const GASK=tbl(m=>m.kind==="g"&&m.id!==E);
 const MOVES=tbl(m=>(m.kind==="p"||m.kind==="l"||m.kind==="g")&&m.id!==E ? (m.id===LAVA||m.id===CEMENT?.3:1) : 0);
-const CONDUCT=tbl(m=>m.id===METAL||m.id===WATER||m.id===SALTWATER);
-const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3})[m.id]||0);
+const CONDUCT=tbl(m=>m.id===METAL||m.id===WATER||m.id===SALTWATER||m.id===MERCURY||m.id===LAMP||m.id===MOLTEN);
+const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05})[m.id]||0);
 const FLOWERS=[[232,72,96],[250,206,60],[246,150,200],[245,245,245],[160,110,230],[255,140,60]];
 
 /* ================= world state ================= */
@@ -66,7 +76,7 @@ function makeArrays(w,h){
 }
 function put(i,t){ // a fresh cell from the brush or a spawn: default temperature
   T[i]=t; S[i]=(rnd()*256)|0;
-  L[i]= t===FIRE?40+rnd()*50 : t===STEAM?500+rnd()*400 : t===SMOKE?40+rnd()*60 : t===GAS?1500+rnd()*800 : t===SPARK?3+rnd()*4 : t===ANT?(rnd()<.5?1:2) : t===CLOUD?12+rnd()*24 : 0;
+  L[i]= t===FIRE?40+rnd()*50 : t===STEAM?500+rnd()*400 : t===SMOKE?40+rnd()*60 : t===GAS?1500+rnd()*800 : t===SPARK?3+rnd()*4 : t===ANT?(rnd()<.5?1:2) : t===CLOUD?12+rnd()*24 : t===BIRD?(rnd()*60|0) : 0;
   const t0=MAT[t].t0; H[i]= t0===null ? 20 : t0;
 }
 function conv(i,t){ // a cell turning into something else keeps its heat
@@ -74,6 +84,10 @@ function conv(i,t){ // a cell turning into something else keeps its heat
   if (t===FIRE && H[i]<600) H[i]=600;
 }
 const at=(x,y)=> (x<0||y<0||x>=GW||y>=GH) ? STONE : T[y*GW+x];
+const outside=(x,y)=> x<0||y<0||x>=GW||y>=GH;
+// gravity: (GX,GY) points "down", (PX,PY) runs sideways. The tilt of the tablet can turn it.
+let GX=0, GY=1, PX=1, PY=0;
+function setGravity(gx,gy){ GX=gx; GY=gy; PX=gy?1:0; PY=gx?1:0; }
 function swap(i,j){
   let a=T[i]; T[i]=T[j]; T[j]=a; a=S[i]; S[i]=S[j]; S[j]=a; a=L[i]; L[i]=L[j]; L[j]=a;
   const h=H[i]; H[i]=H[j]; H[j]=h; M[i]=1; M[j]=1;
@@ -178,18 +192,21 @@ function step(){
   if (frame&1) heat();
   if (pActive>0){ if (--pActive===0) P.fill(0); else pressure(); }
   const ltr=frame&1;
-  for(let y=GH-1;y>=0;y--){
-    for(let k=0;k<GW;k++){
-      const x=ltr?k:GW-1-k, i=y*GW+x, t=T[i];
-      if (t===E || M[i]) continue;
+  if (GY){ for(let o=0;o<GH;o++){ const y=GY>0?GH-1-o:o; for(let k=0;k<GW;k++) cell(ltr?k:GW-1-k,y); } }   // start from the "floor"
+  else   { for(let o=0;o<GW;o++){ const x=GX>0?GW-1-o:o; for(let k=0;k<GH;k++) cell(x,ltr?k:GH-1-k); } }
+}
+function cell(x,y){
+      const i=y*GW+x, t=T[i];
+      if (t===E || M[i]) return;
       // things catch fire or blow up when hot enough
       const ig=IGN[t];
-      if (ig!==null && H[i]>ig && !(t===WOOD||t===COAL)){
-        if (t===POWDER){ conv(i,FIRE); L[i]=25; explode(x,y,.45); continue; }
-        if (t===NITRO){ conv(i,FIRE); L[i]=40; explode(x,y,1.5); continue; }
-        if (t===GAS){ conv(i,FIRE); L[i]=20; explode(x,y,.25); continue; }
-        if (t===SEED){ conv(i,ASH); continue; }
-        conv(i,FIRE); if (t===OIL) L[i]=110+rnd()*80; continue;
+      if (ig!==null && H[i]>ig && !(t===WOOD||t===COAL||t===THERMITE)){
+        if (t===POWDER){ conv(i,FIRE); L[i]=25; explode(x,y,.45); return; }
+        if (t===NITRO){ conv(i,FIRE); L[i]=40; explode(x,y,1.5); return; }
+        if (t===GAS){ conv(i,FIRE); L[i]=20; explode(x,y,.25); return; }
+        if (t===SEED){ conv(i,ASH); return; }
+        if (t===BIRD){ conv(i,ASH); return; }
+        conv(i,FIRE); if (t===OIL) L[i]=110+rnd()*80; return;
       }
       switch(t){
         case SAND: if (H[i]>1100 && rnd()<.02){ conv(i,GLASS); break; } powder(i,x,y,t,.5); break;
@@ -213,7 +230,7 @@ function step(){
         case GAS: gas(i,x,y,false); break;
         case PLANT: plant(i,x,y); break;
         case FLOWER: if (H[i]<-10 && rnd()<.002) conv(i,ASH); break;
-        case METAL: conductor(i,x,y); break;
+        case METAL: if (H[i]>1500 && rnd()<.05){ conv(i,MOLTEN); break; } conductor(i,x,y); break;
         case ICE: if (H[i]>0 && rnd()<.03){ conv(i,WATER); break; } crack(i,x,y,.8,.3); break;
         case GLASS: if (H[i]>1500 && rnd()<.01){ conv(i,LAVA); break; } crack(i,x,y,.5,.6); break;
         case STONE: if (H[i]>1150 && rnd()<.004){ conv(i,LAVA); break; } if ((frame+i)%5===0) crack(i,x,y,5,.15); break;
@@ -223,29 +240,41 @@ function step(){
         case ANT: ant(i,x,y); break;
         case FISH: fish(i,x,y); break;
         case CLOUD: cloud(i,x,y); break;
+        case THERMITE: if (burning(i,x,y,t)) break; powder(i,x,y,t,.5); break;
+        case WETSAND: if (H[i]>70 && rnd()<.02){ conv(i,SAND); break; } clump(i,x,y,t); break;
+        case CLAY: if (H[i]>500 && rnd()<.01){ conv(i,BRICK); break; } clump(i,x,y,t); break;
+        case MERCURY: if (H[i]>357 && rnd()<.05){ conv(i,SMOKE); break; } if (H[i]<-39 && rnd()<.02){ conv(i,METAL); break; } if (L[i]) electric(i,x,y); flow(i,x,y,MERCURY,2); break;
+        case MOLTEN: if (H[i]<1400 && rnd()<.03){ conv(i,METAL); break; } molten(i,x,y); break;
+        case BATTERY: battery(i,x,y); break;
+        case LAMP: if (L[i]){ electric(i,x,y); if (H[i]<60) H[i]+=.5; } break;
+        case BIRD: bird(i,x,y); break;
       }
       if (pActive && MOVES[T[i]] && !M[i]) push(i,x,y,T[i]);
-    }
-  }
 }
 
 /* ================= behaviours ================= */
 function powder(i,x,y,t,slowInFluid){
-  if (sinks(t,x,y+1)){ if (T[i+GW]!==E && rnd()<slowInFluid) return true; swap(i,i+GW); return true; }
+  const bx=x+GX, by=y+GY;
+  if (sinks(t,bx,by)){ const j=by*GW+bx; if (T[j]!==E && rnd()<slowInFluid) return true; swap(i,j); return true; }
   const d=rnd()<.5?-1:1;
-  if (sinks(t,x+d,y+1) && !WALL[at(x+d,y)]){ swap(i,i+GW+d); return true; }
-  if (sinks(t,x-d,y+1) && !WALL[at(x-d,y)]){ swap(i,i+GW-d); return true; }
+  for (const sd of [d,-d]){ const nx=bx+PX*sd, ny=by+PY*sd; if (sinks(t,nx,ny) && !WALL[at(x+PX*sd,y+PY*sd)]){ swap(i,ny*GW+nx); return true; } }
+  return false;
+}
+function clump(i,x,y,t){ // wet sand and clay stick together: they fall straight and only rarely slump sideways
+  const bx=x+GX, by=y+GY;
+  if (sinks(t,bx,by)){ swap(i,by*GW+bx); return true; }
+  if (rnd()<.006) return powder(i,x,y,t,.5);
   return false;
 }
 function flow(i,x,y,t,disp){
-  if (sinks(t,x,y+1)){ swap(i,i+GW); return true; }
+  const bx=x+GX, by=y+GY;
+  if (sinks(t,bx,by)){ swap(i,by*GW+bx); return true; }
   const d=rnd()<.5?-1:1;
-  if (sinks(t,x+d,y+1)){ swap(i,i+GW+d); return true; }
-  if (sinks(t,x-d,y+1)){ swap(i,i+GW-d); return true; }
+  for (const sd of [d,-d]){ const nx=bx+PX*sd, ny=by+PY*sd; if (sinks(t,nx,ny)){ swap(i,ny*GW+nx); return true; } }
   for (const dir of [d,-d]){
     let last=-1;
-    for(let s=1;s<=disp;s++){ const nx=x+dir*s; if (nx<0||nx>=GW) break; const u=T[y*GW+nx]; if (u!==E && !GASK[u]) break; last=nx; }
-    if (last>=0){ swap(i,y*GW+last); return true; }
+    for(let k=1;k<=disp;k++){ const nx=x+PX*dir*k, ny=y+PY*dir*k; if (outside(nx,ny)) break; const u=T[ny*GW+nx]; if (u!==E && !GASK[u]) break; last=ny*GW+nx; }
+    if (last>=0){ swap(i,last); return true; }
   }
   return false;
 }
@@ -258,7 +287,9 @@ function water(i,x,y,salty){
     if (u===FIRE){ conv(j, rnd()<.6?STEAM:SMOKE); H[i]+=40; EV.sizzle++; }
     else if (u===LAVA){ if (H[j]>300){ H[j]-=40; H[i]+=200; } EV.sizzle++; }
     else if (!salty && u===SALT && rnd()<.06){ T[j]=E; conv(i,SALTWATER); return; }
-    else if (salty && (u===ICE||u===SNOW) && rnd()<.05){ conv(j,SALTWATER); } }
+    else if (salty && (u===ICE||u===SNOW) && rnd()<.05){ conv(j,SALTWATER); }
+    else if (u===SAND && rnd()<.05){ conv(j,WETSAND); if (rnd()<.5){ T[i]=E; L[i]=0; return; } }
+    else if ((u===MOLTEN) && rnd()<.5){ conv(i,STEAM); addP(i,1.2); H[j]-=60; EV.sizzle++; return; } }
   if (L[i]) electric(i,x,y);
   flow(i,x,y,T[i],4);
 }
@@ -278,11 +309,11 @@ function acid(i,x,y){
 }
 function lava(i,x,y){
   if (H[i]<650 && rnd()<.02){ conv(i,STONE); return; }
-  if (y>0 && T[i-GW]===E && rnd()<.003){ put(i-GW,FIRE); M[i-GW]=1; }
+  const ux=x-GX, uy=y-GY; if (!outside(ux,uy) && T[uy*GW+ux]===E && rnd()<.003){ put(uy*GW+ux,FIRE); M[uy*GW+ux]=1; }
   if (rnd()<.5) flow(i,x,y,LAVA,2);
 }
 function fire(i,x,y){
-  L[i] -= (at(x,y+1)===E ? 3 : 1);
+  L[i] -= (at(x+GX,y+GY)===E ? 3 : 1);
   if (H[i]<700) H[i]=700;
   EV.fire++;
   if (L[i]<=0 || L[i]>1000){ if (rnd()<.35) conv(i,SMOKE); else { T[i]=E; L[i]=0; } return; }
@@ -291,26 +322,26 @@ function fire(i,x,y){
     if (IGN[u]!==null) H[j]+=60;                                  // flames lick whatever they touch
     if (u===PLANT||u===FLOWER){ if (rnd()<.04) conv(j,FIRE); }
     else if (u===OIL && rnd()<.12){ conv(j,FIRE); L[j]=110+rnd()*80; } }
-  if (rnd()<.45){ const d=(rnd()*3|0)-1; const nx=x+d, ny=y-1;
-    if (ny>=0 && nx>=0 && nx<GW && T[ny*GW+nx]===E) swap(i,ny*GW+nx); }
+  if (rnd()<.45){ const d=(rnd()*3|0)-1; const nx=x-GX+PX*d, ny=y-GY+PY*d;
+    if (!outside(nx,ny) && T[ny*GW+nx]===E) swap(i,ny*GW+nx); }
 }
 function burning(i,x,y,t){ // wood and coal smoulder for a long time; L is the fuel left while alight
-  if (L[i]===0){ if (H[i]>IGN[t]) { L[i]= t===WOOD ? 500+rnd()*500 : 1200+rnd()*600; } else return false; }
-  const hot= t===WOOD?650:900; if (H[i]<hot) H[i]=hot;
+  if (L[i]===0){ if (H[i]>IGN[t]) { L[i]= t===WOOD ? 500+rnd()*500 : t===COAL ? 1200+rnd()*600 : 90+rnd()*60; } else return false; }
+  const hot= t===WOOD?650 : t===COAL?900 : 2600; if (H[i]<hot) H[i]=hot;
   EV.fire++;
-  if (--L[i]<=1){ conv(i,ASH); return true; }
+  if (--L[i]<=1){ conv(i, t===THERMITE?MOLTEN:ASH); return true; }        // thermite leaves a puddle of molten iron
   const j=rnb(x,y);
-  if (j>=0){ const u=T[j];
-    if (u===E && rnd()<.12 && j<i+GW){ put(j,FIRE); M[j]=1; }
-    else if (u===WATER||u===SALTWATER){ L[i]=0; H[i]=90; conv(j,STEAM); EV.sizzle++; return true; } }
+  if (j>=0){ const u=T[j], down=(y+GY)*GW+x+GX;
+    if (u===E && rnd()<(t===THERMITE?.3:.12) && j!==down){ put(j, t===THERMITE&&rnd()<.5?SPARK:FIRE); M[j]=1; }
+    else if (t!==THERMITE && (u===WATER||u===SALTWATER)){ L[i]=0; H[i]=90; conv(j,STEAM); EV.sizzle++; return true; } }
   return t===WOOD;
 }
 function gas(i,x,y,steam){
   if (--L[i]<=0 || L[i]>5000){ if (steam && rnd()<.45) conv(i,WATER); else { T[i]=E; L[i]=0; } return; }
-  if (steam && y===0 && rnd()<.012){ conv(i,WATER); return; }
-  const t=T[i], d=(rnd()*3|0)-1, up=t===GAS?.45:.75;
-  if (rnd()<up && rises(t,x+d,y-1)) { swap(i,(y-1)*GW+x+d); return; }
-  const s=rnd()<.5?-1:1; if (x+s>=0 && x+s<GW && (T[i+s]===E)) swap(i,i+s);
+  if (steam && outside(x-GX,y-GY) && rnd()<.012){ conv(i,WATER); return; }
+  const t=T[i], d=(rnd()*3|0)-1, up=t===GAS?.45:.75, ux=x-GX+PX*d, uy=y-GY+PY*d;
+  if (rnd()<up && rises(t,ux,uy)) { swap(i,uy*GW+ux); return; }
+  const sd=rnd()<.5?-1:1, sx=x+PX*sd, sy=y+PY*sd; if (!outside(sx,sy) && T[sy*GW+sx]===E) swap(i,sy*GW+sx);
 }
 function spark(i,x,y){
   if (H[i]<900) H[i]=900;
@@ -330,26 +361,26 @@ function conductor(i,x,y){ if (L[i]) electric(i,x,y); }
 function plant(i,x,y){
   if (L[i]>0){ // a growing stem
     if (rnd()>.06) return;
-    const dirs=[[0,-1],[0,-1],[1,-1],[-1,-1]], [dx,dy]=dirs[rnd()*4|0], nx=x+dx, ny=y+dy;
-    if (nx<0||ny<0||nx>=GW) { L[i]=0; return; }
+    const r=rnd(), sd=r<.5?0:r<.75?1:-1, nx=x-GX+PX*sd, ny=y-GY+PY*sd;
+    if (outside(nx,ny)) { L[i]=0; return; }
     const j=ny*GW+nx;
     if (T[j]===E||T[j]===WATER){
       if (L[i]===1){ put(j, rnd()<.6?FLOWER:PLANT); } else { put(j,PLANT); L[j]=L[i]-1; S[j]=40+(rnd()*30|0); }
       M[j]=1;
-      if (rnd()<.12 && L[i]>4){ const sx=x+(rnd()<.5?-1:1); if (sx>=0&&sx<GW&&T[i-GW+(sx-x)]===E&&y>0){ const b=(y-1)*GW+sx; put(b,PLANT); L[b]=L[i]>>1; M[b]=1; } }
+      if (rnd()<.12 && L[i]>4){ const sd2=rnd()<.5?-1:1, bx=x-GX+PX*sd2, by=y-GY+PY*sd2; if (!outside(bx,by) && T[by*GW+bx]===E){ const b=by*GW+bx; put(b,PLANT); L[b]=L[i]>>1; M[b]=1; } }
       L[i]=0;
     } else if (rnd()<.2) L[i]=0;
     return;
   }
   if (rnd()>.004) return;                                           // roots slowly drink: water beside or below becomes plant
   const j=rnb(x,y); if (j<0 || j<i-1) return;
-  if (T[j]===WATER && (y===0 || T[i-GW]!==WATER)){ put(j,PLANT); M[j]=1; }
+  if (T[j]===WATER && at(x-GX,y-GY)!==WATER){ put(j,PLANT); M[j]=1; }
   else if (T[j]===SALTWATER && rnd()<.3) conv(i,ASH);
 }
 function seed(i,x,y){
   if (powder(i,x,y,SEED,.3)) return;
-  const below=at(x,y+1);
-  if ((below===SAND||below===ASH) && (count8(x,y,WATER)||count8(x,y+1,WATER)||count8(x,y+2,WATER)) && rnd()<(below===ASH?.03:.012)){
+  const below=at(x+GX,y+GY), wet=below===WETSAND||count8(x,y,WATER)||count8(x+GX,y+GY,WATER)||count8(x+2*GX,y+2*GY,WATER);
+  if ((below===SAND||below===ASH||below===WETSAND) && wet && rnd()<(below===SAND?.012:.03)){
     conv(i,PLANT); L[i]=12+(rnd()*26|0); S[i]=40;
   }
 }
@@ -363,14 +394,14 @@ function ant(i,x,y){
   const wet=count8(x,y,WATER)+count8(x,y,SALTWATER);
   if (wet>5 && rnd()<.004){ conv(i,ASH); return; }
   if (rnd()<.45) return;
-  if (sinks(ANT,x,y+1) && T[i+GW]===E){ swap(i,i+GW); return; }
-  const dir=L[i]===2?-1:1, nx=x+dir;
+  if (sinks(ANT,x+GX,y+GY) && at(x+GX,y+GY)===E){ swap(i,(y+GY)*GW+x+GX); return; }
+  const dir=L[i]===2?-1:1, fx=x+PX*dir, fy=y+PY*dir;
   if (rnd()<.01){ L[i]=3-L[i]; return; }
-  const f=at(nx,y);
-  if (f===E){ if (at(nx,y+1)===E && at(x,y+1)!==E && rnd()<.7){ L[i]=3-L[i]; return; } swap(i,y*GW+nx); return; }
-  if ((f===SAND||f===ASH||f===SALT) && rnd()<.12){ swap(i,y*GW+nx); return; }           // dig a tunnel
-  if (f===SEED && rnd()<.05){ const j=y*GW+nx; put(j,ANT); L[j]=3-L[i]; M[j]=1; return; } // eat a seed, hatch a friend
-  if (at(nx,y-1)===E && at(x,y-1)===E && y>0){ swap(i,(y-1)*GW+nx); return; }            // climb a step
+  const f=at(fx,fy);
+  if (f===E){ if (at(fx+GX,fy+GY)===E && at(x+GX,y+GY)!==E && rnd()<.7){ L[i]=3-L[i]; return; } swap(i,fy*GW+fx); return; }
+  if ((f===SAND||f===ASH||f===SALT||f===WETSAND||f===CLAY) && rnd()<.12){ swap(i,fy*GW+fx); return; }   // dig a tunnel
+  if (f===SEED && rnd()<.05){ const j=fy*GW+fx; put(j,ANT); L[j]=3-L[i]; M[j]=1; return; }              // eat a seed, hatch a friend
+  if (at(fx-GX,fy-GY)===E && at(x-GX,y-GY)===E){ swap(i,(fy-GY)*GW+fx-GX); return; }                    // climb a step
   L[i]=3-L[i];
 }
 function fish(i,x,y){
@@ -385,9 +416,32 @@ function fish(i,x,y){
   if (rnd()<.0004 && count8(x,y,FISH)){ const j=rnb(x,y); if (j>=0 && T[j]===WATER){ put(j,FISH); M[j]=1; } }
 }
 function cloud(i,x,y){ // drifts a little and rains until its water runs out; snows when it is freezing
-  if (rnd()<.006 && y<GH-1 && T[i+GW]===E){ put(i+GW, H[i]<0?SNOW:WATER); H[i+GW]=Math.min(H[i+GW],H[i]); M[i+GW]=1; if (--L[i]<=0){ T[i]=E; return; } }
+  const bx=x+GX, by=y+GY;
+  if (rnd()<.006 && !outside(bx,by) && T[by*GW+bx]===E){ const j=by*GW+bx; put(j, H[i]<0?SNOW:WATER); H[j]=Math.min(H[j],H[i]); M[j]=1; if (--L[i]<=0){ T[i]=E; return; } }
   if (H[i]>200){ conv(i,STEAM); return; }
-  if (rnd()<.015){ const d=(frame>>9)&1?1:-1, nx=x+(rnd()<.8?d:-d); if (nx>=0&&nx<GW&&T[y*GW+nx]===E) swap(i,y*GW+nx); }
+  if (rnd()<.015){ const d=((frame>>9)&1?1:-1)*(rnd()<.8?1:-1), nx=x+PX*d, ny=y+PY*d; if (!outside(nx,ny)&&T[ny*GW+nx]===E) swap(i,ny*GW+nx); }
+}
+function molten(i,x,y){ // glowing liquid iron: sets things alight, bursts water into steam, cools back into metal
+  const j=rnb(x,y); if (j>=0 && IGN[T[j]]!==null) H[j]+=80;
+  if (L[i]) electric(i,x,y);
+  if (rnd()<.6) flow(i,x,y,MOLTEN,2);
+}
+function battery(i,x,y){ // sends a pulse into touching wires about twice a second
+  if ((frame+S[i])%32) return;
+  each4(x,y,(j)=>{ if (CONDUCT[T[j]] && L[j]===0){ L[j]=HEAD; M[j]=1; } });
+}
+function bird(i,x,y){ // flies about, keeps off the ground, pecks at seeds
+  if (H[i]>60 || H[i]<-30){ conv(i,ASH); return; }
+  const wet=count8(x,y,WATER); if (wet>4 && rnd()<.02){ conv(i,ASH); return; }
+  if (rnd()<.35) return;
+  let dir=(S[i]&1)?1:-1;
+  let dy=rnd()<.3?-1:rnd()<.5?1:0;
+  for(let k=1;k<=4;k++) if (at(x,y+k)!==E){ dy=-1; break; }                     // too low: climb
+  if (y<GH*.08) dy=1;
+  if (rnd()<.01) dir=-dir;
+  const nx=x+dir, ny=y+dy, u=at(nx,ny);
+  if (u===E){ swap(i,ny*GW+nx); S[ny*GW+nx]=(S[ny*GW+nx]&~1)|(dir>0?1:0); }
+  else { S[i]^=1; if (u===SEED && rnd()<.3){ T[ny*GW+nx]=E; } }
 }
 function maxP(x,y){ let m=0; for(const [dx,dy] of NB4){ const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=GW||ny>=GH) continue; const j=ny*GW+nx; if(!WALL[T[j]] && P[j]>m) m=P[j]; } return m; }
 function crack(i,x,y,limit,rate){
@@ -486,6 +540,26 @@ const SCENES={
     clouds(Math.round(GW*.05),4,Math.round(GW*.45),12,.35,4); clouds(Math.round(GW*.55),6,Math.round(GW*.95),13,.35,4);
     rect(Math.round(GW*.47),g-40,Math.round(GW*.53),g-14,WOOD); }
 };
+SCENES.circuit=function(){ floor(Math.round(GH*.15)); const g=GH-Math.round(GH*.15), y=Math.round(GH*.35), x0=Math.round(GW*.1), x1=Math.round(GW*.9);
+  rect(x0,y-4,x0+6,y+4,BATTERY);
+  rect(x0+6,y-1,x1,y+1,METAL);                                                      // the main wire
+  for(let k=0;k<6;k++){ const x=x0+20+k*Math.round((x1-x0-30)/6); rect(x,y+1,x+2,y+10,METAL); rect(x-3,y+10,x+5,y+15,LAMP); }
+  const px=Math.round(GW*.35), pw=Math.round(GW*.3);
+  rect(px-3,g-22,px,g,GLASS); rect(px+pw,g-22,px+pw+3,g,GLASS); rect(px-3,g-3,px+pw+3,g,GLASS);
+  rect(px,g-10,px+pw,g-3,MERCURY); rect(px,g-20,px+pw,g-10,WATER);
+  rect(x1-13,g-14,x1-10,g,STONE); rect(x1+6,g-14,x1+9,g,STONE); rect(x1-10,g-12,x1+6,g,POWDER); rect(x1-2,y+1,x1,g-4,METAL);   // a wire into a box of powder
+  const lx=px+(pw>>1)+7; rect(lx,y+1,lx+2,g-6,METAL);                                // a lead dipping into the mercury
+  for(let k=0;k<5;k++){ const x=px+4+(rnd()*(pw-8)|0); put((g-15)*GW+x,FISH); } };
+SCENES.thermite=function(){ floor(Math.round(GH*.12)); const g=GH-Math.round(GH*.12), cx=GW>>1, y=Math.round(GH*.45);
+  rect(cx-40,y,cx+40,y+4,METAL); rect(cx-44,y,cx-40,g,STONE); rect(cx+40,y,cx+44,g,STONE);
+  rect(cx-12,y-8,cx+12,y,THERMITE); for(let x=cx-2;x<cx+2;x++) H[(y-8)*GW+x]=900;   // lit at the top
+  rect(cx-36,g-20,cx+36,g,WATER); rect(cx-60,g-30,cx-48,g,CLAY); rect(cx+48,g-30,cx+60,g,WETSAND); };
+SCENES.birds=function(){ const ground=x=>Math.round(GH*(.7-.05*Math.sin(x/GW*6.3))); 
+  for(let x=0;x<GW;x++) for(let y=ground(x);y<GH;y++) put(y*GW+x, y<ground(x)+5?WETSAND:STONE);
+  for(let k=0;k<16;k++){ const x=(rnd()*GW)|0, y=Math.round(GH*(.15+rnd()*.3)); put(y*GW+x,BIRD); }
+  for(let k=0;k<30;k++){ const x=(rnd()*GW)|0; put((ground(x)-1)*GW+x,SEED); }
+  for(const fx of [.2,.5,.8]){ const cx=Math.round(GW*fx); const g=ground(cx); for(let y=g-30;y<g;y++) put(y*GW+cx,WOOD); put((g-31)*GW+cx,PLANT); L[(g-31)*GW+cx]=14; }
+  clouds(Math.round(GW*.3),5,Math.round(GW*.7),11,.3,4); };
 const SCENE_LIST=[
   ["demo","Пагорби й ставок","Початкова сцена: пісок, ставок із рибками, мурахи й рослини"],
   ["boiler","Котел під тиском","Вода в металевому баку над лавою, зверху скляна кришка"],
@@ -497,6 +571,9 @@ const SCENE_LIST=[
   ["winter","Зима й літо","Холодильник морозить один бік озера, нагрівач гріє інший"],
   ["fuse","Порохова доріжка","Гніт, бочка пороху і кам'яна стіна"],
   ["oil","Нафта на воді","Олія плаває, а від іскри — горить"],
-  ["acid","Кислота в склянці","Скло тримає кислоту, а камінь — ні"]
+  ["acid","Кислота в склянці","Скло тримає кислоту, а камінь — ні"],
+  ["circuit","Ланцюг із лампами","Батарейка живить лампи, струм іде в ртуть і до пороху"],
+  ["thermite","Терміт","Горить при 2600°, плавить сталеву балку, рідкий метал капає у воду"],
+  ["birds","Птахи","Зграя над пагорбами з мокрого піску, насіння й дерева"]
 ];
 function loadScene(name){ clearAll(); (SCENES[name]||SCENES.demo)(); }

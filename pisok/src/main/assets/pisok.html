@@ -23,6 +23,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ctl{position:fixed;top:max(10px,env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));display:flex;gap:4px;padding:4px;border-radius:16px}
 .ctl button{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:62px;padding:6px 6px 5px;border-radius:12px;border:1px solid transparent;background:none;color:var(--dim);font-size:11px}
 .ctl button b{font:600 15px/18px var(--f);color:var(--fg)}
+.ctl button:disabled{opacity:.35}
 .ctl button.on{background:var(--on);border-color:rgba(255,255,255,.2);color:var(--fg)}
 
 /* palette dock */
@@ -88,9 +89,11 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <div class="flash" id="flash"></div>
 
 <div class="ctl glass" role="toolbar" aria-label="Керування">
+  <button id="btnGrav"></button>
   <button id="btnView"></button>
   <button id="btnSpeed"></button>
   <button id="btnPause"></button>
+  <button id="btnUndo"><b>↶</b>Назад</button>
   <button id="btnClear"><b>↺</b>Очистити</button>
   <button id="btnMore"><b>⋯</b>Більше</button>
 </div>
@@ -134,6 +137,8 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <li><b>Тиск.</b> Пара в закритій посудині тисне на стінки: скло тріскає, з дірки б'є струмінь. Метал витримує все</li>
       <li><b>Струм</b> від іскри чи блискавки біжить металом і водою, підпалює, підриває газ і б'є рибок</li>
       <li><b>Живе:</b> насіння проростає на мокрому піску чи попелі й цвіте; мурахи риють ходи й плодяться, коли знаходять насіння; риби живуть лише у воді від 0° до 45°</li>
+      <li><b>Гравітація</b> вгорі: вниз, вліво, вгору, вправо або «Нахил» — тоді все сиплеться туди, куди нахилено планшет</li>
+      <li><b>Електроніка:</b> батарейка шле струм, лампи світяться, ртуть проводить; терміт розплавляє метал, глина в жарі стає цеглою, мокрий пісок тримає форму</li>
       <li><b>Кислота</b> роз'їдає майже все, крім скла. <b>Цемент</b> твердне в камінь. <b>Клонер</b> безкінечно копіює те, що його торкнулось, <b>чорна діра</b> поглинає</li>
     </ul>
     <h2>Щоденник змін</h2>
