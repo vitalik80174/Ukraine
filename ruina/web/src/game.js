@@ -133,12 +133,12 @@ function makeGround(river) {
 
 /* ================= levels ================= */
 const LEVELS = [
-  { id: 'pyramid', name: 'Піраміда', desc: 'Розминка: кам\'яні сходи до неба', ammo: { ball: 6, bomb: 3, meteor: 0, quake: 0 }, goal: 0.6, cam: [24, 14, 3], build: pyramid },
-  { id: 'house', name: 'Будинок', desc: 'Цегла, бетонні перекриття і скло', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 0 }, goal: 0.7, cam: [24, 9, 3.5], build: house },
-  { id: 'tower', name: 'Вежа', desc: 'Кругла цегляна вежа з зубцями', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 1 }, goal: 0.7, cam: [26, 10, 4.5], build: tower },
-  { id: 'bridge', name: 'Міст', desc: 'Сталеві балки над річкою', ammo: { ball: 4, bomb: 3, meteor: 1, quake: 0 }, goal: 0.65, cam: [26, 9, -1], build: bridge, river: true },
-  { id: 'sky', name: 'Хмарочос', desc: 'Тонкі колони, важкі поверхи', ammo: { ball: 3, bomb: 2, meteor: 1, quake: 1 }, goal: 0.7, cam: [30, 14, 9], build: skyscraper },
-  { id: 'castle', name: 'Замок', desc: 'Мури, вежі й бійниці', ammo: { ball: 6, bomb: 3, meteor: 2, quake: 1 }, goal: 0.7, cam: [34, 16, 3], build: castle }
+  { id: 'pyramid', name: 'Піраміда', desc: 'Розминка: кам\'яні сходи до неба', ammo: { ball: 6, bomb: 3, meteor: 0, quake: 0, crane: 1 }, goal: 0.6, cam: [24, 14, 3], build: pyramid },
+  { id: 'house', name: 'Будинок', desc: 'Цегла, бетонні перекриття і скло', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 0, crane: 1 }, goal: 0.7, cam: [24, 9, 3.5], build: house },
+  { id: 'tower', name: 'Вежа', desc: 'Кругла цегляна вежа з зубцями', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 1, crane: 1 }, goal: 0.7, cam: [26, 10, 4.5], build: tower },
+  { id: 'bridge', name: 'Міст', desc: 'Сталеві балки над річкою', ammo: { ball: 4, bomb: 3, meteor: 1, quake: 0, crane: 1 }, goal: 0.65, cam: [26, 9, -1], build: bridge, river: true },
+  { id: 'sky', name: 'Хмарочос', desc: 'Тонкі колони, важкі поверхи', ammo: { ball: 3, bomb: 2, meteor: 1, quake: 1, crane: 1 }, goal: 0.7, cam: [30, 14, 9], build: skyscraper },
+  { id: 'castle', name: 'Замок', desc: 'Мури, вежі й бійниці', ammo: { ball: 6, bomb: 3, meteor: 2, quake: 1, crane: 2 }, goal: 0.7, cam: [34, 16, 3], build: castle }
 ];
 
 function pyramid() {
@@ -246,6 +246,7 @@ function clearWorld() {
   for (const p of projectiles) { world.removeBody(p.body); scene.remove(p.mesh); }
   for (const b of bombs) scene.remove(b.mesh);
   for (const m of Object.values(meshes)) { scene.remove(m); m.material.dispose(); m.dispose(); }
+  removeCrane();
   if (groundBody) world.removeBody(groundBody);
   if (groundGroup) scene.remove(groundGroup);
   blocks = []; meshes = {}; projectiles = []; bombs = []; quake = null;
@@ -255,7 +256,7 @@ function startLevel(lv, isFree) {
   particles.clear(); shake = 0;
   level = lv; free = !!isFree; ended = false; shots = 0; lastShot = 0; simTime = 0;
   ammo = { ...lv.ammo };
-  if (free) ammo = { ball: Infinity, bomb: Infinity, meteor: Infinity, quake: Infinity };
+  if (free) ammo = { ball: Infinity, bomb: Infinity, meteor: Infinity, quake: Infinity, crane: Infinity };
   makeGround(!!lv.river);
   lv.build(); materialize();
   orbit.r = lv.cam[0]; orbit.target.set(0, lv.cam[2], 0); orbit.theta = 0.55; orbit.phi = Math.atan2(lv.cam[0], lv.cam[1] * 1.3);
@@ -288,7 +289,8 @@ const WEAPONS = [
   { id: 'ball', name: 'Ядро', icon: '●' },
   { id: 'bomb', name: 'Бомба', icon: '✸' },
   { id: 'meteor', name: 'Метеорит', icon: '☄' },
-  { id: 'quake', name: 'Землетрус', icon: '≋' }
+  { id: 'quake', name: 'Землетрус', icon: '≋' },
+  { id: 'crane', name: 'Баба', icon: '⚲' }
 ];
 const ballGeo = new THREE.SphereGeometry(1, 24, 16);
 const ballMat = new THREE.MeshStandardMaterial({ color: 0x2b2d33, roughness: 0.35, metalness: 0.7 });
@@ -306,6 +308,7 @@ function aim(px, py) {
 }
 function fire(px, py) {
   if (state !== 'play' || ended) return;
+  if (weapon === 'crane') { if (crane && !crane.leaving) return; if (ammo.crane > 0) callCrane(); else toast('Кран уже поїхав — оберіть іншу зброю'); return; }
   if (!(ammo[weapon] > 0)) { toast('Цей набій закінчився — оберіть інший'); return; }
   const { ray, hit } = aim(px, py);
   if (weapon === 'ball') {
@@ -329,6 +332,7 @@ function fire(px, py) {
     for (const b of blocks) b.body.wakeUp(); sfx.rumble(); haptic(80);
   }
 }
+function callCrane() { spend(); startCrane(); orbit.r = Math.max(orbit.r, Math.min(70, level.cam[0] * 1.35)); orbit.phi = Math.min(orbit.phi, 1.2); toast('Тягніть пальцем — баба полетить слідом. Камера — двома пальцями'); }
 function spend() { if (ammo[weapon] !== Infinity) ammo[weapon]--; shots++; lastShot = simTime; buildWeapons(); }
 function launch(pos, vel, r, mass, mat) {
   const body = new CANNON.Body({ mass, shape: new CANNON.Sphere(r), linearDamping: 0.01 });
@@ -381,6 +385,105 @@ function impact(e) {
   for (let i = 0; i < n; i++) particles.spawn(x, y, z, rr(-1.5, 1.5), rr(0.2, 2), rr(-1.5, 1.5), 0.62, 0.56, 0.5, 0.55, rr(0.5, 1.1), rr(1, 2.2), 0.08);
   if (rnd() < 0.3) sfx.thud(Math.min(1, v / 25));
 }
+
+/* ================= crane with a wrecking ball =================
+   A tower crane stands beside the target. Its hook is a kinematic body that follows the finger
+   (projected onto the ball's height plane); the ball hangs on a rigid cable (DistanceConstraint),
+   so it lags behind, swings and smashes whatever it meets. One charge = CRANE_TIME seconds. */
+const CRANE_TIME = 25, MAST = new THREE.Vector3(-12, 0, -14);
+let crane = null;
+function latticeTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.strokeStyle = '#fff'; g.lineWidth = 7; g.strokeRect(3.5, 3.5, 57, 57);
+  g.lineWidth = 4; g.beginPath(); g.moveTo(4, 4); g.lineTo(60, 60); g.moveTo(60, 4); g.lineTo(4, 60); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+const latticeTex = latticeTexture();
+function latticeMat(rx, ry) { const t = latticeTex.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return new THREE.MeshStandardMaterial({ color: 0xf2b705, map: t, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.2 }); }
+const wreckMat = new THREE.MeshStandardMaterial({ color: 0x23252b, roughness: 0.4, metalness: 0.75 });
+const cableMat = new THREE.MeshStandardMaterial({ color: 0x1b1b1e, roughness: 0.7, metalness: 0.5 });
+const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
+
+function structureTop() { let t = 1; for (const b of blocks) if (!b.gone) t = Math.max(t, b.start.y + b.size.y / 2); return t; }
+function startCrane() {
+  const top = structureTop(), hookY = top + 5, restY = Math.max(1.5, top * 0.45), L = hookY - restY, R = 1.1;
+  const g = new THREE.Group(); scene.add(g);
+  const mastH = hookY + 0.7;
+  const mast = new THREE.Mesh(boxGeo, latticeMat(1, mastH / 1.2)); mast.scale.set(1.2, mastH, 1.2); mast.position.set(MAST.x, mastH / 2, MAST.z); mast.castShadow = true; g.add(mast);
+  const foot = new THREE.Mesh(boxGeo, dirtMat); foot.scale.set(3, 0.5, 3); foot.position.set(MAST.x, 0.25, MAST.z); foot.receiveShadow = true; g.add(foot);
+  const cab = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.5 })); cab.scale.set(1.6, 1.3, 1.6); cab.position.set(MAST.x, mastH - 0.1, MAST.z); cab.castShadow = true; g.add(cab);
+  const jib = new THREE.Mesh(boxGeo, latticeMat(10, 1)); jib.castShadow = true; g.add(jib);
+  const counter = new THREE.Mesh(boxGeo, latticeMat(5, 1)); counter.castShadow = true; g.add(counter);
+  const weight = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0x8d8d88, roughness: 0.9 })); weight.scale.set(1.4, 1.6, 1.6); weight.castShadow = true; g.add(weight);
+  const trolley = new THREE.Mesh(boxGeo, cableMat); trolley.scale.set(0.9, 0.35, 0.9); g.add(trolley);
+  const cable = new THREE.Mesh(cylGeo, cableMat); cable.scale.set(0.06, 1, 0.06); cable.castShadow = true; g.add(cable);
+  const ballMesh = new THREE.Mesh(ballGeo, wreckMat); ballMesh.scale.setScalar(R); ballMesh.castShadow = true; g.add(ballMesh);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.08, 6, 14), cableMat); g.add(ring);
+
+  // hook starts between the mast and the target, so the ball never spawns inside the building
+  const start = MAST.clone().lerp(new THREE.Vector3(0, 0, 0), 0.35);
+  const hook = new CANNON.Body({ type: CANNON.Body.KINEMATIC, mass: 0 });
+  const hs = new CANNON.Sphere(0.1); hs.collisionResponse = false; hook.addShape(hs); hook.collisionFilterMask = 0; hook.collisionFilterGroup = 0;
+  hook.position.set(start.x, hookY, start.z); hook.allowSleep = false;
+  const ball = new CANNON.Body({ mass: 650, shape: new CANNON.Sphere(R), linearDamping: 0.04, angularDamping: 0.3 });
+  ball.position.set(start.x, hookY - 2, start.z); ball.allowSleep = false;
+  const rope = new CANNON.DistanceConstraint(hook, ball, 2, 2e6);
+  world.addBody(hook); world.addBody(ball); world.addConstraint(rope);
+  ball.addEventListener('collide', e => {
+    const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
+    if (v > 2.5) { sfx.clang(Math.min(1, v / 14)); haptic(Math.round(10 + v * 3)); shake = Math.min(1.2, shake + v * 0.03); }
+  });
+  crane = { g, jib, counter, weight, trolley, cable, ballMesh, ring, hook, ball, rope, hookY, restY, L, target: start.clone(), t: CRANE_TIME, lower: 0, leaving: 0, mastH };
+  sfx.crane();
+}
+function removeCrane() {
+  if (!crane) return;
+  world.removeConstraint(crane.rope); world.removeBody(crane.hook); world.removeBody(crane.ball);
+  scene.remove(crane.g); crane.g.traverse(o => { if (o.material && o.material.map) o.material.map.dispose(); });
+  crane = null;
+}
+const _up = new THREE.Vector3(0, 1, 0), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _plane = new THREE.Plane();
+function steerCrane(px, py) {
+  if (!crane || crane.leaving) return;
+  const ndc = new THREE.Vector2(px / innerWidth * 2 - 1, -(py / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  _plane.set(_up, -crane.restY);
+  if (!raycaster.ray.intersectPlane(_plane, _a)) return;
+  const d = Math.hypot(_a.x, _a.z); if (d > 24) _a.multiplyScalar(24 / d);
+  crane.target.set(_a.x, 0, _a.z);
+}
+function updateCrane(dt) {
+  if (!crane) return;
+  const c = crane, h = c.hook.position;
+  if (!free && !c.leaving) c.t -= dt;                                   // free mode: unlimited, retracts when you pick another weapon
+  if (free && weapon !== 'crane' && !c.leaving) c.leaving = 0.001;
+  if (c.t <= 0 && !c.leaving) { c.leaving = 0.001; toast('Кран своє відпрацював'); }
+  // lower the ball on arrival, raise it when leaving
+  if (c.leaving) { c.leaving += dt; c.rope.distance = Math.max(1.5, c.rope.distance - dt * 9); }
+  else if (c.rope.distance < c.L) c.rope.distance = Math.min(c.L, c.rope.distance + dt * 7);
+  // the hook chases the finger with limited speed and acceleration
+  const dx = c.target.x - h.x, dz = c.target.z - h.z, d = Math.hypot(dx, dz);
+  const want = c.leaving ? 0 : Math.min(15, d * 3.2), k = d > 1e-3 ? want / d : 0;
+  const vx = c.hook.velocity.x, vz = c.hook.velocity.z, ax = dx * k - vx, az = dz * k - vz, am = Math.hypot(ax, az), lim = 30 * dt;
+  const s = am > lim ? lim / am : 1;
+  c.hook.velocity.set(vx + ax * s, 0, vz + az * s);
+  // visuals: jib turns toward the hook, cable from hook to ball
+  const jx = h.x - MAST.x, jz = h.z - MAST.z, jl = Math.hypot(jx, jz) + 1.6, ang = Math.atan2(-jz, jx), y = c.mastH + 0.75;
+  c.jib.scale.set(jl, 0.8, 0.8); c.jib.rotation.y = ang; c.jib.position.set(MAST.x + Math.cos(ang) * jl / 2, y, MAST.z - Math.sin(ang) * jl / 2);
+  c.jib.material.map.repeat.set(jl / 0.8, 1);
+  c.counter.scale.set(5, 0.7, 0.7); c.counter.rotation.y = ang; c.counter.position.set(MAST.x - Math.cos(ang) * 2.5, y, MAST.z + Math.sin(ang) * 2.5);
+  c.weight.rotation.y = ang; c.weight.position.set(MAST.x - Math.cos(ang) * 4.4, y - 0.9, MAST.z + Math.sin(ang) * 4.4);
+  c.trolley.rotation.y = ang; c.trolley.position.set(h.x, c.hookY + 0.3, h.z);
+  const bp = c.ball.position;
+  c.ballMesh.position.copy(bp); c.ballMesh.quaternion.copy(c.ball.quaternion);
+  _a.set(h.x, h.y, h.z); _b.set(bp.x, bp.y, bp.z);
+  const top = _b.clone().addScaledVector(_a.clone().sub(_b).normalize(), 1.15);
+  c.ring.position.copy(top); c.ring.lookAt(_a); c.ring.rotateY(Math.PI / 2);
+  c.cable.position.copy(_a).add(top).multiplyScalar(0.5); c.cable.scale.y = _a.distanceTo(top);
+  c.cable.quaternion.setFromUnitVectors(_up, _a.clone().sub(top).normalize());
+  if (c.leaving > 1.6) removeCrane();
+}
+const craneActive = () => crane && !crane.leaving && weapon === 'crane';
 
 /* ================= particles ================= */
 const particles = (() => {
@@ -456,7 +559,9 @@ const sfx = (() => {
     glass() { burstN(0.4, 5000, 0.25, 4, 'bandpass', 1.4); },
     tick() { tone(1400, 1300, 0.08, 0.2, 'square'); },
     whoosh() { burstN(1.6, 300, 0.4, 2, 'bandpass', 6); },
-    rumble() { burstN(4.5, 120, 0.8, 1, 'lowpass', 0.6); }
+    rumble() { burstN(4.5, 120, 0.8, 1, 'lowpass', 0.6); },
+    clang(k) { const t = performance.now(); if (t - lastThud < 90) return; lastThud = t; tone(220 + k * 90, 140, 0.7, 0.25 + k * 0.3, 'triangle'); tone(523, 470, 0.5, 0.08 + k * 0.1, 'sine'); burstN(0.4, 400 + k * 500, 0.4 + k * 0.4, 1, 'lowpass', 0.3); },
+    crane() { tone(70, 90, 1.4, 0.25, 'sawtooth'); burstN(1.4, 900, 0.12, 6, 'bandpass', 1.5); }
   };
 })();
 function haptic(ms) { if (app && store.get('vibro', true)) try { app.tick(ms); } catch (e) {} }
@@ -466,7 +571,7 @@ const pointers = new Map(); let gesture = null;
 canvas.addEventListener('pointerdown', e => {
   sfx.unlock(); canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 1) gesture = { x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: 0, multi: false };
+  if (pointers.size === 1) { gesture = { x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: 0, multi: false }; if (craneActive() && state === 'play') steerCrane(e.clientX, e.clientY); }
   else if (gesture) gesture.multi = true;
 });
 canvas.addEventListener('pointermove', e => {
@@ -474,12 +579,14 @@ canvas.addEventListener('pointermove', e => {
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
   if (pointers.size === 1) {
     if (gesture) gesture.moved += Math.abs(dx) + Math.abs(dy);
-    if (!gesture || gesture.moved > 8) { orbit.theta -= dx * 0.006; orbit.phi = Math.min(1.5, Math.max(0.25, orbit.phi - dy * 0.005)); }
+    if (craneActive() && state === 'play') steerCrane(e.clientX, e.clientY);
+    else if (!gesture || gesture.moved > 8) { orbit.theta -= dx * 0.006; orbit.phi = Math.min(1.5, Math.max(0.25, orbit.phi - dy * 0.005)); }
   } else if (pointers.size === 2) {
-    const [a, b] = [...pointers.values()], before = Math.hypot(a.x - b.x, a.y - b.y);
+    const [a, b] = [...pointers.values()], before = Math.hypot(a.x - b.x, a.y - b.y), mx0 = (a.x + b.x) / 2, my0 = (a.y + b.y) / 2;
     p.x = e.clientX; p.y = e.clientY;
-    const [c, d] = [...pointers.values()], after = Math.hypot(c.x - d.x, c.y - d.y);
+    const [c, d] = [...pointers.values()], after = Math.hypot(c.x - d.x, c.y - d.y), mx1 = (c.x + d.x) / 2, my1 = (c.y + d.y) / 2;
     orbit.r = Math.min(80, Math.max(8, orbit.r * before / Math.max(1, after)));
+    orbit.theta -= (mx1 - mx0) * 0.006; orbit.phi = Math.min(1.5, Math.max(0.25, orbit.phi - (my1 - my0) * 0.005));   // two fingers also turn the camera
     return;
   }
   p.x = e.clientX; p.y = e.clientY;
@@ -506,9 +613,11 @@ function buildWeapons() {
   const el = $('weapons'); el.innerHTML = '';
   for (const w of WEAPONS) {
     const n = ammo[w.id]; if (!free && level && level.ammo[w.id] === 0) continue;
-    const b = document.createElement('button'); b.className = 'wpn' + (weapon === w.id ? ' on' : '') + (n > 0 ? '' : ' empty');
-    b.innerHTML = `<b>${w.icon}</b><span>${w.name}</span><em>${n === Infinity ? '∞' : n}</em>`;
-    b.onclick = () => { weapon = w.id; buildWeapons(); haptic(8); if (w.id === 'quake' && ammo.quake > 0) toast('Торкніться екрана — і земля затруситься'); };
+    const b = document.createElement('button'); b.className = 'wpn' + (weapon === w.id ? ' on' : '') + (n > 0 || (w.id === 'crane' && crane && !crane.leaving) ? '' : ' empty');
+    const badge = w.id === 'crane' && crane && !crane.leaving ? (free ? '●' : Math.ceil(crane.t) + 'с') : n === Infinity ? '∞' : n;
+    b.innerHTML = `<b>${w.icon}</b><span>${w.name}</span><em>${badge}</em>`;
+    b.onclick = () => { weapon = w.id; buildWeapons(); haptic(8); if (w.id === 'quake' && ammo.quake > 0) toast('Торкніться екрана — і земля затруситься');
+      if (w.id === 'crane' && state === 'play' && !ended) { if (crane && !crane.leaving) toast('Тягніть пальцем — баба полетить слідом'); else if (ammo.crane > 0) callCrane(); } };
     el.appendChild(b);
   }
 }
@@ -590,6 +699,8 @@ function loop(now) {
   world.step(1 / 60, dt, 3); simTime += dt;
   if (groundGroup && groundBody) groundGroup.position.copy(groundBody.position);
 
+  updateCrane(dt);
+  if (crane && frame % 15 === 0 && state === 'play') buildWeapons();
   for (const b of pendingShatter) shatter(b); pendingShatter.clear();
 
   // bombs tick, blink and go off
@@ -626,14 +737,14 @@ function loop(now) {
   if (state === 'play' && frame % 10 === 0) {
     const p = destruction(); updateHud(p);
     if (!free && !ended) {
-      const left = Object.values(ammo).reduce((a, b) => a + b, 0) + bombs.length;
+      const left = Object.values(ammo).reduce((a, b) => a + b, 0) + bombs.length + (crane ? 1 : 0);
       const awake = blocks.filter(b => !b.gone && b.body.sleepState !== CANNON.Body.SLEEPING).length;
-      const calm = simTime - lastShot > 2.5 && awake < blocks.length * 0.03 && !quake;
+      const calm = !crane && simTime - lastShot > 2.5 && awake < blocks.length * 0.03 && !quake;
       if ((left === 0 && (calm || simTime - lastShot > 9)) || p >= 0.995) setTimeout(() => { if (!ended && state === 'play') finish(destruction()); }, 600);
     }
   }
 }
-window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, get blocks() { return blocks.length; } };
+window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, callCrane, steerCrane, get crane() { return crane; }, get blocks() { return blocks.length; } };
 
 renderDiary();
 showMenu();
