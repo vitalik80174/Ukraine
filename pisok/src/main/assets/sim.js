@@ -5,8 +5,8 @@
 const E=0, SAND=1, WATER=2, STONE=3, FIRE=4, PLANT=5, LAVA=6, STEAM=7, SNOW=8, SMOKE=9, METAL=10, GLASS=11, OIL=12, ACID=13,
       POWDER=14, ICE=15, SALT=16, SALTWATER=17, ASH=18, SEED=19, WOOD=20, COAL=21, GAS=22, NITRO=23, CEMENT=24, CLONE=25,
       VOID=26, SPARK=27, ANT=28, FISH=29, FLOWER=30, HEATER=31, COOLER=32, CLOUD=33, BATTERY=34, LAMP=35, MERCURY=36,
-      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42;
-const N=43;
+      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42, FIREFLY=43;
+const N=44;
 // kind: p powder, l liquid, g gas, w wall (static, pressure-tight), s static (porous)
 const MAT=[];
 function def(id,name,kind,col,v,dens,cond,extra={}){ MAT[id]=Object.assign({id,name,kind,col,v,dens,cond,fill:.5,t0:null,ign:null},extra); }
@@ -45,6 +45,7 @@ def(FLOWER,"Квітка","s",[230,90,130],20,9,.1,{fill:.5,ign:200});
 def(ANT,"Мураха","p",[74,34,24],10,1.5,.1,{fill:.04});
 def(FISH,"Риба","p",[255,140,40],20,1.02,.2,{fill:.05});
 def(BIRD,"Птах","p",[44,48,64],10,.5,.1,{fill:.02});
+def(FIREFLY,"Світлячок","p",[78,72,40],8,.4,.1,{fill:.03});
 def(BATTERY,"Батарейка","w",[70,72,84],6,9,.3,{fill:1});
 def(LAMP,"Лампа","w",[110,104,84],6,9,.4,{fill:1});
 def(MERCURY,"Ртуть","l",[188,194,206],8,13.6,.5);
@@ -63,7 +64,7 @@ const WALL=tbl(m=>m.kind==="w");
 const GASK=tbl(m=>m.kind==="g"&&m.id!==E);
 const MOVES=tbl(m=>(m.kind==="p"||m.kind==="l"||m.kind==="g")&&m.id!==E ? (m.id===LAVA||m.id===CEMENT?.3:1) : 0);
 const CONDUCT=tbl(m=>m.id===METAL||m.id===WATER||m.id===SALTWATER||m.id===MERCURY||m.id===LAMP||m.id===MOLTEN);
-const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05})[m.id]||0);
+const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[FIREFLY]:.4,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05})[m.id]||0);
 const FLOWERS=[[232,72,96],[250,206,60],[246,150,200],[245,245,245],[160,110,230],[255,140,60]];
 
 /* ================= world state ================= */
@@ -76,7 +77,7 @@ function makeArrays(w,h){
 }
 function put(i,t){ // a fresh cell from the brush or a spawn: default temperature
   T[i]=t; S[i]=(rnd()*256)|0;
-  L[i]= t===FIRE?40+rnd()*50 : t===STEAM?500+rnd()*400 : t===SMOKE?40+rnd()*60 : t===GAS?1500+rnd()*800 : t===SPARK?3+rnd()*4 : t===ANT?(rnd()<.5?1:2) : t===CLOUD?12+rnd()*24 : t===BIRD?(rnd()*60|0) : 0;
+  L[i]= t===FIRE?40+rnd()*50 : t===STEAM?500+rnd()*400 : t===SMOKE?40+rnd()*60 : t===GAS?1500+rnd()*800 : t===SPARK?3+rnd()*4 : t===ANT?(rnd()<.5?1:2) : t===CLOUD?12+rnd()*24 : t===BIRD?(rnd()*60|0) : t===FIREFLY?(rnd()*FLY_PER|0) : 0;
   const t0=MAT[t].t0; H[i]= t0===null ? 20 : t0;
 }
 function conv(i,t){ // a cell turning into something else keeps its heat
@@ -205,7 +206,7 @@ function cell(x,y){
         if (t===NITRO){ conv(i,FIRE); L[i]=40; explode(x,y,1.5); return; }
         if (t===GAS){ conv(i,FIRE); L[i]=20; explode(x,y,.25); return; }
         if (t===SEED){ conv(i,ASH); return; }
-        if (t===BIRD){ conv(i,ASH); return; }
+        if (t===BIRD||t===FIREFLY){ conv(i,ASH); return; }
         conv(i,FIRE); if (t===OIL) L[i]=110+rnd()*80; return;
       }
       switch(t){
@@ -248,6 +249,7 @@ function cell(x,y){
         case BATTERY: battery(i,x,y); break;
         case LAMP: if (L[i]){ electric(i,x,y); if (H[i]<60) H[i]+=.5; } break;
         case BIRD: bird(i,x,y); break;
+        case FIREFLY: firefly(i,x,y); break;
       }
       if (pActive && MOVES[T[i]] && !M[i]) push(i,x,y,T[i]);
 }
@@ -350,7 +352,7 @@ function spark(i,x,y){
 }
 function zapTouch(j,u){ // what electricity does to its neighbour
   if (u===GAS||u===POWDER||u===NITRO||u===OIL||u===PLANT||u===WOOD||u===COAL||u===FLOWER||u===SEED) H[j]+=400;
-  else if (u===FISH||u===ANT) conv(j,ASH);
+  else if (u===FISH||u===ANT||u===FIREFLY||u===BIRD) conv(j,ASH);
 }
 const HEAD=30;
 function electric(i,x,y){ // conductors carry pulses: head (30) → a long rest (29…1) so a wave never feeds on itself → ready (0)
@@ -442,6 +444,27 @@ function bird(i,x,y){ // flies about, keeps off the ground, pecks at seeds
   const nx=x+dir, ny=y+dy, u=at(nx,ny);
   if (u===E){ swap(i,ny*GW+nx); S[ny*GW+nx]=(S[ny*GW+nx]&~1)|(dir>0?1:0); }
   else { S[i]^=1; if (u===SEED && rnd()<.3){ T[ny*GW+nx]=E; } }
+}
+// fireflies: each one has its own clock (L counts up to FLY_PER) and flashes when it runs out.
+// A flash nudges the clocks of fireflies nearby a little forward, so after a while whole swarms blink together.
+const FLY_PER=150, FLY_FLASH=28;
+function live(x,y){ for(const [dx,dy] of NB4){ const nx=x+dx, ny=y+dy; if (nx<0||ny<0||nx>=GW||ny>=GH) continue; const j=ny*GW+nx; if (CONDUCT[T[j]] && L[j]) return true; } return false; }
+function firefly(i,x,y){
+  if (H[i]>55 || H[i]<-5){ conv(i,ASH); return; }
+  if (count8(x,y,WATER)+count8(x,y,SALTWATER)>3 && rnd()<.02){ conv(i,ASH); return; }
+  if (++L[i]>=FLY_PER){ L[i]=0;
+    for(let dy=-7;dy<=7;dy++){ const yy=y+dy; if (yy<0||yy>=GH) continue;
+      for(let dx=-7;dx<=7;dx++){ const xx=x+dx; if (xx<0||xx>=GW||(!dx&&!dy)) continue; const j=yy*GW+xx;
+        if (T[j]===FIREFLY && L[j]>FLY_PER*.35) L[j]=Math.min(FLY_PER-1,L[j]+12); } } }
+  if (rnd()<.72) return;                                                     // they drift slowly
+  // stay a few cells above the ground: look along "down" for something solid
+  let gap=99; for(let k=1;k<=22;k++){ const u=at(x+GX*k,y+GY*k); if (u!==E && !GASK[u]){ gap=k; break; } }
+  let side=(S[i]&1)?1:-1; if (rnd()<.08){ side=-side; S[i]^=1; }
+  const r=rnd(), vert= gap<3 ? -1 : gap>18 ? 1 : (r<.3?-1:r<.6?1:0);          // vert>0 means "towards the ground"
+  const nx=x+PX*side+GX*vert, ny=y+PY*side+GY*vert;
+  if (outside(nx,ny)){ S[i]^=1; return; }
+  const j=ny*GW+nx;
+  if (T[j]===E && H[j]<42 && !live(nx,ny)){ swap(i,j); } else { S[i]^=1; if (T[j]===FIRE && rnd()<.2) conv(i,ASH); }   // they keep away from heat and live wires
 }
 function maxP(x,y){ let m=0; for(const [dx,dy] of NB4){ const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=GW||ny>=GH) continue; const j=ny*GW+nx; if(!WALL[T[j]] && P[j]>m) m=P[j]; } return m; }
 function crack(i,x,y,limit,rate){
@@ -576,4 +599,18 @@ const SCENE_LIST=[
   ["thermite","Терміт","Горить при 2600°, плавить сталеву балку, рідкий метал капає у воду"],
   ["birds","Птахи","Зграя над пагорбами з мокрого піску, насіння й дерева"]
 ];
-function loadScene(name){ clearAll(); (SCENES[name]||SCENES.demo)(); }
+SCENES.night=function(){ sceneSky=2;
+  const ground=x=>Math.round(GH*(.74-.05*Math.sin(x/GW*5.1+1)-.02*Math.sin(x/GW*23)));
+  for(let x=0;x<GW;x++) for(let y=ground(x);y<GH;y++) put(y*GW+x, y<ground(x)+4?WETSAND:STONE);
+  const pond=Math.round(GW*.68), pw=Math.round(GW*.13);                               // a little pond
+  for(let x=pond-pw;x<pond+pw;x++){ const d=Math.round(10*Math.sqrt(Math.max(0,1-((x-pond)/pw)**2))), g=ground(x); for(let y=g;y<g+d;y++) put(y*GW+x,WATER); }
+  for(let x=2;x<GW-2;x+=2+(rnd()*4|0)){ if (Math.abs(x-pond)<pw+2) continue; const g=ground(x)-1; if (T[g*GW+x]!==E) continue; put(g*GW+x,PLANT); L[g*GW+x]=3+(rnd()*7|0); }   // grass
+  const fx=Math.round(GW*.3), fg=ground(fx);                                         // a campfire
+  rect(fx-6,fg-5,fx+6,fg,STONE); rect(fx-4,fg-5,fx+4,fg-1,E); for(let k=-3;k<=3;k++){ const i=(fg-2)*GW+fx+k; put(i,WOOD); H[i]=400; } rect(fx-3,fg-4,fx+3,fg-2,COAL); for(let y=fg-4;y<fg-2;y++) for(let k=-3;k<3;k++) H[y*GW+fx+k]=400;
+  const lx=Math.round(GW*.1), lg=ground(lx);                                         // a street lamp on a battery
+  rect(lx,lg-34,lx+2,lg,METAL); rect(lx,lg-36,lx+10,lg-34,METAL); rect(lx+7,lg-34,lx+11,lg-31,LAMP); rect(lx-3,lg-4,lx,lg,BATTERY);
+  for(let k=0;k<85;k++){ const x=(rnd()*GW)|0, y=ground(x)-4-(rnd()*16|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,FIREFLY); }
+  for(let k=0;k<5;k++){ const x=pond-pw+4+(rnd()*(pw*2-8)|0), y=ground(x)+3; if (T[y*GW+x]===WATER) put(y*GW+x,FISH); } };
+SCENE_LIST.push(["night","Літня ніч","Світлячки над лукою, вогнище й ліхтар; сусіди поступово починають блимати разом"]);
+let sceneSky=null;               // a scene can ask for a time of day; ui.js applies it
+function loadScene(name){ clearAll(); sceneSky=null; (SCENES[name]||SCENES.demo)(); }
