@@ -217,6 +217,7 @@ function lifeTown(dt,d,S,W_,sp,mp,night,season){
   cat(d,S,W_,night);
   carolers(d,night);
   xmasTree(d,night);
+  if (typeof trumpeterDraw==="function") trumpeterDraw(dt,d,night);
   landmarkRing();
 }
 

@@ -36,6 +36,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .rows{display:flex;flex-direction:column;gap:2px}
 .opt{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
 .opt span{display:flex;flex-direction:column}
+.opt .vol{width:46%;accent-color:#f4c56a}
 .opt span em{font-style:normal;color:var(--dim);font-size:12.5px}
 .switch{position:relative;width:48px;height:28px;flex:none}
 .switch input{opacity:0;position:absolute;inset:0;margin:0;cursor:pointer}
@@ -84,7 +85,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <label class="opt"><span>Годинник<em>Час і погода в кутку</em></span><span class="switch"><input type="checkbox" id="optClock"><i></i></span></label>
     <label class="opt"><span>Не гасити екран<em>Вікно світиться, поки відкрите</em></span><span class="switch"><input type="checkbox" id="optAwake"><i></i></span></label>
     <label class="opt"><span>Приглушувати вночі<em>Темніший екран після заходу</em></span><span class="switch"><input type="checkbox" id="optDim"><i></i></span></label>
-    <label class="opt"><span>Звуки<em>Дзвін Ратуші, коли її торкнутися</em></span><span class="switch"><input type="checkbox" id="optSound"><i></i></span></label>
+    <label class="opt"><span>Дзвін і сурмач<em>Ратуша б'є години з 8:00 до 21:00, опівдні грає сурмач</em></span><span class="switch"><input type="checkbox" id="optSound"><i></i></span></label>
+    <label class="opt"><span>Звуки міста<em>Дощ, вітер, синиці, голуби, трамвай, цвіркуни — за погодою й часом</em></span><span class="switch"><input type="checkbox" id="optAmbient"><i></i></span></label>
+    <label class="opt"><span>Гучність</span><input type="range" class="vol" id="optVolume" min="0" max="100" step="1"></label>
     <div class="opt"><span>Заставка на зарядці<em>Налаштування → Дисплей → Заставка → «Вікно»</em></span></div>
   </div>
 
@@ -101,6 +104,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 
 <script src="changelog.js"></script>
 <script src="life.js"></script>
+<script src="sound.js"></script>
 <script>
 "use strict";
 /* ============ settings & helpers ============ */
@@ -536,7 +540,7 @@ function fog(S){
 }
 function lightning(dt){
   world.flash=Math.max(0,world.flash-dt*3);
-  if (world.flash<=0 && Math.random()<dt*.08) world.flash=1;
+  if (world.flash<=0 && Math.random()<dt*.08){ world.flash=1; if (window.sndThunder) sndThunder(); }
   if (world.flash>0){ ctx.fillStyle=`rgba(230,235,255,${world.flash*(.35+.35*Math.sin(world.flash*40))})`; ctx.fillRect(0,0,W,H); }
 }
 function fireflies(){
@@ -601,11 +605,11 @@ function renderDiary(){
   // tell about a fresh entry once
   const seen=store.get("seenDay",0); if (log.length && log[0].day>seen){ store.set("seenDay",log[0].day); if (seen) setTimeout(()=>toast(`Нове у вікні: ${log[0].title}`),1500); }
 }
-window.onAppResume = ()=>{ loadWeather(); };
+window.onAppResume = ()=>{ loadWeather(); sndWake(); };
 
 /* ============ start ============ */
 addEventListener("resize", resize);
-resize(); applySettings(); renderDiary(); loadWeather(); lifeInit();
+resize(); applySettings(); renderDiary(); loadWeather(); lifeInit(); soundInit();
 if (Q.get("dream")) { $("menuBtn").hidden=true; }
 setInterval(loadWeather, 15*60*1000);
 requestAnimationFrame(frame);
