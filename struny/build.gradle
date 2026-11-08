@@ -1,0 +1,31 @@
+plugins { id 'com.android.application' }
+
+def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+android {
+    namespace 'ua.nebo.struny'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'ua.nebo.struny'
+        minSdk 26
+        targetSdk 34
+        versionCode 100 + runNumber
+        versionName "1.${runNumber}"
+    }
+    signingConfigs {
+        nebo {
+            storeFile file('../app/nebo.jks')
+            storePassword 'nebo-widget'
+            keyAlias 'nebo'
+            keyPassword 'nebo-widget'
+        }
+    }
+    buildTypes {
+        debug { signingConfig signingConfigs.nebo }
+        release { minifyEnabled false; signingConfig signingConfigs.nebo }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
