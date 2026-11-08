@@ -279,7 +279,7 @@ ceiling.rotation.x = Math.PI / 2; ceiling.position.set(CX, H, CZ); ceiling.visib
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), M.ground);
 ground.rotation.x = -Math.PI / 2; ground.position.set(CX, -0.02, CZ); ground.receiveShadow = true; ground.visible = false; scene.add(ground);
 // outside: the courtyard and the building across it; our floor is the 3rd (≈6,4 m above the ground)
-const SUN = { orient: store.get('orient', 180), gap: store.get('gap', 18), live: true, y: 0, m: 0, d: 0, h: 12 };
+const SUN = { orient: store.get('orient', 150), gap: store.get('gap', 18), live: true, y: 0, m: 0, d: 0, h: 12 };
 let outside = null;
 function buildOutside() {
   if (outside) { scene.remove(outside.group); outside.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
