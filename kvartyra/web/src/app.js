@@ -127,28 +127,35 @@ function wall(axis, t1, t2, from, to, holes, mat) {
   let p = from;
   for (const h of holes) {
     if (h.a > p) { seg(p, h.a, 0, H, mat); solid(p, h.a); }
-    const top = h.type === 'win' ? P.winTop : 2.1, sill = P.winSill;
+    const top = h.type === 'win' || h.type === 'balcony' ? P.winTop : 2.1, sill = P.winSill; // the balcony door is panoramic too
     seg(h.a, h.b, top, H, mat);
     if (h.type === 'win') {
       seg(h.a, h.b, 0, sill, mat); solid(h.a, h.b);
       const mid = (t1 + t2) / 2;
-      const half = (h.a + h.b) / 2;
-      if (axis === 'x') { // left half fixed, right half is a sash that opens into the room (tap it)
-        box(h.a, mid - 0.01, half, mid + 0.01, sill, top, M.glass).castShadow = false;
-        const sw = h.b - half - 0.03, sh = top - sill, sg = new THREE.Group(); sg.position.set(h.b, sill, t1 + 0.03);
-        const gl = new THREE.Mesh(new THREE.BoxGeometry(sw, sh - 0.06, 0.02), M.glass); gl.position.set(-sw / 2, sh / 2, 0);
+      // window unit as in the photos (seen from inside): a wide fixed part on the left, a narrower part on the right —
+      // looking out the window +X is on the left, so the wide part is at the high-X end;
+      // a transom across both at ≈1 m; only the upper right pane tilts open (tap it)
+      const split = h.b - (h.b - h.a) * 0.6, tr = sill + 0.95;
+      if (axis === 'x') {
+        box(split, mid - 0.01, h.b, mid + 0.01, sill, top, M.glass).castShadow = false;
+        box(h.a, mid - 0.01, split, mid + 0.01, sill, tr, M.glass).castShadow = false;
+        const sw = split - h.a - 0.05, sh = top - tr - 0.03, sg = new THREE.Group(); sg.position.set(h.a + 0.02, tr + 0.03, t1 + 0.03);
+        const gl = new THREE.Mesh(new THREE.BoxGeometry(sw, sh - 0.06, 0.02), M.glass); gl.position.set(sw / 2, sh / 2, 0);
         const fr = new THREE.Group();
-        for (const [w2, h2, x2, y2] of [[sw, 0.05, -sw / 2, 0.03], [sw, 0.05, -sw / 2, sh - 0.03], [0.05, sh, -0.025, sh / 2], [0.05, sh, -sw + 0.025, sh / 2]]) {
-          const b = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, 0.06), M.frame); b.position.set(x2, y2, 0); b.castShadow = true; fr.add(b);
+        for (const [w2, h2, x2, y2] of [[sw, 0.05, sw / 2, 0.025], [sw, 0.05, sw / 2, sh - 0.025], [0.05, sh, 0.025, sh / 2], [0.05, sh, sw - 0.025, sh / 2]]) {
+          const fb = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, 0.06), M.frame); fb.position.set(x2, y2, 0); fb.castShadow = true; fr.add(fb);
         }
-        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.05), M.steel); handle.position.set(-sw / 2, sh - 0.12, -0.05);
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.05), M.steel); handle.position.set(sw / 2, sh - 0.12, -0.05);
         sg.add(gl, fr, handle); wallsG.add(sg);
         sg.traverse(o => { o.userData.openable = sg; });
         openables.push({ g: sg, kind: 'win', axis: 'x', a0: 0, a1: -0.14, open: false, cur: 0 }); // tilt only: the top opens a little
+        // frame: sill, mullion, transom, head
+        box(h.a, t1 - 0.02, h.b, t2 + 0.02, sill - 0.03, sill, M.frame);
+        box(split - 0.035, mid - 0.04, split + 0.035, mid + 0.04, sill, top, M.frame);
+        box(h.a, mid - 0.04, h.b, mid + 0.04, tr - 0.03, tr + 0.03, M.frame);
+        box(h.a, mid - 0.04, h.b, mid + 0.04, top - 0.04, top, M.frame);
       } else { box(mid - 0.01, h.a, mid + 0.01, h.b, sill, top, M.glass).castShadow = false; }
-      // frame: sill + mullion
-      if (axis === 'x') { box(h.a, t1 - 0.02, h.b, t2 + 0.02, sill - 0.03, sill, M.frame); box((h.a + h.b) / 2 - 0.03, mid - 0.04, (h.a + h.b) / 2 + 0.03, mid + 0.04, sill, top, M.frame); box(h.a, mid - 0.04, h.b, mid + 0.04, top - 0.04, top, M.frame); }
-      else { box(t1 - 0.02, h.a, t2 + 0.02, h.b, sill - 0.03, sill, M.frame); }
+      if (axis !== 'x') box(t1 - 0.02, h.a, t2 + 0.02, h.b, sill - 0.03, sill, M.frame);
     }
     p = h.b;
   }
@@ -160,8 +167,8 @@ function doorLeaf(hx, hz, width, angle, mat, thick, glazed) {
   const g = new THREE.Group();
   let leaf;
   if (glazed) { // balcony door: white frame with glass, like the windows
-    leaf = new THREE.Group(); const hh = 2.05;
-    for (const [w2, h2, x2, y2] of [[width, 0.08, width / 2, 0.04], [width, 0.08, width / 2, hh - 0.04], [0.08, hh, 0.04, hh / 2], [0.08, hh, width - 0.04, hh / 2], [width, 0.06, width / 2, 0.9]]) {
+    leaf = new THREE.Group(); const hh = P.winTop - 0.03;
+    for (const [w2, h2, x2, y2] of [[width, 0.08, width / 2, 0.04], [width, 0.08, width / 2, hh - 0.04], [0.08, hh, 0.04, hh / 2], [0.08, hh, width - 0.04, hh / 2], [width, 0.06, width / 2, P.winSill + 0.95]]) {
       const b = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, 0.06), M.frame); b.position.set(x2, y2, 0); b.castShadow = true; leaf.add(b);
     }
     const gl = new THREE.Mesh(new THREE.BoxGeometry(width - 0.12, hh - 0.12, 0.02), M.glass); gl.position.set(width / 2, hh / 2, 0); leaf.add(gl);
@@ -242,7 +249,7 @@ for (const b of P.balcony) {
 }
 for (const w of P.walls) for (const h of (w.holes || [])) {
   if (h.type !== 'win' || w.axis !== 'x' || w.t1 < 1) continue;
-  const c = h.a + (h.b - h.a) / 4, rw = Math.min(1.0, (h.b - h.a) / 2 - 0.1); // under the fixed left half, clear of the opening sash
+  const c = h.b - (h.b - h.a) * 0.3, rw = Math.min(1.0, (h.b - h.a) * 0.6 - 0.15); // under the wide fixed part, as in the photos
   box(c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07, 0.12, 0.62, radMat, house);
   solids.push([c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07]);
 }
