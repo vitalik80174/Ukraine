@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Квартира</title>
+<style>
+:root{
+  --fg:#1e2128; --dim:rgba(30,33,40,.6); --panel:rgba(255,255,255,.86); --line:rgba(0,0,0,.1); --accent:#c9733a; --on:rgba(201,115,58,.14);
+  --f:"Golos Text","Roboto",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;overflow:hidden;background:#cfe0ee;color:var(--fg);font:14px/1.4 var(--f);-webkit-tap-highlight-color:transparent;user-select:none;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit;cursor:pointer}
+.glass{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 6px 24px rgba(20,30,50,.12)}
+
+.top{position:fixed;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:5px;border-radius:999px}
+.top button{border:0;background:none;padding:9px 18px;border-radius:999px;font:600 14px var(--f);color:var(--dim)}
+.top button.on{background:var(--fg);color:#fff}
+.side{position:fixed;right:max(14px,env(safe-area-inset-right));top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:20px}
+.b{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:68px;padding:8px 6px 7px;border-radius:14px;border:1px solid transparent;background:none;color:var(--dim);font:500 11.5px var(--f)}
+.b svg{width:24px;height:24px;stroke:var(--fg);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.b.on{background:var(--on);border-color:rgba(201,115,58,.35);color:var(--fg)}
+.b.on svg{stroke:var(--accent)}
+.title{position:fixed;top:max(18px,env(safe-area-inset-top));left:max(20px,env(safe-area-inset-left));pointer-events:none}
+.title h1{margin:0;font:600 22px/1 var(--f)}
+.title p{margin:5px 0 0;color:var(--dim);font-size:12.5px}
+.where{position:fixed;left:50%;top:max(72px,calc(env(safe-area-inset-top) + 62px));transform:translateX(-50%);font:600 15px var(--f);padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.75);pointer-events:none}
+.where:empty{display:none}
+body.night .title{color:#f1ece2}
+body.night .title p{color:rgba(241,236,226,.6)}
+body.night{background:#0e1222}
+
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;padding:5px 10px;border-radius:10px;background:rgba(255,255,255,.88);font:600 13px/1.2 var(--f);text-align:center;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.lbl small{display:block;font:500 11px var(--f);color:var(--dim)}
+.tip{position:fixed;padding:12px 14px;border-radius:16px;width:180px}
+.tip b{display:block;font:600 15px var(--f)}
+.tip span{display:block;color:var(--dim);font-size:12.5px;margin-bottom:8px}
+.tip button{width:100%;border:0;border-radius:10px;padding:9px;background:var(--fg);color:#fff;font:600 13px var(--f)}
+
+.joy{position:fixed;left:max(28px,env(safe-area-inset-left));bottom:max(28px,env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.35);border:2px solid rgba(255,255,255,.7);touch-action:none}
+.joy i{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 12px rgba(0,0,0,.2)}
+.hint{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12.5px;color:var(--dim);padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.6);pointer-events:none;white-space:nowrap}
+
+.panel{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column;padding:max(22px,env(safe-area-inset-top)) 22px 22px;border-width:0 0 0 1px;background:rgba(255,255,255,.95)}
+.panel.open{transform:none}
+.panel h1{font:600 24px/1.1 var(--f);margin:0}
+.panel .sub{color:var(--dim);font-size:13px;margin-top:6px}
+.panel h2{font:600 11px/1 var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:22px 0 10px}
+.panel .scroll{overflow:auto;flex:1;margin-right:-10px;padding-right:10px;touch-action:pan-y}
+.panel .x{position:absolute;top:max(14px,env(safe-area-inset-top));right:12px;border:0;background:none;font-size:26px;color:var(--dim);width:44px;height:44px}
+.row{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line);font-size:13.5px}
+.row.sum{font-weight:600}
+.how p{margin:0 0 8px;color:var(--dim);font-size:13.5px}
+.how b{color:var(--fg)}
+.entry{padding:12px 0;border-top:1px solid var(--line)}
+.entry .d{font:600 10.5px var(--f);letter-spacing:.08em;color:var(--accent)}
+.entry b{display:block;font:600 15px var(--f);margin:3px 0}
+.entry p{margin:0;color:var(--dim);font-size:13.5px}
+.foot{margin-top:14px;color:var(--dim);font-size:11.5px}
+.note{color:var(--dim);font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="labels"></div>
+<div class="title"><h1>Квартира</h1><p>77,3 м² · дві кімнати</p></div>
+<div class="top glass">
+  <button data-mode="doll" class="on">Будиночок</button>
+  <button data-mode="walk">Прогулянка</button>
+  <button data-mode="plan">План</button>
+</div>
+<div class="where" id="where"></div>
+<div class="side glass">
+  <button class="b" id="bWalls"><svg viewBox="0 0 24 24"><path d="M4 20V12h16v8M4 12l3-3h10l3 3"/></svg>Низькі стіни</button>
+  <button class="b" id="bLight"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg><span id="vLight">День</span></button>
+  <button class="b on" id="bLabels"><svg viewBox="0 0 24 24"><path d="M4 6h16v9H13l-4 4v-4H4z"/></svg>Назви</button>
+  <button class="b" id="bMore"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Більше</button>
+</div>
+<div class="joy" id="joy" hidden><i id="knob"></i></div>
+<div class="tip glass" id="tip" hidden></div>
+
+<div class="panel" id="panel">
+  <button class="x" id="close" aria-label="Закрити">×</button>
+  <h1>Квартира</h1>
+  <div class="sub" id="dayline">Об'ємна модель за планом</div>
+  <div class="scroll">
+    <h2>Кімнати</h2>
+    <div id="facts"></div>
+    <div class="note">Розміри зняті з фото плану й вирівняні, тож точність — приблизно ±10 см. Для відчуття простору, не для замовлення меблів.</div>
+    <h2>Як дивитись</h2>
+    <div class="how">
+      <p><b>Будиночок:</b> веди пальцем — квартира обертається; двома пальцями — наблизити й посунути. Торкнись кімнати — можна зайти в неї.</p>
+      <p><b>Прогулянка:</b> круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни не пройдеш, а на балкон — можна.</p>
+      <p><b>План:</b> вигляд згори, як на папері.</p>
+    </div>
+    <h2>Щоденник змін</h2>
+    <div id="diary"></div>
+    <div class="foot" id="foot">Лабораторія Claude</div>
+  </div>
+</div>
+<script src="changelog.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
