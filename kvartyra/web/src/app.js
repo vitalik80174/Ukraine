@@ -378,6 +378,17 @@ for (const w of P.walls) if (w.ext && w.axis === 'x' && w.t1 > 1) for (const h o
   L.position.set(cx, 1.5, w.t1 - 0.12); L.target.position.set(cx, 0.4, w.t1 - 4); house.add(L, L.target);
   winLights.push({ L, w: h.b - h.a });
 }
+// the rest of our building around the flat (the floor above, the roof, the neighbours' flats beside us) — invisible,
+// but it casts shadows, so sunlight can only come in through the windows and never through the ceiling
+{
+  const shadowOnly = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  const block = (x1, z1, x2, z2, y1, y2) => { const m = new THREE.Mesh(new THREE.BoxGeometry(x2 - x1, y2 - y1, z2 - z1), shadowOnly); m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2); m.castShadow = true; m.layers.set(2); scene.add(m); };
+  block(-40, -16, P.width + 40, P.depth + 0.3, H + 0.001, H + 3.6);      // floor above + roof
+  block(-40, -16, -0.3, P.depth + 0.3, 0, H + 0.001);                   // flats on the left
+  block(P.width + 0.3, -16, P.width + 40, P.depth + 0.3, 0, H + 0.001); // flats on the right
+  block(-0.3, -16, P.width + 0.3, -0.3, 0, H + 0.001);                  // the corridor side
+  sun.shadow.camera.layers.enable(2);
+}
 // ceiling — only while walking, so the doll-house view stays open
 const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(P.width + 0.6, P.depth + 0.6), new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: 1, emissive: 0x9c9a96 }));
 ceiling.rotation.x = Math.PI / 2; ceiling.position.set(CX, H, CZ); ceiling.visible = false; house.add(ceiling);
@@ -537,6 +548,7 @@ function openSun() {
 setInterval(() => { if (SUN.live) { Object.assign(SUN, kyivNow()); applyLight(); } }, 60000);
 function setMode(m) {
   mode = m; store.set('mode', m);
+  document.body.classList.toggle('walking', m === 'walk');
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   $('joy').hidden = m !== 'walk'; $('bWalls').hidden = m === 'walk';
   if (m === 'plan') { orbit.tx = CX + 0.6; orbit.tz = P.depthWithBalcony / 2 - 0.3; } else if (m === 'doll') { orbit.tx = CX; orbit.tz = CZ + 0.3; }
