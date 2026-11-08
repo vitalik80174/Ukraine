@@ -34,6 +34,11 @@ body.night .title p{color:rgba(241,236,226,.6)}
 body.night{background:#0e1222}
 
 #labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.tag{position:absolute;left:0;top:0;padding:3px 7px;border-radius:7px;font:600 11.5px/1.2 var(--f);white-space:nowrap;pointer-events:none}
+.tag.dims{background:#c9733a;color:#fff;box-shadow:0 1px 6px rgba(0,0,0,.25)}
+.tag.elec{background:rgba(255,255,255,.95);color:var(--fg);box-shadow:0 1px 6px rgba(0,0,0,.2)}
+.tag.elec b{color:#c9733a}
+#tags{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 .lbl{position:absolute;left:0;top:0;padding:5px 10px;border-radius:10px;background:rgba(255,255,255,.88);font:600 13px/1.2 var(--f);text-align:center;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,.12)}
 .lbl small{display:block;font:500 11px var(--f);color:var(--dim)}
 .tip{position:fixed;padding:12px 14px;border-radius:16px;width:180px}
@@ -92,6 +97,7 @@ body.night{background:#0e1222}
 </head>
 <body>
 <div id="labels"></div>
+<div id="tags"></div>
 <div class="title"><h1>Квартира</h1><p>77,3 м² · дві кімнати</p></div>
 <div class="top glass">
   <button data-mode="doll" class="on">Будиночок</button>
@@ -106,6 +112,7 @@ body.night{background:#0e1222}
   <button class="b" id="bLight"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg><span id="vLight">День</span></button>
   <button class="b on" id="bLabels"><svg viewBox="0 0 24 24"><path d="M4 6h16v9H13l-4 4v-4H4z"/></svg>Назви</button>
   <button class="b" id="bPower"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg>Електрика</button>
+  <button class="b" id="bDims"><svg viewBox="0 0 24 24"><path d="M3 17l14-14 4 4-14 14z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Розміри</button>
   <button class="b" id="bMore"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Більше</button>
 </div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
@@ -130,12 +137,13 @@ body.night{background:#0e1222}
     <div class="how">
       <p><b>Будиночок:</b> веди пальцем — квартира обертається; двома пальцями — наблизити й посунути. Торкнись кімнати — можна зайти в неї.</p>
       <p><b>Прогулянка:</b> торкнись підлоги — підеш туди сам; торкнись мапки в куті — опинишся в тій точці. Круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни й зачинені двері не пройдеш, а на балкон — можна.</p>
+      <p><b>Розміри:</b> показує ширину й довжину кожної кімнати, висоту стелі, розміри вікон і дверей — помаранчевими позначками.</p>
+      <p><b>Електрика:</b> прибирає всі меблі й показує кожну розетку, вимикач, щиток і виводи з підписом висоти від підлоги.</p>
       <p><b>Двері й вікна:</b> торкнись дверей — відчиняться чи зачиняться; вікно поділене на широку глуху частину й вужчу з перемичкою посередині — торкнись верхньої шибки вужчої частини, і вона відкинеться на провітрювання (вікна відчиняються лише так). Балконні двері панорамні, скляні й відчиняються повністю. Вхідні двері спочатку зачинені.</p>
       <p><b>План:</b> вигляд згори, як на папері.</p>
       <p><b>Сонце:</b> справжнє сонце над Львовом у будь-який день і час, з урахуванням того, куди дивляться вікна, і будинку навпроти. Показує, коли пряме сонце потрапляє у вікна.</p>
       <p><b>Інтер'єр</b> (кнопка з будиночком): «Як є», «Ремонт» і чотири варіанти на смак Claude — скандинавський, Japandi, лофт і львівська класика, з меблями.</p>
       <p><b>Як є / Ремонт:</b> «Як є» — квартира зараз, після здачі: бетонна стяжка, білі стіни, радіатори, французькі балкончики, ще без дверей і сантехніки. «Ремонт» — з підлогою, кухнею, ванною й дверима.</p>
-      <p><b>Електрика:</b> показує розетки, вимикачі, щиток і виводи під бойлер, витяжку й кондиціонер — на тій висоті, що в проєкті. Найзручніше дивитися в прогулянці.</p>
     </div>
     <h2>Щоденник змін</h2>
     <div id="diary"></div>

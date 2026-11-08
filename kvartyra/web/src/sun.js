@@ -56,7 +56,10 @@ class Batch { // many boxes of one material → one InstancedMesh (cheap on a ta
   }
   mesh() { const im = new THREE.InstancedMesh(unitBox, this.mat, this.m.length); this.m.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = this.cast; im.receiveShadow = true; return im; }
 }
-const std = (c, r = 0.85, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+const outsideMats = []; // outdoor materials get a little self-light so the street stays sunny when the indoor fill is low
+const std = (c, r = 0.85, m = 0) => { const mt = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m }); outsideMats.push(mt); return mt; };
+/** k ∈ [0,1]: how much outdoor daylight to add on top of the scene lights. */
+export function outdoorGlow(k) { for (const m of outsideMats) { if (m.userData.keepEmissive) continue; m.emissive.copy(m.color).multiplyScalar(k); } }
 
 /** Builds a residential block whose street facade is at z = fz and looks along `dir` (+1 → +Z, −1 → −Z); the body extends behind it. */
 function block(g, B, o) {
@@ -119,7 +122,7 @@ export function buildSurroundings(P, opt) {
   const W = P.width, D = P.depth, below = opt.below, gap = opt.gap, floors = opt.floors, fh = 3.0;
   const ground = -below, f0 = D + 0.3, f1 = f0 + gap, X0 = W / 2 - 38, X1 = W / 2 + 38;
   const mk = () => ({
-    glass: new Batch(Object.assign(std(0x3b4a5a, 0.15, 0.45), { emissive: new THREE.Color(0x1d2a38) }), false), frame: new Batch(std(0x30343a, 0.5, 0.3)), slab: new Batch(std(0x9d9d9b, 0.9)),
+    glass: new Batch((() => { const m = std(0x3b4a5a, 0.15, 0.45); m.emissive.set(0x1d2a38); m.userData.keepEmissive = true; return m; })(), false), frame: new Batch(std(0x30343a, 0.5, 0.3)), slab: new Batch(std(0x9d9d9b, 0.9)),
     bar: new Batch(std(0x1c1e21, 0.5, 0.5)), ac: new Batch(std(0xf1f1ef, 0.6)), parapet: new Batch(std(0x8f9296, 0.8)), plinth: new Batch(std(0x6f7275, 0.9)),
     curtain: new Batch(std(0xe9e2d4, 1), false), lamp: new Batch(new THREE.MeshBasicMaterial({ color: 0xfff1d0 }), false),
     curb: new Batch(std(0xbdb9b0, 0.9), false), fence: new Batch(std(0x1c1e21, 0.5, 0.5)), hedge: new Batch(std(0x3f6a35, 1)),

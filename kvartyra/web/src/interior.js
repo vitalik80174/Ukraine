@@ -1,6 +1,7 @@
 // Interior variants for «Квартира»: palettes + one furniture layout built from simple shapes.
 // Coordinates are metres in the plan's frame (see plan.js). Each style recolours the same layout and adds its own touches.
 import * as THREE from '../../../ruina/web/vendor/three.module.js';
+import { rbox, radiusFor } from './detail.js';
 
 export const STYLES = [
   { id: 'raw', short: 'Як є', name: 'Як є', sub: 'зараз: стяжка, білі стіни, без дверей' },
@@ -80,9 +81,11 @@ export function buildInterior(S, P, solids) {
     if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal }));
     return mats.get(k);
   };
+  // every piece gets rounded edges: fabric (rough ≥ 0.9) soft and plump, the rest a small bevel
   const box = (x1, z1, x2, z2, y1, y2, m, solid) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(x2 - x1), y2 - y1, Math.abs(z2 - z1)), m);
-    mesh.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2); mesh.castShadow = true; mesh.receiveShadow = true;
+    const w = Math.abs(x2 - x1), h = y2 - y1, d = Math.abs(z2 - z1), r = radiusFor(w, h, d, m.roughness >= 0.9 && m.metalness === 0);
+    const mesh = new THREE.Mesh(r > 0 ? rbox(w, h, d, r) : new THREE.BoxGeometry(w, h, d), m);
+    mesh.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2); mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.y1 = y1; mesh.userData.h = h;
     g.add(mesh); if (solid) solids.push([Math.min(x1, x2), Math.min(z1, z2), Math.max(x1, x2), Math.max(z1, z2), 2]);
     return mesh;
   };
@@ -106,6 +109,11 @@ export function buildInterior(S, P, solids) {
   box(0.6, 0, 3.45, 0.36, 1.45, 2.25, mat(S.upper, 0.55));
   box(0.62, 0.36, 3.43, 0.365, 1.47, 2.23, mat(S.upper, 0.4)); // fronts
   for (let x = 0.6 + 0.57; x < 3.45; x += 0.57) box(x - 0.004, 0.362, x + 0.004, 0.37, 1.47, 2.23, mat(0x222222, 0.6));
+  const steel = mat(0xb9bec4, 0.25, 0.9);
+  for (let x = 0.6 + 0.285; x < 3.45; x += 0.57) { box(x - 0.09, 0.37, x + 0.09, 0.39, 1.5, 1.515, steel); box(x - 0.09, 0.6, x + 0.09, 0.625, 0.78, 0.795, steel); } // handles
+  for (let x = 0.6 + 0.57; x < 3.45; x += 0.57) box(x - 0.003, 0.598, x + 0.003, 0.606, 0.12, 0.84, mat(0x333333, 0.6)); // gaps between base fronts
+  cyl(1.6, 0.1, 0.022, 0.026, 0.9, 1.18, steel); { const sp = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.016, 8, 16, Math.PI), steel); sp.position.set(1.6, 1.18, 0.21); sp.rotation.y = Math.PI / 2; g.add(sp); } // faucet
+  for (const [hx, hz, rr] of [[2.65, 0.18, 0.09], [2.95, 0.18, 0.07], [2.65, 0.42, 0.07], [2.95, 0.42, 0.09]]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.006, 6, 28), mat(0x555555, 0.5)); ring.rotation.x = Math.PI / 2; ring.position.set(hx, 0.908, hz); g.add(ring); } // hob rings
   // dining table with four chairs
   const tx = 2.0, tz = 2.15;
   if (S.classic) { cyl(tx, tz, 0.55, 0.55, 0.72, 0.76, wood, 32); cyl(tx, tz, 0.06, 0.12, 0, 0.72, wood); }
