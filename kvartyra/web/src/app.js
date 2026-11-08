@@ -135,16 +135,16 @@ function wall(axis, t1, t2, from, to, holes, mat) {
       const half = (h.a + h.b) / 2;
       if (axis === 'x') { // left half fixed, right half is a sash that opens into the room (tap it)
         box(h.a, mid - 0.01, half, mid + 0.01, sill, top, M.glass).castShadow = false;
-        const sw = h.b - half - 0.03, sg = new THREE.Group(); sg.position.set(h.b, 0, t1 + 0.03);
-        const gl = new THREE.Mesh(new THREE.BoxGeometry(sw, top - sill - 0.06, 0.02), M.glass); gl.position.set(-sw / 2, (sill + top) / 2, 0);
+        const sw = h.b - half - 0.03, sh = top - sill, sg = new THREE.Group(); sg.position.set(h.b, sill, t1 + 0.03);
+        const gl = new THREE.Mesh(new THREE.BoxGeometry(sw, sh - 0.06, 0.02), M.glass); gl.position.set(-sw / 2, sh / 2, 0);
         const fr = new THREE.Group();
-        for (const [w2, h2, x2, y2] of [[sw, 0.05, -sw / 2, sill + 0.03], [sw, 0.05, -sw / 2, top - 0.03], [0.05, top - sill, -0.025, (sill + top) / 2], [0.05, top - sill, -sw + 0.025, (sill + top) / 2]]) {
+        for (const [w2, h2, x2, y2] of [[sw, 0.05, -sw / 2, 0.03], [sw, 0.05, -sw / 2, sh - 0.03], [0.05, sh, -0.025, sh / 2], [0.05, sh, -sw + 0.025, sh / 2]]) {
           const b = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, 0.06), M.frame); b.position.set(x2, y2, 0); b.castShadow = true; fr.add(b);
         }
-        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 0.05), M.steel); handle.position.set(-sw + 0.07, 1.1, -0.05);
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.05), M.steel); handle.position.set(-sw / 2, sh - 0.12, -0.05);
         sg.add(gl, fr, handle); wallsG.add(sg);
         sg.traverse(o => { o.userData.openable = sg; });
-        openables.push({ g: sg, kind: 'win', a0: 0, a1: -1.35, open: false, cur: 0 });
+        openables.push({ g: sg, kind: 'win', axis: 'x', a0: 0, a1: -0.14, open: false, cur: 0 }); // tilt only: the top opens a little
       } else { box(mid - 0.01, h.a, mid + 0.01, h.b, sill, top, M.glass).castShadow = false; }
       // frame: sill + mullion
       if (axis === 'x') { box(h.a, t1 - 0.02, h.b, t2 + 0.02, sill - 0.03, sill, M.frame); box((h.a + h.b) / 2 - 0.03, mid - 0.04, (h.a + h.b) / 2 + 0.03, mid + 0.04, sill, top, M.frame); box(h.a, mid - 0.04, h.b, mid + 0.04, top - 0.04, top, M.frame); }
@@ -156,10 +156,19 @@ function wall(axis, t1, t2, from, to, holes, mat) {
 }
 // door leaf, standing open at an angle; hinge at (hx,hz)
 const openables = [];
-function doorLeaf(hx, hz, width, angle, mat, thick) {
+function doorLeaf(hx, hz, width, angle, mat, thick, glazed) {
   const g = new THREE.Group();
-  const leaf = new THREE.Mesh(new THREE.BoxGeometry(width, 2.05, thick || 0.04), mat || M.door);
-  leaf.position.set(width / 2, 1.025, 0); leaf.castShadow = true; leaf.receiveShadow = true;
+  let leaf;
+  if (glazed) { // balcony door: white frame with glass, like the windows
+    leaf = new THREE.Group(); const hh = 2.05;
+    for (const [w2, h2, x2, y2] of [[width, 0.08, width / 2, 0.04], [width, 0.08, width / 2, hh - 0.04], [0.08, hh, 0.04, hh / 2], [0.08, hh, width - 0.04, hh / 2], [width, 0.06, width / 2, 0.9]]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, 0.06), M.frame); b.position.set(x2, y2, 0); b.castShadow = true; leaf.add(b);
+    }
+    const gl = new THREE.Mesh(new THREE.BoxGeometry(width - 0.12, hh - 0.12, 0.02), M.glass); gl.position.set(width / 2, hh / 2, 0); leaf.add(gl);
+  } else {
+    leaf = new THREE.Mesh(new THREE.BoxGeometry(width, 2.05, thick || 0.04), mat || M.door);
+    leaf.position.set(width / 2, 1.025, 0); leaf.castShadow = true; leaf.receiveShadow = true;
+  }
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), M.steel);
   knob.position.set(width - 0.08, 1.0, 0.04);
   g.add(leaf, knob); g.position.set(hx, 0, hz); g.rotation.y = angle;
@@ -172,7 +181,7 @@ const innerDoors = [];
 for (const d of P.doors) {
   const open = d.angle * Math.PI / 180, closed = Math.round(open / (Math.PI / 2)) * (Math.PI / 2) || 0;
   const startOpen = !d.entry; // the entrance door starts closed, the rest open
-  const g = doorLeaf(d.x, d.z, d.w, startOpen ? open : closed, d.entry ? M.entry : d.white ? M.frame : M.door, d.entry ? 0.07 : 0.04);
+  const g = doorLeaf(d.x, d.z, d.w, startOpen ? open : closed, d.entry ? M.entry : d.white ? M.frame : M.door, d.entry ? 0.07 : 0.04, !!d.white);
   if (!d.entry && !d.white) innerDoors.push(g);
   // a closed door is a wall for walking
   const ex = d.x + Math.cos(closed) * d.w, ez = d.z - Math.sin(closed) * d.w;
@@ -190,7 +199,7 @@ function animateOpenables(dt) {
   for (const o of openables) {
     const t = o.open ? 1 : 0; if (o.cur === t) continue;
     o.cur += Math.sign(t - o.cur) * Math.min(Math.abs(t - o.cur), dt * 1.6);
-    const e = o.cur * o.cur * (3 - 2 * o.cur); o.g.rotation.y = o.a0 + (o.a1 - o.a0) * e;
+    const e = o.cur * o.cur * (3 - 2 * o.cur); o.g.rotation[o.axis || 'y'] = o.a0 + (o.a1 - o.a0) * e;
   }
 }
 function tapOpenable(x, y) { // returns true when a door or window sash was tapped
@@ -218,23 +227,24 @@ for (const r of P.rooms) {
   const area = r.area || r.rects.reduce((s, [x1, z1, x2, z2]) => s + (x2 - x1) * (z2 - z1), 0);
   roomLabels.push({ name: r.name, area, pos: new THREE.Vector3(r.label[0], 0.05, r.label[1]) });
 }
-// balcony railing
-for (const b of P.balcony) box(b[0], b[1], b[2], b[3], 0, 1.05, M.ext, wallsG);
-for (const b of P.balcony) { const g = box(b[0], b[1], b[2], b[3], 1.05, 2.4, M.glass, wallsG); g.castShadow = false; }
-for (const b of P.balcony) solids.push(b);
-// what is really there: a radiator in front of every window, a French-balcony railing outside it
+// what is really there: a radiator in front of every window; the only railing is the balcony's
 const railMat = new THREE.MeshStandardMaterial({ color: 0x1f2226, roughness: 0.5, metalness: 0.4 });
 const radMat = new THREE.MeshStandardMaterial({ color: 0xf6f6f4, roughness: 0.45 });
+// balcony: open, with a black bar railing (top rail, bottom rail, vertical bars) on each side
+for (const b of P.balcony) {
+  const [x1, z1, x2, z2] = b, alongX = x2 - x1 > z2 - z1, cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
+  const L = alongX ? x2 - x1 : z2 - z1, r = 0.02;
+  const bar = (a1, a2, y1, y2, th) => alongX ? box(a1, cz - th, a2, cz + th, y1, y2, railMat, wallsG, { cast: false }) : box(cx - th, a1, cx + th, a2, y1, y2, railMat, wallsG, { cast: false });
+  const a = alongX ? x1 : z1;
+  bar(a, a + L, 1.0, 1.05, 0.025); bar(a, a + L, 0.1, 0.13, r);
+  for (let t = a + 0.06; t < a + L - 0.03; t += 0.12) bar(t - 0.009, t + 0.009, 0.0, 1.0, 0.009);
+  solids.push(b);
+}
 for (const w of P.walls) for (const h of (w.holes || [])) {
   if (h.type !== 'win' || w.axis !== 'x' || w.t1 < 1) continue;
   const c = h.a + (h.b - h.a) / 4, rw = Math.min(1.0, (h.b - h.a) / 2 - 0.1); // under the fixed left half, clear of the opening sash
   box(c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07, 0.12, 0.62, radMat, house);
   solids.push([c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07]);
-  if (P.balcony.some(b => h.a < b[2] && h.b > b[0])) continue; // that window looks onto the balcony
-  const z = w.t2 + 0.04;
-  box(h.a, z - 0.02, h.b, z + 0.02, 0.98, 1.02, railMat, wallsG, { cast: false });
-  box(h.a, z - 0.015, h.b, z + 0.015, 0.12, 0.15, railMat, wallsG, { cast: false });
-  for (let x = h.a + 0.05; x < h.b - 0.03; x += 0.12) box(x - 0.008, z - 0.008, x + 0.008, z + 0.008, 0.0, 1.0, railMat, wallsG, { cast: false });
 }
 
 // fixtures: kitchen, bathroom
