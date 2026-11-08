@@ -8,7 +8,7 @@ export const PLAN = {
   walls: [
     { axis: 'x', t1: -0.3, t2: 0, from: -0.3, to: W + 0.3, ext: 1, holes: [{ a: 6.2, b: 7.2, type: 'door' }] },
     { axis: 'x', t1: D, t2: D + 0.3, from: -0.3, to: W + 0.3, ext: 1, holes: [
-      { a: 1.09, b: 2.91, type: 'win' }, { a: 4.74, b: 6.51, type: 'win' }, { a: 7.85, b: 8.55, type: 'balcony' }, { a: 8.63, b: 9.66, type: 'win' }] },
+      { a: 1.09, b: 2.91, type: 'win' }, { a: 4.74, b: 6.51, type: 'win' }, { a: 7.85, b: 8.65, type: 'balcony' }, { a: 8.65, b: 9.66, type: 'fixed' }] }, // bedroom: two sections — the door and a fixed pane
     { axis: 'z', t1: -0.3, t2: 0, from: 0, to: D, ext: 1 },
     { axis: 'z', t1: W, t2: W + 0.3, from: 0, to: D, ext: 1 },
     { axis: 'z', t1: 4.05, t2: 4.17, from: RT, to: D },
@@ -24,7 +24,7 @@ export const PLAN = {
     { x: 7.42, z: 2.89, w: 0.8, angle: -35 },
     { x: 8.53, z: 0.26, w: 0.62, angle: -125 },
     { x: 8.53, z: 2.43, w: 0.66, angle: 125 },
-    { x: 7.88, z: 7.85, w: 0.68, angle: 35, white: 1 }
+    { x: 7.88, z: 7.85, w: 0.75, angle: 35, white: 1 }
   ],
   rooms: [
     { name: 'Кухня-вітальня', area: 31.18, floor: 'oak', rects: [[0, 0, 4.05, D]], label: [2.0, 3.9] },

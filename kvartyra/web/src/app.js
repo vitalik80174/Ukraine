@@ -127,8 +127,17 @@ function wall(axis, t1, t2, from, to, holes, mat) {
   let p = from;
   for (const h of holes) {
     if (h.a > p) { seg(p, h.a, 0, H, mat); solid(p, h.a); }
-    const top = h.type === 'win' || h.type === 'balcony' ? P.winTop : 2.1, sill = P.winSill; // the balcony door is panoramic too
+    const top = h.type === 'win' || h.type === 'balcony' || h.type === 'fixed' ? P.winTop : 2.1, sill = P.winSill; // the balcony door is panoramic too
     seg(h.a, h.b, top, H, mat);
+    if (h.type === 'fixed') { // fixed glass beside the balcony door, with a transom like the door's crossbar
+      seg(h.a, h.b, 0, sill, mat); solid(h.a, h.b);
+      const mid = (t1 + t2) / 2, tr = sill + 0.95;
+      box(h.a, mid - 0.01, h.b, mid + 0.01, sill, top, M.glass).castShadow = false;
+      box(h.a, t1 - 0.02, h.b, t2 + 0.02, sill - 0.03, sill, M.frame);
+      box(h.a, mid - 0.04, h.b, mid + 0.04, tr - 0.03, tr + 0.03, M.frame);
+      box(h.a, mid - 0.04, h.b, mid + 0.04, top - 0.04, top, M.frame);
+      box(h.b - 0.05, mid - 0.04, h.b, mid + 0.04, sill, top, M.frame);
+    }
     if (h.type === 'win') {
       seg(h.a, h.b, 0, sill, mat); solid(h.a, h.b);
       const mid = (t1 + t2) / 2;
@@ -248,8 +257,8 @@ for (const b of P.balcony) {
   solids.push(b);
 }
 for (const w of P.walls) for (const h of (w.holes || [])) {
-  if (h.type !== 'win' || w.axis !== 'x' || w.t1 < 1) continue;
-  const c = h.b - (h.b - h.a) * 0.3, rw = Math.min(1.0, (h.b - h.a) * 0.6 - 0.15); // under the wide fixed part, as in the photos
+  if ((h.type !== 'win' && h.type !== 'fixed') || w.axis !== 'x' || w.t1 < 1) continue;
+  const c = h.type === 'fixed' ? (h.a + h.b) / 2 + 0.05 : h.b - (h.b - h.a) * 0.3, rw = Math.min(1.0, h.type === 'fixed' ? h.b - h.a - 0.25 : (h.b - h.a) * 0.6 - 0.15); // under the wide fixed part, as in the photos
   box(c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07, 0.12, 0.62, radMat, house);
   solids.push([c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07]);
 }
@@ -346,7 +355,7 @@ if (store.get('sunV', 0) < 2) { SUN.orient = 150; SUN.gap = 18; store.set('orien
 let outside = null;
 function buildOutside() {
   if (outside) { scene.remove(outside.group); outside.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-  outside = buildSurroundings(P, { below: 6.4, gap: SUN.gap, floors: 6 });
+  outside = buildSurroundings(P, { below: 6.4, gap: SUN.gap, floors: 4 });
   scene.add(outside.group);
 }
 buildOutside();
@@ -444,13 +453,13 @@ function sunPanelText(st) {
   const dname = DIRS.reduce((a, b) => Math.abs(((SUN.orient - b[1] + 540) % 360) - 180) < Math.abs(((SUN.orient - a[1] + 540) % 360) - 180) ? b : a)[0];
   $('sunInfo').innerHTML = `Схід ${hhmm(w.rise)} · захід ${hhmm(w.set)}<br>` +
     (w.from != null ? `Пряме сонце у вікнах: <b>${hhmm(w.from)}–${hhmm(w.to)}</b>` : 'Цього дня пряме сонце у вікна не потрапляє') +
-    `<br><small>Вікна дивляться на ${SUN.orient}° (${dname}); будинок навпроти — 6 поверхів, ${SUN.gap} м. Зараз сонце: висота ${st.el.toFixed(0)}°, азимут ${st.az.toFixed(0)}°.</small>`;
+    `<br><small>Вікна дивляться на ${SUN.orient}° (${dname}); будинок навпроти — 4 поверхи, ${SUN.gap} м. Зараз сонце: висота ${st.el.toFixed(0)}°, азимут ${st.az.toFixed(0)}°.</small>`;
 }
 function sunFactsHTML() {
   const nm = DIRS.reduce((a, b) => Math.abs(((SUN.orient - b[1] + 540) % 360) - 180) < Math.abs(((SUN.orient - a[1] + 540) % 360) - 180) ? b : a)[0];
   const row = (a, b) => `<div class="row"><span>${a}</span><b>${b}</b></div>`;
   const w = (m, d) => { const x = sunWindow(SUN.y, m, d, SUN.orient, blockAt); return x.from != null ? hhmm(x.from) + '–' + hhmm(x.to) : 'немає'; };
-  return row('Вікна дивляться', `${nm}, ${SUN.orient}°`) + row('Поверх', '3-й, ≈6,4 м над землею') + row('Будинок навпроти', `6 поверхів, ≈${SUN.gap} м`) +
+  return row('Вікна дивляться', `${nm}, ${SUN.orient}°`) + row('Поверх', '3-й, ≈6,4 м над землею') + row('Будинок навпроти', `4 поверхи, ≈${SUN.gap} м`) +
     row('Сонце у вікнах 21 червня', w(5, 21)) + row('21 березня / 23 вересня', w(2, 21) + ' / ' + w(8, 23)) + row('21 грудня', w(11, 21));
 }
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
