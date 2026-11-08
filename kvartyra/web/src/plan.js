@@ -2,9 +2,9 @@
 // X runs left→right on the plan, Z runs top (entrance side) → bottom (windows side). Interior box is W×D; exterior walls sit outside it.
 const W = 10.29, D = 7.7, RT = 2.83, RB = 2.95; // RT..RB — wall between hall and the two rooms
 export const PLAN = {
-  width: W, depth: D, depthWithBalcony: D + 0.3 + 0.97, height: 2.7, officialArea: '77,3',
+  width: W, depth: D, depthWithBalcony: D + 0.3 + 0.97, height: 2.62, officialArea: '77,3',
   // windows are panoramic: glass from the floor almost to the ceiling
-  winSill: 0.05, winTop: 2.55,
+  winSill: 0.05, winTop: 2.42,
   walls: [
     { axis: 'x', t1: -0.3, t2: 0, from: -0.3, to: W + 0.3, ext: 1, holes: [{ a: 6.2, b: 7.2, type: 'door' }] },
     { axis: 'x', t1: D, t2: D + 0.3, from: -0.3, to: W + 0.3, ext: 1, holes: [

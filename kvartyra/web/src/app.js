@@ -31,6 +31,7 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 100 });
 sun.shadow.bias = -0.0008;
+sun.shadow.camera.layers.enable(1); // the building across the street casts shadows even when hidden from view
 scene.add(sun, sun.target);
 const CX = PLAN.width / 2, CZ = PLAN.depth / 2;
 sun.target.position.set(CX, 0, CZ);
@@ -355,7 +356,7 @@ if (store.get('sunV', 0) < 2) { SUN.orient = 150; SUN.gap = 18; store.set('orien
 let outside = null;
 function buildOutside() {
   if (outside) { scene.remove(outside.group); outside.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-  outside = buildSurroundings(P, { below: 6.4, gap: SUN.gap, floors: 4 });
+  outside = buildSurroundings(P, { below: 6.45, gap: SUN.gap, floors: 4 });
   scene.add(outside.group);
 }
 buildOutside();
@@ -506,6 +507,7 @@ function setMode(m) {
 }
 
 function updateCamera() {
+  if (mode === 'walk') camera.layers.enable(1); else camera.layers.disable(1); // hide the building across the street in the doll-house and plan views
   if (mode === 'walk') {
     camera.fov = 70;
     const eye = 1.6 + Math.sin(walker.bob) * 0.025;
