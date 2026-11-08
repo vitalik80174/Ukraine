@@ -1,0 +1,9 @@
+# Застосунки, які бачить і оновлює «Оновлення». Формат: модуль|пакет|APK|назва|опис
+# Новий застосунок лабораторії — додайте сюди рядок (і модуль у settings.gradle).
+app|ua.nebo.widget|Nebo.apk|Небо|Тривоги, шахеди, погода й світло у Львові
+sunrise|ua.nebo.svitanok|Svitanok.apk|Світанок|Будильник зі штучним світанком
+vikno|ua.nebo.vikno|Vikno.apk|Вікно|Живий Львів із висоти Ратуші
+pisok|ua.nebo.pisok|Pisok.apk|Пісочниця|Живі матеріали під пальцями
+ruina|ua.nebo.ruina|Ruina.apk|Руйнівник|3D-руйнування споруд
+struny|ua.nebo.struny|Struny.apk|Струни|Музика світних струн і кульок
+onovlennia|ua.nebo.onovlennia|Onovlennia.apk|Оновлення|Сам ставить нові версії всіх застосунків

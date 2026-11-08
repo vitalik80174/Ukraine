@@ -18,21 +18,24 @@ jobs:
         with:
           gradle-version: '8.7'
       - run: gradle assembleDebug --no-daemon
-      - run: cp app/build/outputs/apk/debug/app-debug.apk Nebo.apk && cp sunrise/build/outputs/apk/debug/sunrise-debug.apk Svitanok.apk && cp vikno/build/outputs/apk/debug/vikno-debug.apk Vikno.apk && cp pisok/build/outputs/apk/debug/pisok-debug.apk Pisok.apk && cp ruina/build/outputs/apk/debug/ruina-debug.apk Ruina.apk && cp struny/build/outputs/apk/debug/struny-debug.apk Struny.apk
+      - name: Зібрати APK і список застосунків
+        run: |
+          grep -v '^#' apps.list | grep -v '^\s*$' | while IFS='|' read -r mod pkg apk name about; do
+            cp "$mod/build/outputs/apk/debug/$mod-debug.apk" "$apk"
+          done
+          python3 tools/apps.py > apps.json
       - uses: actions/upload-artifact@v4
         with:
           name: Nebo-apk
           path: |
-            Nebo.apk
-            Svitanok.apk
-            Vikno.apk
-            Pisok.apk
-            Ruina.apk
-            Struny.apk
+            *.apk
+            apps.json
       - name: Опублікувати за постійним посиланням
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v1.${{ github.run_number }}" Nebo.apk Svitanok.apk Vikno.apk Pisok.apk Ruina.apk Struny.apk \
+          files=$(grep -v '^#' apps.list | grep -v '^\s*$' | cut -d'|' -f3 | tr '\n' ' ')
+          notes=$(grep -v '^#' apps.list | grep -v '^\s*$' | awk -F'|' '{printf "%s: «%s», %s. ", $3, $4, $5}')
+          gh release create "v1.${{ github.run_number }}" $files apps.json \
             --title "Небо 1.${{ github.run_number }}" \
-            --notes "Nebo.apk: «Небо». Svitanok.apk: світанковий будильник. Vikno.apk: «Вікно», живий пейзаж, що щоранку покращується. Pisok.apk: «Пісочниця», живі матеріали під пальцями. Ruina.apk: «Руйнівник», 3D-гра про руйнування споруд. Struny.apk: «Струни», музична іграшка зі світних струн і кульок. Встановлюйте поверх попередніх версій." --latest
+            --notes "${notes}Встановлюйте поверх попередніх версій — або поставте Onovlennia.apk, і воно оновлюватиме все саме." --latest

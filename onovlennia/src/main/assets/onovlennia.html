@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Оновлення</title>
+<style>
+/* Оновлення: one centred column — status header, permission banners, the apps list, settings, log. */
+:root{
+  --bg:#12141c; --card:#1b1e29; --line:rgba(255,255,255,.09); --fg:#f3efe6; --dim:rgba(243,239,230,.6);
+  --warm:#ffc27a; --ok:#6ee7a0; --upd:#7cc4ff; --warn:#ffb067;
+  --f:"Golos Text","Roboto",system-ui,sans-serif; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--f);-webkit-tap-highlight-color:transparent}
+main{max-width:720px;margin:0 auto;padding:max(22px,env(safe-area-inset-top)) 16px 40px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
+h1{font:700 30px/1.05 var(--f);margin:0;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:13.5px;margin-top:6px}
+.big{border:0;border-radius:14px;padding:13px 18px;font:600 15px var(--f);background:var(--warm);color:#2a1606;cursor:pointer;white-space:nowrap}
+.big:disabled{opacity:.6}
+button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.banner{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:14px;background:rgba(255,176,103,.12);border:1px solid rgba(255,176,103,.35);margin-bottom:10px;font-size:14px}
+.banner b{display:block}
+.banner span{color:var(--dim);font-size:13px}
+.banner button{flex:none;border:0;border-radius:10px;padding:9px 12px;background:var(--warn);color:#2a1606;font:600 13.5px var(--f);cursor:pointer}
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--card)}
+.app{display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--line)}
+.app:first-child{border-top:0}
+.ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font:700 17px var(--f);color:#14161f;flex:none}
+.meta{flex:1;min-width:0}
+.meta b{display:block;font-weight:600}
+.meta span{color:var(--dim);font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{font:600 12px var(--f);padding:4px 9px;border-radius:999px;white-space:nowrap;flex:none}
+.chip.ok{color:var(--ok);background:rgba(110,231,160,.12)}
+.chip.update{color:var(--upd);background:rgba(124,196,255,.13)}
+.chip.missing{color:var(--dim);background:rgba(255,255,255,.06)}
+.chip.work{color:var(--warm);background:rgba(255,194,122,.14)}
+.act{flex:none;border:1px solid var(--line);background:none;color:var(--fg);border-radius:10px;padding:8px 11px;font:600 13px var(--f);cursor:pointer}
+h2{font:600 11.5px/1 var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:26px 4px 10px}
+.opts{border:1px solid var(--line);border-radius:16px;background:var(--card)}
+.opt{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--line)}
+.opt:first-child{border-top:0}
+.opt span em{display:block;font-style:normal;color:var(--dim);font-size:12.5px}
+.switch{position:relative;width:46px;height:28px;flex:none}
+.switch input{opacity:0;position:absolute;inset:0;margin:0;cursor:pointer}
+.switch i{position:absolute;inset:0;border-radius:14px;background:#2b3150;pointer-events:none;transition:background .2s}
+.switch i::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked+i{background:var(--warm)}
+.switch input:checked+i::after{transform:translateX(18px)}
+.switch input:focus-visible+i{outline:2px solid #fff;outline-offset:2px}
+.how{color:var(--dim);font-size:13.5px;margin:0;padding:0 4px 0 22px}
+.how li{margin:4px 0}
+.log{border:1px solid var(--line);border-radius:16px;background:var(--card);padding:6px 14px;font-size:13px;color:var(--dim);max-height:260px;overflow:auto}
+.log div{padding:6px 0;border-top:1px solid var(--line)}
+.log div:first-child{border-top:0}
+.foot{color:var(--dim);font-size:12px;margin:18px 4px 0}
+@media (max-width:520px){ header{flex-direction:column;align-items:stretch} .big{width:100%} .act{padding:8px 9px} }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Оновлення</h1><div class="sub" id="sub">Перевіряю…</div></div>
+    <button class="big" id="checkBtn">Перевірити зараз</button>
+  </header>
+
+  <div class="banner" id="bInstall" hidden><div><b>Дозвольте встановлювати застосунки</b><span>Без цього Android не дасть ставити оновлення.</span></div><button id="allowInstall">Дозволити</button></div>
+  <div class="banner" id="bNotif" hidden><div><b>Увімкніть сповіщення</b><span>Щоб знати, що оновилось, і підтверджувати перше встановлення.</span></div><button id="allowNotif">Увімкнути</button></div>
+
+  <div class="list" id="apps"></div>
+
+  <h2>Як це працює</h2>
+  <ul class="how" id="how">
+    <li>Щогодини «Оновлення» дивиться останній реліз на GitHub і ставить нові версії ваших застосунків поверх старих — дані зберігаються.</li>
+    <li>Оновлюються лише ті застосунки, які справді змінились, тож «Вікно» не перезапуститься через зміни в «Пісочниці».</li>
+    <li id="howSilent">Перший раз Android попросить підтвердити кожен застосунок. Після цього оновлення ставитимуться самі, без питань.</li>
+    <li>Застосунок, який саме оновлюється, на мить закривається. Нові застосунки лабораторії з'являються в списку — встановіть їх кнопкою.</li>
+  </ul>
+
+  <h2>Налаштування</h2>
+  <div class="opts">
+    <label class="opt"><span>Оновлювати автоматично<em>Перевірка щогодини у фоні</em></span><span class="switch"><input type="checkbox" id="optAuto"><i></i></span></label>
+    <label class="opt"><span>Лише через Wi-Fi<em>Не витрачати мобільний інтернет</em></span><span class="switch"><input type="checkbox" id="optWifi"><i></i></span></label>
+    <label class="opt"><span>Лише вночі<em>Ставити оновлення з 02:00 до 06:00, щоб нічого не закривалось удень</em></span><span class="switch"><input type="checkbox" id="optNight"><i></i></span></label>
+  </div>
+
+  <h2>Журнал</h2>
+  <div class="log" id="log"></div>
+  <div class="foot" id="foot">Джерело: github.com/vitalik80174/Ukraine · останній реліз</div>
+</main>
+
+<script>
+"use strict";
+/* In a browser preview there is no Android bridge, so a small fake one stands in. */
+const Upd = window.Upd || {
+  _s:{tag:"1.37",lastCheck:Date.now()-60000,busy:false,canInstall:false,notif:false,silent:true,auto:true,wifi:false,night:false,self:"ua.nebo.onovlennia",
+    log:["8.11 14:20 · Вікно оновлено до 1.37","8.11 14:20 · Струни: Android просить підтвердити встановлення","8.11 13:20 · Перевірено 1.36: усе актуальне"],
+    apps:[{name:"Небо",about:"Тривоги, шахеди, погода й світло у Львові",pkg:"ua.nebo.widget",installed:"1.36",status:"same",size:574805},
+          {name:"Світанок",about:"Будильник зі штучним світанком",pkg:"ua.nebo.svitanok",installed:"1.30",status:"same",size:4626598},
+          {name:"Вікно",about:"Живий Львів із висоти Ратуші",pkg:"ua.nebo.vikno",installed:"1.37",status:"ok",size:55404},
+          {name:"Пісочниця",about:"Живі матеріали під пальцями",pkg:"ua.nebo.pisok",installed:"1.33",status:"update",working:"Завантаження…",size:46740},
+          {name:"Руйнівник",about:"3D-руйнування споруд",pkg:"ua.nebo.ruina",installed:"1.30",status:"update",size:208451},
+          {name:"Струни",about:"Музика світних струн і кульок",pkg:"ua.nebo.struny",installed:null,status:"missing",size:26054},
+          {name:"Оновлення",about:"Сам ставить нові версії всіх застосунків",pkg:"ua.nebo.onovlennia",installed:"1.37",status:"ok",size:30000}]},
+  state(){ return JSON.stringify(this._s); }, check(){}, install(){}, open(){}, setOpt(k,v){ this._s[k]=v; }, allowInstall(){}, allowNotif(){}, version(){ return "1.37"; }
+};
+const $=id=>document.getElementById(id);
+const COLORS={"ua.nebo.widget":"#7cc4ff","ua.nebo.svitanok":"#ffb067","ua.nebo.vikno":"#ffc27a","ua.nebo.pisok":"#e8c077","ua.nebo.ruina":"#ff7a2f","ua.nebo.struny":"#c49bff","ua.nebo.onovlennia":"#6ee7a0"};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function ago(t){ if (!t) return "ще не перевіряли"; const m=Math.round((Date.now()-t)/60000); if (m<1) return "щойно"; if (m<60) return m+" хв тому"; const h=Math.round(m/60); return h<24? h+" год тому" : new Date(t).toLocaleDateString("uk-UA"); }
+function render(){
+  let s; try{ s=JSON.parse(Upd.state()); }catch(e){ return; }
+  const n=(s.apps||[]).filter(a=>a.status==="update").length;
+  $("sub").textContent = s.busy ? "Перевіряю й оновлюю…" : `${s.tag?"Реліз "+s.tag+" · ":""}перевірено ${ago(s.lastCheck)}${n?` · оновлень: ${n}`:""}`;
+  $("checkBtn").disabled=!!s.busy; $("checkBtn").textContent= s.busy?"Працюю…": n?"Оновити все":"Перевірити зараз";
+  $("bInstall").hidden=!!s.canInstall; $("bNotif").hidden=!!s.notif;
+  $("howSilent").textContent = s.silent ? "Перший раз Android попросить підтвердити кожен застосунок. Після цього оновлення ставитимуться самі, без питань." : "На цій версії Android кожне оновлення потрібно підтвердити одним дотиком — «Оновлення» надішле сповіщення.";
+  $("apps").innerHTML=(s.apps||[]).map(a=>{
+    const chip = a.working ? `<span class="chip work">${esc(a.working)}</span>`
+      : a.status==="update" ? `<span class="chip update">Є оновлення</span>`
+      : a.status==="missing" ? `<span class="chip missing">Не встановлено</span>`
+      : `<span class="chip ok">Актуальна</span>`;
+    const act = a.pkg===s.self ? "" : a.status==="missing" ? `<button class="act" data-install="${esc(a.pkg)}">Встановити</button>`
+      : a.status==="update" ? `<button class="act" data-install="${esc(a.pkg)}">Оновити</button>` : `<button class="act" data-open="${esc(a.pkg)}">Відкрити</button>`;
+    const ver = a.installed ? `версія ${esc(a.installed)}` : `${Math.max(1,Math.round((a.size||0)/1024))} КБ`;
+    return `<div class="app"><div class="ico" style="background:${COLORS[a.pkg]||"#9aa3b8"}">${esc((a.name||"?")[0])}</div><div class="meta"><b>${esc(a.name)}</b><span>${esc(a.about)} · ${ver}</span></div>${chip}${act}</div>`;
+  }).join("");
+  $("optAuto").checked=!!s.auto; $("optWifi").checked=!!s.wifi; $("optNight").checked=!!s.night;
+  $("log").innerHTML=(s.log&&s.log.length? s.log : ["Тут з'являтиметься, що й коли оновилось"]).map(l=>`<div>${esc(l)}</div>`).join("");
+  const v=Upd.version(); if (v) $("foot").textContent=`«Оновлення» ${v} · джерело: github.com/vitalik80174/Ukraine`;
+}
+$("checkBtn").onclick=()=>{ Upd.check(); setTimeout(render,150); };
+$("allowInstall").onclick=()=>Upd.allowInstall();
+$("allowNotif").onclick=()=>Upd.allowNotif();
+$("apps").onclick=e=>{ const b=e.target.closest("button"); if (!b) return; if (b.dataset.install){ Upd.install(b.dataset.install); b.disabled=true; b.textContent="…"; } else if (b.dataset.open) Upd.open(b.dataset.open); };
+for (const [id,key] of [["optAuto","auto"],["optWifi","wifi"],["optNight","night"]]) $(id).onchange=e=>Upd.setOpt(key,e.target.checked);
+render(); setInterval(render,20000);
+</script>
+</body>
+</html>
