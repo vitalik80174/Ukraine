@@ -4,15 +4,17 @@
 const W = 10.1, D = 7.75;
 export const PLAN = {
   width: W, depth: D, depthWithBalcony: 9.25, height: 2.7, officialArea: '77,3',
+  // windows are panoramic: glass from the floor almost to the ceiling
+  winSill: 0.05, winTop: 2.55,
   walls: [
     { axis: 'x', t1: -0.3, t2: 0, from: -0.3, to: W + 0.3, ext: 1, holes: [{ a: 5.92, b: 6.89, type: 'door' }] },
     { axis: 'x', t1: D, t2: D + 0.3, from: -0.3, to: W + 0.3, ext: 1, holes: [
-      { a: 0.98, b: 2.65, type: 'win' }, { a: 4.51, b: 6.27, type: 'win' }, { a: 7.63, b: 8.35, type: 'balcony' }, { a: 8.35, b: 9.39, type: 'win' }] },
+      { a: 0.98, b: 2.65, type: 'win' }, { a: 4.51, b: 6.27, type: 'win' }, { a: 7.7, b: 8.42, type: 'balcony' }, { a: 8.42, b: 9.48, type: 'win' }] },
     { axis: 'z', t1: -0.3, t2: 0, from: 0, to: D, ext: 1 },
     { axis: 'z', t1: W, t2: W + 0.3, from: 0, to: D, ext: 1 },
     { axis: 'z', t1: 3.76, t2: 3.88, from: 2.83, to: D },
     { axis: 'z', t1: 6.91, t2: 7.03, from: 2.83, to: D },
-    { axis: 'x', t1: 2.83, t2: 2.95, from: 3.76, to: W, holes: [{ a: 5.5, b: 6.3, type: 'door' }, { a: 7.15, b: 7.95, type: 'door' }] },
+    { axis: 'x', t1: 2.83, t2: 2.95, from: 3.76, to: W, holes: [{ a: 5.5, b: 6.3, type: 'door' }, { a: 7.25, b: 8.05, type: 'door' }] },
     { axis: 'z', t1: 8.19, t2: 8.31, from: 0, to: 2.83, holes: [{ a: 0.28, b: 1.0, type: 'door' }, { a: 1.74, b: 2.38, type: 'door' }] },
     { axis: 'x', t1: 1.04, t2: 1.16, from: 8.31, to: W }
   ],
@@ -20,10 +22,10 @@ export const PLAN = {
   doors: [
     { x: 5.92, z: -0.15, w: 0.95, angle: 70, entry: 1 },
     { x: 5.5, z: 2.89, w: 0.8, angle: -72 },
-    { x: 7.95, z: 2.89, w: 0.8, angle: -108 },
+    { x: 8.05, z: 2.89, w: 0.8, angle: -108 },
     { x: 8.25, z: 0.28, w: 0.72, angle: -120 },
     { x: 8.25, z: 1.74, w: 0.64, angle: -120 },
-    { x: 8.35, z: 7.9, w: 0.72, angle: 108, white: 1 }
+    { x: 8.42, z: 7.9, w: 0.72, angle: 108, white: 1 }
   ],
   rooms: [
     { name: 'Кухня-вітальня', floor: 'oak', rects: [[0, 0, 5.6, 2.83], [0, 2.83, 3.76, D]], label: [1.9, 3.6] },
@@ -36,7 +38,7 @@ export const PLAN = {
   ],
   balcony: [[7.31, D + 0.3, 7.41, 9.25], [9.7, D + 0.3, 9.8, 9.25], [7.31, 9.15, 9.8, 9.25]],
   fixtures: [
-    { type: 'kitchen', r: [3.5, 0, 4.1, 1.15] },
+    { type: 'vent', r: [3.7, 0, 4.02, 1.2] }, // вентиляційний блок до стелі (між передпокоєм і кухнею-вітальнею)
     { type: 'panel', r: [7.0, 0, 7.35, 0.08] },
     { type: 'bath', r: [9.35, 1.2, W, 2.75] },
     { type: 'sink', r: [8.35, 1.2, 8.95, 1.62] },
@@ -44,5 +46,15 @@ export const PLAN = {
     { type: 'sink', r: [8.4, 0.62, 8.85, 1.04] }
   ],
   lamps: [[1.67, 1.51], [6.1, 1.42], [1.78, 5.14], [5.35, 5.23], [8.5, 5.23], [9.2, 2.0], [9.2, 0.5]],
+  // electrical points from the plan legend; f = which way the wall face looks (N = towards the entrance side)
+  power: [
+    { x: 2.7, z: 0, f: 'S', k: 'kitchen' }, { x: 3.3, z: 0, f: 'S', k: 'kitchen' }, { x: 3.45, z: 0, f: 'S', k: 'hood' },
+    { x: 0, z: 1.13, f: 'E', k: 'socket' }, { x: 0, z: 3.24, f: 'E', k: 'socket' }, { x: 0, z: 5.31, f: 'E', k: 'socket2' }, { x: 0, z: 6.7, f: 'E', k: 'socket' },
+    { x: 3.76, z: 3.3, f: 'W', k: 'switch' },
+    { x: 5.75, z: 0, f: 'S', k: 'intercom' }, { x: 5.75, z: 0, f: 'S', k: 'switch2' }, { x: 7.45, z: 0, f: 'S', k: 'net' },
+    { x: 3.88, z: 4.18, f: 'E', k: 'socket' }, { x: 3.88, z: 6.33, f: 'E', k: 'socket2' }, { x: 6.91, z: 5.27, f: 'W', k: 'socket' }, { x: 6.45, z: 2.95, f: 'S', k: 'switch' }, { x: 5.4, z: 2.95, f: 'S', k: 'net' },
+    { x: 10.1, z: 3.97, f: 'W', k: 'socket' }, { x: 10.1, z: 6.11, f: 'W', k: 'socket2' }, { x: 7.03, z: 5.1, f: 'E', k: 'socket' }, { x: 8.2, z: 2.95, f: 'S', k: 'switch' }, { x: 9.0, z: 2.95, f: 'S', k: 'ac' },
+    { x: 9.85, z: 1.16, f: 'S', k: 'boiler' }, { x: 8.31, z: 2.6, f: 'E', k: 'km' }, { x: 8.19, z: 0.15, f: 'W', k: 'switch2' }
+  ],
   start: [6.4, 0.9, 3.7]
 };

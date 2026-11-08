@@ -115,16 +115,16 @@ function wall(axis, t1, t2, from, to, holes, mat) {
   let p = from;
   for (const h of holes) {
     if (h.a > p) { seg(p, h.a, 0, H, mat); solid(p, h.a); }
-    const top = h.type === 'win' ? 2.35 : 2.1;
+    const top = h.type === 'win' ? P.winTop : 2.1, sill = P.winSill;
     seg(h.a, h.b, top, H, mat);
     if (h.type === 'win') {
-      seg(h.a, h.b, 0, 0.85, mat); solid(h.a, h.b);
+      seg(h.a, h.b, 0, sill, mat); solid(h.a, h.b);
       const mid = (t1 + t2) / 2;
-      const g = axis === 'x' ? box(h.a, mid - 0.01, h.b, mid + 0.01, 0.85, top, M.glass) : box(mid - 0.01, h.a, mid + 0.01, h.b, 0.85, top, M.glass);
+      const g = axis === 'x' ? box(h.a, mid - 0.01, h.b, mid + 0.01, sill, top, M.glass) : box(mid - 0.01, h.a, mid + 0.01, h.b, sill, top, M.glass);
       g.castShadow = false;
       // frame: sill + mullion
-      if (axis === 'x') { box(h.a, t1 - 0.04, h.b, t2 + 0.04, 0.83, 0.87, M.frame); box((h.a + h.b) / 2 - 0.03, mid - 0.04, (h.a + h.b) / 2 + 0.03, mid + 0.04, 0.85, top, M.frame); }
-      else { box(t1 - 0.04, h.a, t2 + 0.04, h.b, 0.83, 0.87, M.frame); }
+      if (axis === 'x') { box(h.a, t1 - 0.02, h.b, t2 + 0.02, sill - 0.03, sill, M.frame); box((h.a + h.b) / 2 - 0.03, mid - 0.04, (h.a + h.b) / 2 + 0.03, mid + 0.04, sill, top, M.frame); box(h.a, mid - 0.04, h.b, mid + 0.04, top - 0.04, top, M.frame); }
+      else { box(t1 - 0.02, h.a, t2 + 0.02, h.b, sill - 0.03, sill, M.frame); }
     }
     p = h.b;
   }
@@ -174,6 +174,8 @@ for (const f of P.fixtures) {
     box((x1 + x2) / 2 - 0.2, zs - 0.2, (x1 + x2) / 2 + 0.2, zs + 0.2, 0.9, 0.91, M.steel, fx, { cast: false });
     box((x1 + x2) / 2 - 0.25, zh - 0.25, (x1 + x2) / 2 + 0.25, zh + 0.25, 0.9, 0.905, new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.2 }), fx, { cast: false });
     solids.push([x1, z1, x2, z2]);
+  } else if (f.type === 'vent') {
+    box(x1, z1, x2, z2, 0, H, M.wall); solids.push([x1, z1, x2, z2]);
   } else if (f.type === 'bath') {
     box(x1, z1, x2, z2, 0, 0.56, M.white, fx);
     box(x1 + 0.08, z1 + 0.08, x2 - 0.08, z2 - 0.08, 0.4, 0.565, new THREE.MeshStandardMaterial({ color: 0xcfe6ef, roughness: 0.1 }), fx, { cast: false });
@@ -190,7 +192,7 @@ for (const f of P.fixtures) {
     box(x1, z1, x2, z2, 0.8, 0.86, M.white, fx);
     solids.push([x1, z1, x2, z2]);
   } else if (f.type === 'panel') {
-    box(x1, z1, x2, z2, 1.5, 2.0, M.frame, fx);
+    box(x1, z1, x2, z2, 1.35, 1.85, M.frame, fx);
   }
 }
 
@@ -201,6 +203,35 @@ for (const [x, z] of P.lamps) {
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 8), new THREE.MeshBasicMaterial({ color: 0x777777 }));
   bulb.position.copy(l.position); house.add(bulb);
   lamps.push({ l, bulb });
+}
+// electrical points (sockets, switches…) — heights from the plan legend
+export const POWER = {
+  socket: { h: 0.3, c: 0xffffff, name: 'Розетка', note: '30 см' },
+  socket2: { h: 0.3, c: 0xffffff, name: 'Подвійна розетка', note: '30 см' },
+  kitchen: { h: 1.0, c: 0xf2b45c, name: 'Подвійна розетка над стільницею', note: '100 см' },
+  net: { h: 0.3, c: 0x5cc8e8, name: 'Інтернет', note: '30 см' },
+  intercom: { h: 1.3, c: 0x9b7bf0, name: 'Домофон', note: '130 см' },
+  hood: { h: 2.1, c: 0xe87a5c, name: 'Витяжка', note: '210 см' },
+  boiler: { h: 2.1, c: 0xe85c8a, name: 'Бойлер', note: '210 см' },
+  ac: { h: 2.4, c: 0x5ce8b0, name: 'Кондиціонер', note: '240 см' },
+  switch: { h: 0.9, c: 0xc9733a, name: 'Вимикач', note: '90 см' },
+  switch2: { h: 0.9, c: 0xc9733a, name: 'Подвійний вимикач', note: '90 см' },
+  km: { h: 0.3, c: 0x9aa0a6, name: 'Монтажна коробка', note: '30 см' },
+  panel: { h: 1.6, c: 0x777f8a, name: 'Щиток квартирний', note: '160 см' }
+};
+const powerG = new THREE.Group(); powerG.visible = false; house.add(powerG);
+const NORM = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+const plateGeo = new THREE.BoxGeometry(0.09, 0.09, 0.015), dotGeo = new THREE.SphereGeometry(0.032, 12, 8);
+for (const p of P.power) {
+  const k = POWER[p.k], [nx, nz] = NORM[p.f];
+  const plate = new THREE.Mesh(plateGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }));
+  const wide = p.k === 'socket2' || p.k === 'kitchen' || p.k === 'switch2';
+  if (wide) plate.scale.x = 1.9;
+  plate.position.set(p.x + nx * 0.008, k.h, p.z + nz * 0.008);
+  if (nx) plate.rotation.y = Math.PI / 2;
+  const dot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: k.c }));
+  dot.position.set(p.x + nx * 0.06, k.h, p.z + nz * 0.06);
+  powerG.add(plate, dot);
 }
 // ceiling — only while walking, so the doll-house view stays open
 const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(P.width + 0.6, P.depth + 0.6), new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: 1, emissive: 0x9c9a96 }));
@@ -386,6 +417,10 @@ document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click'
 $('bWalls').addEventListener('click', () => { lowWalls = !lowWalls; store.set('low', lowWalls); $('bWalls').classList.toggle('on', lowWalls); applyWalls(); });
 $('bLight').addEventListener('click', () => { evening = !evening; store.set('evening', evening); applyLight(); });
 $('bLabels').addEventListener('click', () => { $('bLabels').classList.toggle('on'); store.set('labels', $('bLabels').classList.contains('on')); });
+$('bPower').addEventListener('click', () => { powerG.visible = !powerG.visible; store.set('power', powerG.visible); $('bPower').classList.toggle('on', powerG.visible); $('legend').hidden = !powerG.visible; });
+if (store.get('power', false) || Q.get('power')) $('bPower').click();
+$('legend').innerHTML = Object.values(POWER).filter((v, i, a) => a.findIndex(o => o.c === v.c && o.h === v.h) === i)
+  .map(v => `<div><i style="background:#${v.c.toString(16).padStart(6, '0')}"></i>${v.name.replace('Подвійна розетка над стільницею', 'Розетки кухні').replace('Подвійна розетка', 'Розетка')}<em>${v.note}</em></div>`).join('');
 $('bMore').addEventListener('click', () => $('panel').classList.add('open'));
 $('close').addEventListener('click', () => $('panel').classList.remove('open'));
 $('bWalls').classList.toggle('on', lowWalls);

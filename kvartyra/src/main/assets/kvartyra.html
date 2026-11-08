@@ -41,6 +41,10 @@ body.night{background:#0e1222}
 .tip span{display:block;color:var(--dim);font-size:12.5px;margin-bottom:8px}
 .tip button{width:100%;border:0;border-radius:10px;padding:9px;background:var(--fg);color:#fff;font:600 13px var(--f)}
 
+.legend{position:fixed;left:max(14px,env(safe-area-inset-left));top:max(76px,calc(env(safe-area-inset-top) + 66px));padding:10px 12px;border-radius:14px;font-size:12px;display:grid;gap:4px;pointer-events:none}
+.legend div{display:flex;align-items:center;gap:7px}
+.legend i{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.legend em{margin-left:auto;padding-left:10px;font-style:normal;color:var(--dim)}
 .joy{position:fixed;left:max(28px,env(safe-area-inset-left));bottom:max(28px,env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.35);border:2px solid rgba(255,255,255,.7);touch-action:none}
 .joy i{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 12px rgba(0,0,0,.2)}
 .hint{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12.5px;color:var(--dim);padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.6);pointer-events:none;white-space:nowrap}
@@ -77,10 +81,12 @@ body.night{background:#0e1222}
   <button class="b" id="bWalls"><svg viewBox="0 0 24 24"><path d="M4 20V12h16v8M4 12l3-3h10l3 3"/></svg>Низькі стіни</button>
   <button class="b" id="bLight"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg><span id="vLight">День</span></button>
   <button class="b on" id="bLabels"><svg viewBox="0 0 24 24"><path d="M4 6h16v9H13l-4 4v-4H4z"/></svg>Назви</button>
+  <button class="b" id="bPower"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg>Електрика</button>
   <button class="b" id="bMore"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Більше</button>
 </div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
 <div class="tip glass" id="tip" hidden></div>
+<div class="legend glass" id="legend" hidden></div>
 
 <div class="panel" id="panel">
   <button class="x" id="close" aria-label="Закрити">×</button>
@@ -95,6 +101,7 @@ body.night{background:#0e1222}
       <p><b>Будиночок:</b> веди пальцем — квартира обертається; двома пальцями — наблизити й посунути. Торкнись кімнати — можна зайти в неї.</p>
       <p><b>Прогулянка:</b> круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни не пройдеш, а на балкон — можна.</p>
       <p><b>План:</b> вигляд згори, як на папері.</p>
+      <p><b>Електрика:</b> показує розетки, вимикачі, щиток і виводи під бойлер, витяжку й кондиціонер — на тій висоті, що в проєкті. Найзручніше дивитися в прогулянці.</p>
     </div>
     <h2>Щоденник змін</h2>
     <div id="diary"></div>
