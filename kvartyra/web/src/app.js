@@ -132,8 +132,20 @@ function wall(axis, t1, t2, from, to, holes, mat) {
     if (h.type === 'win') {
       seg(h.a, h.b, 0, sill, mat); solid(h.a, h.b);
       const mid = (t1 + t2) / 2;
-      const g = axis === 'x' ? box(h.a, mid - 0.01, h.b, mid + 0.01, sill, top, M.glass) : box(mid - 0.01, h.a, mid + 0.01, h.b, sill, top, M.glass);
-      g.castShadow = false;
+      const half = (h.a + h.b) / 2;
+      if (axis === 'x') { // left half fixed, right half is a sash that opens into the room (tap it)
+        box(h.a, mid - 0.01, half, mid + 0.01, sill, top, M.glass).castShadow = false;
+        const sw = h.b - half - 0.03, sg = new THREE.Group(); sg.position.set(h.b, 0, t1 + 0.03);
+        const gl = new THREE.Mesh(new THREE.BoxGeometry(sw, top - sill - 0.06, 0.02), M.glass); gl.position.set(-sw / 2, (sill + top) / 2, 0);
+        const fr = new THREE.Group();
+        for (const [w2, h2, x2, y2] of [[sw, 0.05, -sw / 2, sill + 0.03], [sw, 0.05, -sw / 2, top - 0.03], [0.05, top - sill, -0.025, (sill + top) / 2], [0.05, top - sill, -sw + 0.025, (sill + top) / 2]]) {
+          const b = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, 0.06), M.frame); b.position.set(x2, y2, 0); b.castShadow = true; fr.add(b);
+        }
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 0.05), M.steel); handle.position.set(-sw + 0.07, 1.1, -0.05);
+        sg.add(gl, fr, handle); wallsG.add(sg);
+        sg.traverse(o => { o.userData.openable = sg; });
+        openables.push({ g: sg, kind: 'win', a0: 0, a1: -1.35, open: false, cur: 0 });
+      } else { box(mid - 0.01, h.a, mid + 0.01, h.b, sill, top, M.glass).castShadow = false; }
       // frame: sill + mullion
       if (axis === 'x') { box(h.a, t1 - 0.02, h.b, t2 + 0.02, sill - 0.03, sill, M.frame); box((h.a + h.b) / 2 - 0.03, mid - 0.04, (h.a + h.b) / 2 + 0.03, mid + 0.04, sill, top, M.frame); box(h.a, mid - 0.04, h.b, mid + 0.04, top - 0.04, top, M.frame); }
       else { box(t1 - 0.02, h.a, t2 + 0.02, h.b, sill - 0.03, sill, M.frame); }
@@ -143,6 +155,7 @@ function wall(axis, t1, t2, from, to, holes, mat) {
   if (to > p) { seg(p, to, 0, H, mat); solid(p, to); }
 }
 // door leaf, standing open at an angle; hinge at (hx,hz)
+const openables = [];
 function doorLeaf(hx, hz, width, angle, mat, thick) {
   const g = new THREE.Group();
   const leaf = new THREE.Mesh(new THREE.BoxGeometry(width, 2.05, thick || 0.04), mat || M.door);
@@ -156,7 +169,39 @@ function doorLeaf(hx, hz, width, angle, mat, thick) {
 const P = PLAN;
 for (const w of P.walls) wall(w.axis, w.t1, w.t2, w.from, w.to, w.holes, w.ext ? M.ext : M.wall);
 const innerDoors = [];
-for (const d of P.doors) { const g = doorLeaf(d.x, d.z, d.w, d.angle * Math.PI / 180, d.entry ? M.entry : d.white ? M.frame : M.door, d.entry ? 0.07 : 0.04); if (!d.entry && !d.white) innerDoors.push(g); }
+for (const d of P.doors) {
+  const open = d.angle * Math.PI / 180, closed = Math.round(open / (Math.PI / 2)) * (Math.PI / 2) || 0;
+  const startOpen = !d.entry; // the entrance door starts closed, the rest open
+  const g = doorLeaf(d.x, d.z, d.w, startOpen ? open : closed, d.entry ? M.entry : d.white ? M.frame : M.door, d.entry ? 0.07 : 0.04);
+  if (!d.entry && !d.white) innerDoors.push(g);
+  // a closed door is a wall for walking
+  const ex = d.x + Math.cos(closed) * d.w, ez = d.z - Math.sin(closed) * d.w;
+  const block = [Math.min(d.x, ex) - 0.03, Math.min(d.z, ez) - 0.03, Math.max(d.x, ex) + 0.03, Math.max(d.z, ez) + 0.03, 3];
+  const o = { g, kind: 'door', a0: closed, a1: open, open: startOpen, cur: startOpen ? 1 : 0, block, inner: !d.entry && !d.white };
+  if (!startOpen) solids.push(block);
+  g.traverse(m => { m.userData.openable = g; });
+  openables.push(o);
+}
+function toggleOpenable(o) {
+  o.open = !o.open;
+  if (o.block) { const i = solids.indexOf(o.block); if (o.open && i >= 0) solids.splice(i, 1); if (!o.open && i < 0) solids.push(o.block); }
+}
+function animateOpenables(dt) {
+  for (const o of openables) {
+    const t = o.open ? 1 : 0; if (o.cur === t) continue;
+    o.cur += Math.sign(t - o.cur) * Math.min(Math.abs(t - o.cur), dt * 1.6);
+    const e = o.cur * o.cur * (3 - 2 * o.cur); o.g.rotation.y = o.a0 + (o.a1 - o.a0) * e;
+  }
+}
+function tapOpenable(x, y) { // returns true when a door or window sash was tapped
+  ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+  const targets = openables.filter(o => o.g.visible && (o.g.parent && o.g.parent.visible)).map(o => o.g);
+  const hit = ray.intersectObjects(targets, true)[0];
+  if (!hit || (mode === 'walk' && hit.distance > 5)) return false;
+  const o = openables.find(q => q.g === hit.object.userData.openable); if (!o) return false;
+  if (o.inner && raw) return false;
+  toggleOpenable(o); return true;
+}
 
 // floors per room (slightly under the walls so they never flicker)
 const roomLabels = [], floorMats = [];
@@ -182,9 +227,9 @@ const railMat = new THREE.MeshStandardMaterial({ color: 0x1f2226, roughness: 0.5
 const radMat = new THREE.MeshStandardMaterial({ color: 0xf6f6f4, roughness: 0.45 });
 for (const w of P.walls) for (const h of (w.holes || [])) {
   if (h.type !== 'win' || w.axis !== 'x' || w.t1 < 1) continue;
-  const c = (h.a + h.b) / 2, rw = Math.min(1.0, h.b - h.a - 0.4);
-  box(c - rw / 2 - 0.2, w.t1 - 0.17, c + rw / 2 - 0.2, w.t1 - 0.07, 0.12, 0.62, radMat, house);
-  solids.push([c - rw / 2 - 0.2, w.t1 - 0.17, c + rw / 2 - 0.2, w.t1 - 0.07]);
+  const c = h.a + (h.b - h.a) / 4, rw = Math.min(1.0, (h.b - h.a) / 2 - 0.1); // under the fixed left half, clear of the opening sash
+  box(c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07, 0.12, 0.62, radMat, house);
+  solids.push([c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07]);
   if (P.balcony.some(b => h.a < b[2] && h.b > b[0])) continue; // that window looks onto the balcony
   const z = w.t2 + 0.04;
   box(h.a, z - 0.02, h.b, z + 0.02, 0.98, 1.02, railMat, wallsG, { cast: false });
@@ -303,7 +348,7 @@ const blockAt = dl => Math.atan2(outside.top - 1.2, SUN.gap / Math.max(0.2, Math
 let mode = Q.get('mode') || store.get('mode', 'doll'); // doll | walk | plan
 let lowWalls = store.get('low', false), evening = Q.get('night') ? true : store.get('evening', false);
 const orbit = { yaw: store.get('yaw', -0.5), pitch: 0.95, dist: 15, tx: CX, tz: CZ + 0.3 };
-const walker = { x: P.start[0], z: P.start[1], yaw: P.start[2], pitch: -0.05 };
+const walker = { x: P.start[0], z: P.start[1], yaw: P.start[2], pitch: -0.05, bob: 0, goal: null };
 if (Q.get('yaw')) orbit.yaw = +Q.get('yaw');
 if (Q.get('wx')) { walker.x = +Q.get('wx'); walker.z = +Q.get('wz'); walker.yaw = +(Q.get('wyaw') || 0); }
 
@@ -332,6 +377,7 @@ function applyFinish() {
   const styled = !!S.wall;
   for (const f of floorMats) f.m.material = raw ? f.raw : styled ? styleFloor(f, S.floors[f.room] || 'oak') : f.fin;
   fx.visible = !raw; for (const d of innerDoors) d.visible = !raw;
+  if (raw) for (const o of openables) if (o.inner && !o.open) toggleOpenable(o);
   M.wall.color.set(styled ? S.wall : DEF.wall); M.door.color.set(styled ? S.door : DEF.door);
   M.cabinet.color.set(styled ? S.cabinet : DEF.cabinet); M.counter.color.set(styled ? S.counter : DEF.counter);
   if (interiorG) { house.remove(interiorG); interiorG.traverse(o => { if (o.geometry) o.geometry.dispose(); }); interiorG = null; }
@@ -436,9 +482,10 @@ function setMode(m) {
 function updateCamera() {
   if (mode === 'walk') {
     camera.fov = 70;
-    camera.position.set(walker.x, 1.6, walker.z);
+    const eye = 1.6 + Math.sin(walker.bob) * 0.025;
+    camera.position.set(walker.x, eye, walker.z);
     const cp = Math.cos(walker.pitch);
-    camera.lookAt(walker.x + Math.sin(walker.yaw) * cp, 1.6 + Math.sin(walker.pitch), walker.z - Math.cos(walker.yaw) * cp);
+    camera.lookAt(walker.x + Math.sin(walker.yaw) * cp, eye + Math.sin(walker.pitch), walker.z - Math.cos(walker.yaw) * cp);
   } else {
     const pitch = mode === 'plan' ? Math.PI / 2 - 0.001 : orbit.pitch, yaw = mode === 'plan' ? 0 : orbit.yaw;
     camera.fov = mode === 'plan' ? 30 : 45;
@@ -531,7 +578,13 @@ addEventListener('keydown', e => keys.add(e.key)); addEventListener('keyup', e =
 // tap a room in doll/plan view → walk into it
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function tapAt(x, y) {
-  if (mode === 'walk') return;
+  if (tapOpenable(x, y)) return;
+  if (mode === 'walk') { // tap the floor → walk there
+    ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+    const hit = new THREE.Vector3(); if (!ray.ray.intersectPlane(floorPlane, hit)) return;
+    if (hit.distanceTo(camera.position) > 14) return;
+    walker.goal = { x: hit.x, z: hit.z, stuck: 0 }; showMarker(hit.x, hit.z); return;
+  }
   ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
   const hit = new THREE.Vector3(); if (!ray.ray.intersectPlane(floorPlane, hit)) return;
   const room = P.rooms.find(r => r.rects.some(([x1, z1, x2, z2]) => hit.x >= x1 && hit.x <= x2 && hit.z >= z1 && hit.z <= z2));
@@ -552,6 +605,41 @@ function showTip(x, y, room, hit) {
   };
 }
 function hideTip() { $('tip').hidden = true; }
+
+/* ================= walking helpers: target ring and minimap ================= */
+const marker = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.22, 32), new THREE.MeshBasicMaterial({ color: 0xc9733a, transparent: true, opacity: 0.85, depthWrite: false }));
+marker.rotation.x = -Math.PI / 2; marker.visible = false; scene.add(marker);
+function showMarker(x, z) { marker.position.set(x, 0.02, z); marker.visible = true; }
+function hideMarker() { marker.visible = false; }
+const mm = $('minimap'), mx = mm.getContext('2d');
+const MM_PAD = 8;
+function mmScale() { const r = mm.getBoundingClientRect(); return { w: r.width, h: r.height, k: Math.min((r.width - MM_PAD * 2) / (P.width + 0.6), (r.height - MM_PAD * 2) / (P.depthWithBalcony + 0.6)) }; }
+function drawMinimap() {
+  const show = mode === 'walk'; mm.hidden = !show; if (!show) return;
+  const { w, h, k } = mmScale(), dpr = Math.min(2, devicePixelRatio || 1);
+  if (mm.width !== Math.round(w * dpr)) { mm.width = Math.round(w * dpr); mm.height = Math.round(h * dpr); }
+  mx.setTransform(dpr, 0, 0, dpr, 0, 0); mx.clearRect(0, 0, w, h);
+  const ox = MM_PAD + 0.3 * k, oz = MM_PAD + 0.3 * k, X = x => ox + x * k, Z = z => oz + z * k;
+  for (const r of P.rooms) for (const [x1, z1, x2, z2] of r.rects) {
+    const here = walker.x >= x1 && walker.x <= x2 && walker.z >= z1 && walker.z <= z2;
+    mx.fillStyle = here ? 'rgba(201,115,58,.28)' : 'rgba(255,255,255,.55)'; mx.fillRect(X(x1), Z(z1), (x2 - x1) * k, (z2 - z1) * k);
+  }
+  mx.fillStyle = '#3a3f4a';
+  for (const [x1, z1, x2, z2, f] of solids) if (!f) mx.fillRect(X(x1), Z(z1), Math.max(1, (x2 - x1) * k), Math.max(1, (z2 - z1) * k));
+  // me: dot + view cone
+  const px = X(walker.x), pz = Z(walker.z), a = walker.yaw;
+  mx.fillStyle = 'rgba(201,115,58,.35)'; mx.beginPath(); mx.moveTo(px, pz);
+  mx.arc(px, pz, 26, a - Math.PI / 2 - 0.6, a - Math.PI / 2 + 0.6); mx.closePath(); mx.fill();
+  mx.fillStyle = '#c9733a'; mx.beginPath(); mx.arc(px, pz, 5, 0, 7); mx.fill();
+  mx.strokeStyle = '#fff'; mx.lineWidth = 2; mx.stroke();
+  if (walker.goal) { mx.strokeStyle = '#c9733a'; mx.beginPath(); mx.arc(X(walker.goal.x), Z(walker.goal.z), 4, 0, 7); mx.stroke(); }
+}
+mm.addEventListener('pointerdown', e => { // tap the minimap → jump there
+  e.stopPropagation();
+  const r = mm.getBoundingClientRect(), { k } = mmScale();
+  const x = (e.clientX - r.left - MM_PAD) / k - 0.3, z = (e.clientY - r.top - MM_PAD) / k - 0.3;
+  for (let rr = 0; rr < 1; rr += 0.05) for (let i = 0; i < 12; i++) { const tx = x + Math.cos(i * 0.52) * rr, tz = z + Math.sin(i * 0.52) * rr; if (!blocked(tx, tz)) { walker.x = tx; walker.z = tz; walker.goal = null; hideMarker(); return; } }
+});
 
 /* ================= labels ================= */
 const labelEls = roomLabels.map(l => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${l.name}<small>${l.area.toFixed(2).replace('.', ',')} м²</small>`; $('labels').appendChild(d); return d; });
@@ -616,16 +704,29 @@ function loop(t) {
     if (keys.has('w') || keys.has('ArrowUp')) fz = -1; if (keys.has('s') || keys.has('ArrowDown')) fz = 1;
     if (keys.has('a') || keys.has('ArrowLeft')) fx = -1; if (keys.has('d') || keys.has('ArrowRight')) fx = 1;
     if (fx || fz) {
+      walker.goal = null;
       const sp = 1.6 * dt, s = Math.sin(walker.yaw), c = Math.cos(walker.yaw);
-      walk((c * fx - s * fz) * sp, (s * fx + c * fz) * sp);
+      walk((c * fx - s * fz) * sp, (s * fx + c * fz) * sp); walker.bob += dt * 9 * Math.min(1, Math.hypot(fx, fz));
+    } else if (walker.goal) {
+      const g = walker.goal, dx = g.x - walker.x, dz = g.z - walker.z, L = Math.hypot(dx, dz);
+      // turn smoothly towards the goal, then step
+      const want = Math.atan2(dx, -dz); let dy = ((want - walker.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      walker.yaw += dy * Math.min(1, dt * 5);
+      if (L < 0.15) { walker.goal = null; hideMarker(); }
+      else {
+        const sp = Math.min(L, 1.4 * dt) * (Math.abs(dy) > 1.2 ? 0.3 : 1), ox = walker.x, oz = walker.z;
+        walk(dx / L * sp, dz / L * sp); walker.bob += dt * 9;
+        if (Math.hypot(walker.x - ox, walker.z - oz) < sp * 0.2) { if (++g.stuck > 20) { walker.goal = null; hideMarker(); } } else g.stuck = 0;
+      }
     }
   } else if (mode === 'doll' && !ptrs.size && Q.get('still') == null && idle(t)) orbit.yaw += dt * 0.04;
+  animateOpenables(dt);
   updateCamera();
   renderer.render(scene, camera);
-  drawLabels();
+  drawLabels(); drawMinimap();
 }
 let lastTouch = 0; cv.addEventListener('pointerdown', () => lastTouch = performance.now());
 const idle = t => t - lastTouch > 8000;
 requestAnimationFrame(loop);
 setInterval(() => store.set('yaw', orbit.yaw), 5000);
-window.__kv = { setMode, walker, orbit, solids, P };
+window.__kv = { setMode, walker, orbit, solids, P, openables };

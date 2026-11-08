@@ -66,6 +66,7 @@ body.night{background:#0e1222}
 .year b{font-weight:500;text-align:right}
 .sunp .info{line-height:1.45}
 .sunp .info small{color:var(--dim)}
+.minimap{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));width:210px;height:190px;border-radius:16px;touch-action:none;inset:auto max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) auto}
 .joy{position:fixed;left:max(28px,env(safe-area-inset-left));bottom:max(28px,env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.35);border:2px solid rgba(255,255,255,.7);touch-action:none}
 .joy i{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 12px rgba(0,0,0,.2)}
 .hint{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12.5px;color:var(--dim);padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.6);pointer-events:none;white-space:nowrap}
@@ -108,6 +109,7 @@ body.night{background:#0e1222}
   <button class="b" id="bMore"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Більше</button>
 </div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
+<canvas class="minimap glass" id="minimap" hidden></canvas>
 <div class="tip glass" id="tip" hidden></div>
 <div class="legend glass" id="legend" hidden></div>
 <div class="styles glass" id="styles" hidden></div>
@@ -127,7 +129,8 @@ body.night{background:#0e1222}
     <h2>Як дивитись</h2>
     <div class="how">
       <p><b>Будиночок:</b> веди пальцем — квартира обертається; двома пальцями — наблизити й посунути. Торкнись кімнати — можна зайти в неї.</p>
-      <p><b>Прогулянка:</b> круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни не пройдеш, а на балкон — можна.</p>
+      <p><b>Прогулянка:</b> торкнись підлоги — підеш туди сам; торкнись мапки в куті — опинишся в тій точці. Круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни й зачинені двері не пройдеш, а на балкон — можна.</p>
+      <p><b>Двері й вікна:</b> торкнись дверей — відчиняться чи зачиняться; торкнись правої половинки вікна — стулка відчиниться всередину. Вхідні двері спочатку зачинені.</p>
       <p><b>План:</b> вигляд згори, як на папері.</p>
       <p><b>Сонце:</b> справжнє сонце над Львовом у будь-який день і час, з урахуванням того, куди дивляться вікна, і будинку навпроти. Показує, коли пряме сонце потрапляє у вікна.</p>
       <p><b>Інтер'єр</b> (кнопка з будиночком): «Як є», «Ремонт» і чотири варіанти на смак Claude — скандинавський, Japandi, лофт і львівська класика, з меблями.</p>
