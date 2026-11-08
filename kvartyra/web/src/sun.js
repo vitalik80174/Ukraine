@@ -83,15 +83,38 @@ export function buildSurroundings(P, opt) {
   const p2 = new THREE.Mesh(new THREE.PlaneGeometry(2.2, gap), path); p2.rotation.x = -Math.PI / 2; p2.position.set(W / 2 + 3, -below + 0.021, D + 0.3 + gap / 2); g.add(p2);
   const leaf = [0x4f7a4a, 0x5d8a50, 0x6a8f3e].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
   const trunk = new THREE.MeshStandardMaterial({ color: 0x5b4636, roughness: 1 });
+  const crowns = [], branches = [];
   let s = 3; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
   for (let i = 0; i < 9; i++) {
     const x = -14 + i * 4.6 + r() * 2, z = D + 0.3 + 4 + r() * (gap - 9), h = 3 + r() * 3.5;
     if (Math.abs(x - (W / 2 + 3)) < 2) continue;
     const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, h, 8), trunk); tr.position.set(x, -below + h / 2, z); tr.castShadow = true; g.add(tr);
     const cr = new THREE.Mesh(new THREE.SphereGeometry(1.3 + r(), 12, 9), leaf[i % 3]); cr.position.set(x, -below + h + 0.6, z); cr.scale.y = 1.2; cr.castShadow = true; g.add(cr);
+    crowns.push(cr);
+    for (let k = 0; k < 4; k++) { // bare branches, seen in winter
+      const br = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.07, 1.6, 5), trunk); const a = k * 1.6 + r();
+      br.position.set(x + Math.cos(a) * 0.45, -below + h + 0.3, z + Math.sin(a) * 0.45); br.rotation.set(Math.sin(a) * 0.7, 0, -Math.cos(a) * 0.7); g.add(br); branches.push(br);
+    }
   }
   const play = new THREE.MeshStandardMaterial({ color: 0xd8835a, roughness: 0.9 });
   const pad = new THREE.Mesh(new THREE.PlaneGeometry(8, 6), new THREE.MeshStandardMaterial({ color: 0x9fb8c8, roughness: 1 })); pad.rotation.x = -Math.PI / 2; pad.position.set(W / 2 - 7, -below + 0.03, D + 0.3 + gap * 0.55); g.add(pad);
   for (const [dx, dz, h] of [[-1.5, -1, 2.2], [1.5, 1, 1.4]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(1.4, h, 1.4), play); m.position.set(W / 2 - 7 + dx, -below + h / 2, D + 0.3 + gap * 0.55 + dz); m.castShadow = true; g.add(m); }
-  return { group: g, top: height - below }; // `top` — roof height above our floor
+  // seasons: lawn, tree crowns and snow follow the chosen date
+  const snowRoof = new THREE.Mesh(new THREE.BoxGeometry(len + 0.5, 0.12, depth + 0.5), new THREE.MeshStandardMaterial({ color: 0xf4f7fa, roughness: 0.9 }));
+  snowRoof.position.set(roof.position.x, roof.position.y + 0.36, roof.position.z); g.add(snowRoof);
+  const SEASON = [ // month → [lawn, crowns(3), crown scale, snow]
+    [0xe9eef2, null, 0, 1], [0xe3e8ea, null, 0, 1], [0x8a9a5a, null, 0, 0], [0x8db35a, [0xb5d98a, 0xf2c6d6, 0x9ccc65], 0.8, 0],
+    [0x7fa955, [0x7cb342, 0x8bc34a, 0x6a9f3e], 1, 0], [0x6f9a50, [0x4f7a4a, 0x5d8a50, 0x6a8f3e], 1, 0], [0x6f8a55, [0x4a7344, 0x557f48, 0x648a3c], 1, 0],
+    [0x7a8a52, [0x4f7a4a, 0x6a8f3e, 0x7f8f3a], 1, 0], [0x7f8a55, [0x8f9a3a, 0xd9a23a, 0x6a8f3e], 1, 0], [0x8a8455, [0xe08a2e, 0xc9562e, 0xe6b33a], 0.95, 0],
+    [0x7d7a5a, [0xa0652e, 0x8a5a2e, 0xb07a3a], 0.55, 0], [0xdfe5e8, null, 0, 1]
+  ];
+  function setSeason(m) {
+    const [lw, cols, sc, snow] = SEASON[m];
+    lawn.color.set(lw); path.color.set(snow ? 0xe2e6ea : 0xc9c2b4);
+    crowns.forEach((c, i) => { c.visible = !!cols; if (cols) { c.material = leaf[i % 3]; c.scale.set(sc, sc * 1.2, sc); } });
+    if (cols) leaf.forEach((l, i) => l.color.set(cols[i]));
+    branches.forEach(b => { b.visible = !cols || sc < 0.7; });
+    snowRoof.visible = !!snow;
+  }
+  return { group: g, top: height - below, setSeason }; // `top` — roof height above our floor
 }

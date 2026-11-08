@@ -280,6 +280,7 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), M.ground);
 ground.rotation.x = -Math.PI / 2; ground.position.set(CX, -0.02, CZ); ground.receiveShadow = true; ground.visible = false; scene.add(ground);
 // outside: the courtyard and the building across it; our floor is the 3rd (≈6,4 m above the ground)
 const SUN = { orient: store.get('orient', 150), gap: store.get('gap', 18), live: true, y: 0, m: 0, d: 0, h: 12 };
+if (store.get('sunV', 0) < 2) { SUN.orient = 150; SUN.gap = 18; store.set('orient', 150); store.set('gap', 18); store.set('sunV', 2); } // checked against the satellite map: windows face SE ≈150°
 let outside = null;
 function buildOutside() {
   if (outside) { scene.remove(outside.group); outside.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -365,11 +366,16 @@ function applyLight() {
   M.wall.emissive.set(night ? 0x000000 : new THREE.Color(0x3a3936).multiplyScalar(day));
   $('bLight').classList.toggle('on', evening);
   $('vLight').textContent = evening ? 'Вечір' : 'День';
-  $('vSun').textContent = hhmm(SUN.h);
-  if (!$('sunp').hidden) sunPanelText(st);
+  $('vSun').textContent = hhmm(SUN.h); $('bSun').title = SUN.d + ' ' + MNAMES[SUN.m];
+  outside.setSeason(SUN.m);
+  if (!$('sunp').hidden) { sunPanelText(st); if ($('sunYear')) { $('sunYear').innerHTML = sunYearHTML(); $('sunYear').querySelectorAll('[data-m]').forEach(el => el.onclick = () => { SUN.m = +el.dataset.m; SUN.d = 21; SUN.live = false; p2close(); applyLight(); openSun(); }); } }
+  if ($('sunFacts')) $('sunFacts').innerHTML = sunFactsHTML();
 }
 const DIRS = [['Пн', 0], ['ПнСх', 45], ['Сх', 90], ['ПдСх', 135], ['Пд', 180], ['ПдЗх', 225], ['Зх', 270], ['ПнЗх', 315]];
-const DATES = [['Сьогодні', null], ['21 бер', [2, 21]], ['21 чер', [5, 21]], ['23 вер', [8, 23]], ['21 гру', [11, 21]]];
+const DATES = [['Сьогодні', null], ['Весна', [3, 20]], ['Літо', [6, 15]], ['Осінь', [9, 15]], ['Зима', [0, 20]]];
+const MNAMES = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
+const doy = (m, d) => Math.round((Date.UTC(2026, m, d) - Date.UTC(2026, 0, 1)) / 864e5) + 1;
+const fromDoy = n => { const t = new Date(Date.UTC(2026, 0, n)); return [t.getUTCMonth(), t.getUTCDate()]; };
 function sunPanelText(st) {
   const w = sunWindow(SUN.y, SUN.m, SUN.d, SUN.orient, blockAt);
   const dname = DIRS.reduce((a, b) => Math.abs(((SUN.orient - b[1] + 540) % 360) - 180) < Math.abs(((SUN.orient - a[1] + 540) % 360) - 180) ? b : a)[0];
@@ -377,12 +383,27 @@ function sunPanelText(st) {
     (w.from != null ? `Пряме сонце у вікнах: <b>${hhmm(w.from)}–${hhmm(w.to)}</b>` : 'Цього дня пряме сонце у вікна не потрапляє') +
     `<br><small>Вікна дивляться на ${SUN.orient}° (${dname}); будинок навпроти — 6 поверхів, ${SUN.gap} м. Зараз сонце: висота ${st.el.toFixed(0)}°, азимут ${st.az.toFixed(0)}°.</small>`;
 }
+function sunFactsHTML() {
+  const nm = DIRS.reduce((a, b) => Math.abs(((SUN.orient - b[1] + 540) % 360) - 180) < Math.abs(((SUN.orient - a[1] + 540) % 360) - 180) ? b : a)[0];
+  const row = (a, b) => `<div class="row"><span>${a}</span><b>${b}</b></div>`;
+  const w = (m, d) => { const x = sunWindow(SUN.y, m, d, SUN.orient, blockAt); return x.from != null ? hhmm(x.from) + '–' + hhmm(x.to) : 'немає'; };
+  return row('Вікна дивляться', `${nm}, ${SUN.orient}°`) + row('Поверх', '3-й, ≈6,4 м над землею') + row('Будинок навпроти', `6 поверхів, ≈${SUN.gap} м`) +
+    row('Сонце у вікнах 21 червня', w(5, 21)) + row('21 березня / 23 вересня', w(2, 21) + ' / ' + w(8, 23)) + row('21 грудня', w(11, 21));
+}
+const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
+function sunYearHTML() {
+  return MONTHS.map((n, m) => { const w = sunWindow(SUN.y, m, 21, SUN.orient, blockAt); const h = w.from != null ? w.to - w.from : 0;
+    return `<div data-m="${m}" class="${m === SUN.m ? 'on' : ''}"><span>${n}</span><i style="width:${Math.round(h / 11 * 100)}%"></i><b>${w.from != null ? hhmm(w.from) + '–' + hhmm(w.to) : 'немає'}</b></div>`; }).join('');
+}
+function p2close() { $('sunp').hidden = true; }
 function openSun() {
   const p = $('sunp'); if (!p.hidden) { p.hidden = true; return; }
   $('styles').hidden = true;
   const today = kyivNow();
   p.innerHTML = `<b class="ttl">Сонце над Львовом</b>
     <div class="row2">${DATES.map(([n, v], i) => `<button class="mini${(v ? v[0] === SUN.m && v[1] === SUN.d : SUN.m === today.m && SUN.d === today.d) ? ' on' : ''}" data-date="${i}">${n}</button>`).join('')}</div>
+    <label class="lab">Дата: <b id="sunD">${SUN.d} ${MNAMES[SUN.m]}</b></label>
+    <input type="range" id="sunDay" min="1" max="365" step="1" value="${doy(SUN.m, SUN.d)}">
     <label class="lab">Час: <b id="sunT">${hhmm(SUN.h)}</b> <button class="mini" id="sunNow">Зараз</button></label>
     <input type="range" id="sunH" min="4" max="22" step="0.0833" value="${SUN.h}">
     <label class="lab">Куди дивляться вікна</label>
@@ -390,10 +411,13 @@ function openSun() {
     <input type="range" id="sunO" min="0" max="359" step="1" value="${SUN.orient}">
     <label class="lab">До будинку навпроти: <b id="sunGv">${SUN.gap} м</b></label>
     <input type="range" id="sunG" min="12" max="50" step="1" value="${SUN.gap}">
-    <div id="sunInfo" class="info"></div>`;
+    <div id="sunInfo" class="info"></div>
+    <label class="lab">Сонце у вікнах протягом року</label>
+    <div id="sunYear" class="year"></div>`;
   p.hidden = false;
   p.querySelectorAll('[data-date]').forEach(b => b.onclick = () => { const v = DATES[+b.dataset.date][1], t = kyivNow(); SUN.y = t.y; if (v) { SUN.m = v[0]; SUN.d = v[1]; } else { SUN.m = t.m; SUN.d = t.d; } SUN.live = false; p.hidden = true; applyLight(); openSun(); });
   p.querySelectorAll('[data-or]').forEach(b => b.onclick = () => { SUN.orient = +b.dataset.or; store.set('orient', SUN.orient); p.hidden = true; applyLight(); openSun(); });
+  $('sunDay').oninput = e => { const [m, d] = fromDoy(+e.target.value); SUN.m = m; SUN.d = d; SUN.live = false; $('sunD').textContent = d + ' ' + MNAMES[m]; applyLight(); };
   $('sunH').oninput = e => { SUN.h = +e.target.value; SUN.live = false; $('sunT').textContent = hhmm(SUN.h); applyLight(); };
   $('sunO').oninput = e => { SUN.orient = +e.target.value; store.set('orient', SUN.orient); applyLight(); };
   $('sunG').oninput = e => { SUN.gap = +e.target.value; store.set('gap', SUN.gap); $('sunGv').textContent = SUN.gap + ' м'; buildOutside(); applyLight(); };
