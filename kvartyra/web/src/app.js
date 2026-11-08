@@ -2,6 +2,7 @@
 import * as THREE from '../../../ruina/web/vendor/three.module.js';
 import { PLAN } from './plan.js';
 import { STYLES, extraFloors, buildInterior } from './interior.js';
+import { sunAt, kyivDate, dirTo, sunWindow, hhmm, buildSurroundings } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -28,7 +29,7 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 });
+Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 100 });
 sun.shadow.bias = -0.0008;
 scene.add(sun, sun.target);
 const CX = PLAN.width / 2, CZ = PLAN.depth / 2;
@@ -276,7 +277,26 @@ const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(P.width + 0.6, P.depth + 
 ceiling.rotation.x = Math.PI / 2; ceiling.position.set(CX, H, CZ); ceiling.visible = false; house.add(ceiling);
 // ground outside
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), M.ground);
-ground.rotation.x = -Math.PI / 2; ground.position.set(CX, -0.02, CZ); ground.receiveShadow = true; scene.add(ground);
+ground.rotation.x = -Math.PI / 2; ground.position.set(CX, -0.02, CZ); ground.receiveShadow = true; ground.visible = false; scene.add(ground);
+// outside: the courtyard and the building across it; our floor is the 3rd (≈6,4 m above the ground)
+const SUN = { orient: store.get('orient', 180), gap: store.get('gap', 18), live: true, y: 0, m: 0, d: 0, h: 12 };
+let outside = null;
+function buildOutside() {
+  if (outside) { scene.remove(outside.group); outside.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  outside = buildSurroundings(P, { below: 6.4, gap: SUN.gap, floors: 6 });
+  scene.add(outside.group);
+}
+buildOutside();
+function kyivNow() {
+  const n = new Date(), f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+  try { const p = Object.fromEntries(f.formatToParts(n).map(x => [x.type, x.value])); return { y: +p.year, m: +p.month - 1, d: +p.day, h: +p.hour + +p.minute / 60 }; }
+  catch (e) { return { y: n.getFullYear(), m: n.getMonth(), d: n.getDate(), h: n.getHours() + n.getMinutes() / 60 }; }
+}
+Object.assign(SUN, kyivNow());
+if (Q.get('date')) { const [y, m, d] = Q.get('date').split('-').map(Number); Object.assign(SUN, { y, m: m - 1, d, live: false }); }
+if (Q.get('hour')) { SUN.h = +Q.get('hour'); SUN.live = false; }
+if (Q.get('orient')) SUN.orient = +Q.get('orient');
+const blockAt = dl => Math.atan2(outside.top - 1.2, SUN.gap / Math.max(0.2, Math.cos(dl * Math.PI / 180))) * 180 / Math.PI;
 
 /* ================= views ================= */
 let mode = Q.get('mode') || store.get('mode', 'doll'); // doll | walk | plan
@@ -327,20 +347,60 @@ function openStyles() {
   p.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => { look = c.dataset.id; store.set('look', look); applyFinish(); p.hidden = true; }));
   p.hidden = false;
 }
+const SKY_DAY = new THREE.Color(0xcfe0ee), SKY_DUSK = new THREE.Color(0xe8b48a), SKY_NIGHT = new THREE.Color(0x0e1222);
 function applyLight() {
-  scene.background = new THREE.Color(evening ? 0x0e1222 : 0xcfe0ee);
-  scene.fog = new THREE.Fog(scene.background, 25, 60);
-  hemi.intensity = evening ? 0.18 : 1.2;
-  document.body.classList.toggle('night', evening);
-  sun.intensity = evening ? 0.0 : 2.4;
-  sun.position.set(CX - 6, 12, CZ + 10);
-  for (const { l, bulb } of lamps) { l.intensity = evening ? 3.2 : 0; bulb.material.color.set(evening ? 0xffe6b8 : 0x8c8c8c); }
-  ceiling.material.emissive.set(evening ? 0x1a1814 : 0x9c9a96);
-  M.wall.emissive.set(evening ? 0x000000 : 0x3a3936);
-  M.ground.color.set(evening ? 0x1d2430 : 0x5f6b55);
+  const st = sunAt(kyivDate(SUN.y, SUN.m, SUN.d, SUN.h));
+  const el = evening ? -20 : st.el, day = THREE.MathUtils.smoothstep(el, -6, 12);
+  const sky = SKY_NIGHT.clone().lerp(SKY_DUSK, THREE.MathUtils.smoothstep(el, -8, 2)).lerp(SKY_DAY, THREE.MathUtils.smoothstep(el, 2, 18));
+  scene.background = sky; scene.fog = new THREE.Fog(sky, 60, 160);
+  hemi.intensity = 0.18 + 1.0 * day;
+  const night = evening || el < -4;
+  document.body.classList.toggle('night', night);
+  sun.intensity = el > 0 ? 2.8 * THREE.MathUtils.smoothstep(el, 0, 10) : 0;
+  sun.color.setHSL(0.09, 0.9, 0.55 + 0.4 * THREE.MathUtils.smoothstep(el, 0, 25));
+  sun.position.copy(dirTo(st.az, Math.max(el, 1), SUN.orient).multiplyScalar(45)).add(sun.target.position);
+  const lampsOn = evening || el < 2;
+  for (const { l, bulb } of lamps) { l.intensity = lampsOn ? 3.2 : 0; bulb.material.color.set(lampsOn ? 0xffe6b8 : 0x8c8c8c); }
+  ceiling.material.emissive.set(night ? 0x1a1814 : new THREE.Color(0x9c9a96).multiplyScalar(0.3 + 0.7 * day));
+  M.wall.emissive.set(night ? 0x000000 : new THREE.Color(0x3a3936).multiplyScalar(day));
   $('bLight').classList.toggle('on', evening);
   $('vLight').textContent = evening ? 'Вечір' : 'День';
+  $('vSun').textContent = hhmm(SUN.h);
+  if (!$('sunp').hidden) sunPanelText(st);
 }
+const DIRS = [['Пн', 0], ['ПнСх', 45], ['Сх', 90], ['ПдСх', 135], ['Пд', 180], ['ПдЗх', 225], ['Зх', 270], ['ПнЗх', 315]];
+const DATES = [['Сьогодні', null], ['21 бер', [2, 21]], ['21 чер', [5, 21]], ['23 вер', [8, 23]], ['21 гру', [11, 21]]];
+function sunPanelText(st) {
+  const w = sunWindow(SUN.y, SUN.m, SUN.d, SUN.orient, blockAt);
+  const dname = DIRS.reduce((a, b) => Math.abs(((SUN.orient - b[1] + 540) % 360) - 180) < Math.abs(((SUN.orient - a[1] + 540) % 360) - 180) ? b : a)[0];
+  $('sunInfo').innerHTML = `Схід ${hhmm(w.rise)} · захід ${hhmm(w.set)}<br>` +
+    (w.from != null ? `Пряме сонце у вікнах: <b>${hhmm(w.from)}–${hhmm(w.to)}</b>` : 'Цього дня пряме сонце у вікна не потрапляє') +
+    `<br><small>Вікна дивляться на ${SUN.orient}° (${dname}); будинок навпроти — 6 поверхів, ${SUN.gap} м. Зараз сонце: висота ${st.el.toFixed(0)}°, азимут ${st.az.toFixed(0)}°.</small>`;
+}
+function openSun() {
+  const p = $('sunp'); if (!p.hidden) { p.hidden = true; return; }
+  $('styles').hidden = true;
+  const today = kyivNow();
+  p.innerHTML = `<b class="ttl">Сонце над Львовом</b>
+    <div class="row2">${DATES.map(([n, v], i) => `<button class="mini${(v ? v[0] === SUN.m && v[1] === SUN.d : SUN.m === today.m && SUN.d === today.d) ? ' on' : ''}" data-date="${i}">${n}</button>`).join('')}</div>
+    <label class="lab">Час: <b id="sunT">${hhmm(SUN.h)}</b> <button class="mini" id="sunNow">Зараз</button></label>
+    <input type="range" id="sunH" min="4" max="22" step="0.0833" value="${SUN.h}">
+    <label class="lab">Куди дивляться вікна</label>
+    <div class="row2">${DIRS.map(([n, a]) => `<button class="mini${Math.abs(SUN.orient - a) < 23 ? ' on' : ''}" data-or="${a}">${n}</button>`).join('')}</div>
+    <input type="range" id="sunO" min="0" max="359" step="1" value="${SUN.orient}">
+    <label class="lab">До будинку навпроти: <b id="sunGv">${SUN.gap} м</b></label>
+    <input type="range" id="sunG" min="12" max="50" step="1" value="${SUN.gap}">
+    <div id="sunInfo" class="info"></div>`;
+  p.hidden = false;
+  p.querySelectorAll('[data-date]').forEach(b => b.onclick = () => { const v = DATES[+b.dataset.date][1], t = kyivNow(); SUN.y = t.y; if (v) { SUN.m = v[0]; SUN.d = v[1]; } else { SUN.m = t.m; SUN.d = t.d; } SUN.live = false; p.hidden = true; applyLight(); openSun(); });
+  p.querySelectorAll('[data-or]').forEach(b => b.onclick = () => { SUN.orient = +b.dataset.or; store.set('orient', SUN.orient); p.hidden = true; applyLight(); openSun(); });
+  $('sunH').oninput = e => { SUN.h = +e.target.value; SUN.live = false; $('sunT').textContent = hhmm(SUN.h); applyLight(); };
+  $('sunO').oninput = e => { SUN.orient = +e.target.value; store.set('orient', SUN.orient); applyLight(); };
+  $('sunG').oninput = e => { SUN.gap = +e.target.value; store.set('gap', SUN.gap); $('sunGv').textContent = SUN.gap + ' м'; buildOutside(); applyLight(); };
+  $('sunNow').onclick = () => { Object.assign(SUN, kyivNow(), { live: true }); p.hidden = true; applyLight(); openSun(); };
+  applyLight();
+}
+setInterval(() => { if (SUN.live) { Object.assign(SUN, kyivNow()); applyLight(); } }, 60000);
 function setMode(m) {
   mode = m; store.set('mode', m);
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
@@ -490,7 +550,8 @@ function drawLabels() {
 /* ================= UI ================= */
 document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 $('bWalls').addEventListener('click', () => { lowWalls = !lowWalls; store.set('low', lowWalls); $('bWalls').classList.toggle('on', lowWalls); applyWalls(); });
-$('bFinish').addEventListener('click', openStyles);
+$('bFinish').addEventListener('click', () => { $('sunp').hidden = true; openStyles(); });
+$('bSun').addEventListener('click', openSun);
 $('bLight').addEventListener('click', () => { evening = !evening; store.set('evening', evening); applyLight(); });
 $('bLabels').addEventListener('click', () => { $('bLabels').classList.toggle('on'); store.set('labels', $('bLabels').classList.contains('on')); });
 $('bPower').addEventListener('click', () => { powerG.visible = !powerG.visible; store.set('power', powerG.visible); $('bPower').classList.toggle('on', powerG.visible); $('legend').hidden = !powerG.visible; });

@@ -50,6 +50,16 @@ body.night{background:#0e1222}
 .chip b{display:block;font:600 14px var(--f)}
 .chip span{display:block;font-size:11.5px;color:var(--dim)}
 .chip.on{border-color:var(--accent);background:var(--on)}
+.sunp{gap:8px;font-size:13px}
+.sunp .ttl{font:600 15px var(--f)}
+.sunp .row2{display:flex;flex-wrap:wrap;gap:4px}
+.sunp .mini{border:1px solid var(--line);background:rgba(255,255,255,.5);border-radius:10px;padding:6px 9px;font:500 12px var(--f)}
+.sunp .mini.on{border-color:var(--accent);background:var(--on)}
+.sunp .lab{display:flex;align-items:center;gap:6px;color:var(--dim)}
+.sunp .lab b{color:var(--fg)}
+.sunp input[type=range]{width:100%;accent-color:var(--accent);touch-action:pan-x}
+.sunp .info{line-height:1.45}
+.sunp .info small{color:var(--dim)}
 .joy{position:fixed;left:max(28px,env(safe-area-inset-left));bottom:max(28px,env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.35);border:2px solid rgba(255,255,255,.7);touch-action:none}
 .joy i{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 3px 12px rgba(0,0,0,.2)}
 .hint{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12.5px;color:var(--dim);padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.6);pointer-events:none;white-space:nowrap}
@@ -85,6 +95,7 @@ body.night{background:#0e1222}
 <div class="side glass">
   <button class="b" id="bWalls"><svg viewBox="0 0 24 24"><path d="M4 20V12h16v8M4 12l3-3h10l3 3"/></svg>Низькі стіни</button>
   <button class="b" id="bFinish"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 20V9l6-5 6 5v11M10 20v-6h4v6"/></svg><span id="vFinish">Як є</span></button>
+  <button class="b" id="bSun"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span id="vSun">12:00</span></button>
   <button class="b" id="bLight"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg><span id="vLight">День</span></button>
   <button class="b on" id="bLabels"><svg viewBox="0 0 24 24"><path d="M4 6h16v9H13l-4 4v-4H4z"/></svg>Назви</button>
   <button class="b" id="bPower"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg>Електрика</button>
@@ -94,6 +105,7 @@ body.night{background:#0e1222}
 <div class="tip glass" id="tip" hidden></div>
 <div class="legend glass" id="legend" hidden></div>
 <div class="styles glass" id="styles" hidden></div>
+<div class="styles sunp glass" id="sunp" hidden></div>
 
 <div class="panel" id="panel">
   <button class="x" id="close" aria-label="Закрити">×</button>
@@ -108,6 +120,7 @@ body.night{background:#0e1222}
       <p><b>Будиночок:</b> веди пальцем — квартира обертається; двома пальцями — наблизити й посунути. Торкнись кімнати — можна зайти в неї.</p>
       <p><b>Прогулянка:</b> круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни не пройдеш, а на балкон — можна.</p>
       <p><b>План:</b> вигляд згори, як на папері.</p>
+      <p><b>Сонце:</b> справжнє сонце над Львовом у будь-який день і час, з урахуванням того, куди дивляться вікна, і будинку навпроти. Показує, коли пряме сонце потрапляє у вікна.</p>
       <p><b>Інтер'єр</b> (кнопка з будиночком): «Як є», «Ремонт» і чотири варіанти на смак Claude — скандинавський, Japandi, лофт і львівська класика, з меблями.</p>
       <p><b>Як є / Ремонт:</b> «Як є» — квартира зараз, після здачі: бетонна стяжка, білі стіни, радіатори, французькі балкончики, ще без дверей і сантехніки. «Ремонт» — з підлогою, кухнею, ванною й дверима.</p>
       <p><b>Електрика:</b> показує розетки, вимикачі, щиток і виводи під бойлер, витяжку й кондиціонер — на тій висоті, що в проєкті. Найзручніше дивитися в прогулянці.</p>
