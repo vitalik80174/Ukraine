@@ -47,15 +47,15 @@ export const PLAN = {
     { type: 'sink', r: [8.8, 2.35, 9.43, RT] },
     { type: 'toilet', r: [9.6, 0.24, W, 0.68], back: [10.08, 0.24, W, 0.68] }
   ],
-  // electrical points: the ones circled on the plan; f = which way the wall face looks
+  // electrical points following the developer's plan legend (positions approximate); f = which way the wall face looks
   power: [
-    { x: 2.74, z: 0, f: 'S', k: 'kitchen' }, { x: 3.12, z: 0, f: 'S', k: 'kitchen' }, { x: 2.8, z: 0, f: 'S', k: 'hood' },
-    { x: 0, z: 2.32, f: 'E', k: 'socket' }, { x: 0, z: 3.29, f: 'E', k: 'socket' }, { x: 0, z: 4.83, f: 'E', k: 'socket2' },
-    { x: 4.05, z: 3.35, f: 'W', k: 'socket' },
-    { x: 7.43, z: 0, f: 'S', k: 'switch2' }, { x: 7.8, z: 0, f: 'S', k: 'intercom' },
-    { x: 4.17, z: 4.55, f: 'E', k: 'socket' }, { x: 6.75, z: RB, f: 'S', k: 'switch' }, { x: 7.17, z: 5.46, f: 'W', k: 'socket2' }, { x: 7.17, z: 7.3, f: 'W', k: 'socket' },
-    { x: 8.45, z: RB, f: 'S', k: 'switch' }, { x: 7.29, z: 5.23, f: 'E', k: 'socket2' }, { x: 7.29, z: 7.3, f: 'E', k: 'socket' }, { x: W, z: 4.03, f: 'W', k: 'socket' },
-    { x: 9.9, z: 1.12, f: 'S', k: 'boiler' }
+    { x: 2.0, z: 0, f: 'S', k: 'kitchen' }, { x: 3.2, z: 0, f: 'S', k: 'kitchen' }, { x: 2.8, z: 0, f: 'S', k: 'hood' },
+    { x: 0, z: 3.24, f: 'E', k: 'socket' }, { x: 0, z: 5.31, f: 'E', k: 'socket2' }, { x: 0, z: 6.7, f: 'E', k: 'socket' },
+    { x: 4.05, z: 3.3, f: 'W', k: 'switch' },
+    { x: 6.05, z: 0, f: 'S', k: 'intercom' }, { x: 6.05, z: 0, f: 'S', k: 'switch2' }, { x: 8.0, z: 0, f: 'S', k: 'net' },
+    { x: 4.17, z: 4.2, f: 'E', k: 'socket' }, { x: 4.17, z: 6.33, f: 'E', k: 'socket2' }, { x: 7.17, z: 5.27, f: 'W', k: 'socket' }, { x: 6.75, z: RB, f: 'S', k: 'switch' }, { x: 5.4, z: RB, f: 'S', k: 'net' },
+    { x: W, z: 3.97, f: 'W', k: 'socket' }, { x: W, z: 6.11, f: 'W', k: 'socket2' }, { x: 7.29, z: 5.1, f: 'E', k: 'socket' }, { x: 8.4, z: RB, f: 'S', k: 'switch' }, { x: 9.2, z: RB, f: 'S', k: 'ac' },
+    { x: 9.9, z: 1.12, f: 'S', k: 'boiler' }, { x: 8.59, z: 2.6, f: 'E', k: 'km' }, { x: 8.47, z: 1.3, f: 'W', k: 'switch2' }
   ],
   lamps: [[2.0, 1.7], [2.0, 5.3], [6.3, 1.4], [5.67, 5.3], [8.8, 5.3], [9.4, 2.0], [9.4, 0.5]],
   start: [6.7, 0.9, 3.7]
