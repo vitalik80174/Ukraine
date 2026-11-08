@@ -1,6 +1,7 @@
 // «Квартира» — 3D model of the apartment from its floor plan. three.js only; build with ../build.sh.
 import * as THREE from '../../../ruina/web/vendor/three.module.js';
 import { PLAN } from './plan.js';
+import { STYLES, extraFloors, buildInterior } from './interior.js';
 
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -88,6 +89,8 @@ const FLOORS = {
   stone: tileTex('#bfb6aa', '#b5ab9e', 3)
 };
 
+Object.assign(FLOORS, extraFloors(canvasTex, woodTex, tileTex, rnd));
+
 /* ================= build the apartment ================= */
 const M = {
   wall: new THREE.MeshStandardMaterial({ color: 0xf8f7f4, roughness: 0.92 }),
@@ -162,7 +165,7 @@ for (const r of P.rooms) {
     const t = tex.clone(); t.repeat.set((x2 - x1) * 0.7, (z2 - z1) * 0.7); t.needsUpdate = true;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), new THREE.MeshStandardMaterial({ map: t, roughness: r.floor === 'tile' ? 0.35 : 0.75 }));
     const tc = FLOORS.concrete.clone(); tc.repeat.set((x2 - x1) * 0.4, (z2 - z1) * 0.4); tc.needsUpdate = true;
-    floorMats.push({ m, fin: m.material, raw: new THREE.MeshStandardMaterial({ map: tc, roughness: 0.95 }) });
+    floorMats.push({ m, room: r.name, w: x2 - x1, h: z2 - z1, fin: m.material, raw: new THREE.MeshStandardMaterial({ map: tc, roughness: 0.95 }) });
     m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, 0.001, (z1 + z2) / 2); m.receiveShadow = true;
     house.add(m);
   }
@@ -286,13 +289,43 @@ if (Q.get('wx')) { walker.x = +Q.get('wx'); walker.z = +Q.get('wz'); walker.yaw 
 function applyWalls() {
   const s = mode === 'walk' ? 1 : lowWalls ? 0.42 : 1;
   wallsG.scale.y = s; ceiling.visible = mode === 'walk';
+  if (interiorG) interiorG.traverse(o => { if (o.userData.wallLike) { o.scale.y = s; o.position.y = (o.geometry.parameters.height / 2 + 0.02) * s; } });
   for (const l of lamps) l.bulb.visible = mode === 'walk' || !lowWalls;
 }
-let raw = Q.get('raw') != null ? Q.get('raw') === '1' : store.get('raw', true); // «Як є»: concrete screed, no kitchen, no plumbing, no inner doors
+// interior look: 'raw' (as it is now), 'base' (first finished version) or a designed style from interior.js
+let look = Q.get('look') || (Q.get('raw') === '0' ? 'base' : Q.get('raw') === '1' ? 'raw' : null) || store.get('look', store.get('raw', true) ? 'raw' : 'base');
+if (!STYLES.some(st => st.id === look)) look = 'raw';
+let raw = look === 'raw', interiorG = null;
+const DEF = { wall: M.wall.color.getHex(), door: M.door.color.getHex(), cabinet: M.cabinet.color.getHex(), counter: M.counter.color.getHex() };
+const styleFloorMats = new Map();
+function styleFloor(f, key) {
+  const k = key + ':' + f.w.toFixed(2) + ':' + f.h.toFixed(2);
+  if (!styleFloorMats.has(k)) {
+    const t = FLOORS[key].clone(); t.repeat.set(f.w * (key === 'polished' ? 0.4 : 0.7), f.h * (key === 'polished' ? 0.4 : 0.7)); t.needsUpdate = true;
+    styleFloorMats.set(k, new THREE.MeshStandardMaterial({ map: t, roughness: key.startsWith('tile') ? 0.3 : key === 'polished' ? 0.4 : 0.7 }));
+  }
+  return styleFloorMats.get(k);
+}
 function applyFinish() {
-  for (const f of floorMats) f.m.material = raw ? f.raw : f.fin;
+  const S = STYLES.find(st => st.id === look); raw = look === 'raw';
+  const styled = !!S.wall;
+  for (const f of floorMats) f.m.material = raw ? f.raw : styled ? styleFloor(f, S.floors[f.room] || 'oak') : f.fin;
   fx.visible = !raw; for (const d of innerDoors) d.visible = !raw;
-  $('vFinish').textContent = raw ? 'Як є' : 'Ремонт'; $('bFinish').classList.toggle('on', !raw);
+  M.wall.color.set(styled ? S.wall : DEF.wall); M.door.color.set(styled ? S.door : DEF.door);
+  M.cabinet.color.set(styled ? S.cabinet : DEF.cabinet); M.counter.color.set(styled ? S.counter : DEF.counter);
+  if (interiorG) { house.remove(interiorG); interiorG.traverse(o => { if (o.geometry) o.geometry.dispose(); }); interiorG = null; }
+  for (let i = solids.length - 1; i >= 0; i--) if (solids[i][4] === 2) solids.splice(i, 1);
+  if (styled) { interiorG = buildInterior(S, P, solids); house.add(interiorG); }
+  for (const l of lamps) l.l.color.set(styled ? S.lamp : 0xffd29a);
+  $('vFinish').textContent = S.short; $('bFinish').classList.toggle('on', look !== 'raw');
+  applyWalls();
+}
+function openStyles() {
+  const p = $('styles');
+  if (!p.hidden) { p.hidden = true; return; }
+  p.innerHTML = STYLES.map(st => `<button class="chip${st.id === look ? ' on' : ''}" data-id="${st.id}"><b>${st.name}</b><span>${st.sub}</span></button>`).join('');
+  p.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => { look = c.dataset.id; store.set('look', look); applyFinish(); p.hidden = true; }));
+  p.hidden = false;
 }
 function applyLight() {
   scene.background = new THREE.Color(evening ? 0x0e1222 : 0xcfe0ee);
@@ -457,7 +490,7 @@ function drawLabels() {
 /* ================= UI ================= */
 document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 $('bWalls').addEventListener('click', () => { lowWalls = !lowWalls; store.set('low', lowWalls); $('bWalls').classList.toggle('on', lowWalls); applyWalls(); });
-$('bFinish').addEventListener('click', () => { raw = !raw; store.set('raw', raw); applyFinish(); });
+$('bFinish').addEventListener('click', openStyles);
 $('bLight').addEventListener('click', () => { evening = !evening; store.set('evening', evening); applyLight(); });
 $('bLabels').addEventListener('click', () => { $('bLabels').classList.toggle('on'); store.set('labels', $('bLabels').classList.contains('on')); });
 $('bPower').addEventListener('click', () => { powerG.visible = !powerG.visible; store.set('power', powerG.visible); $('bPower').classList.toggle('on', powerG.visible); $('legend').hidden = !powerG.visible; });
