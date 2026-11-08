@@ -155,7 +155,7 @@ for (const r of P.rooms) {
     m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, 0.001, (z1 + z2) / 2); m.receiveShadow = true;
     house.add(m);
   }
-  const area = r.rects.reduce((s, [x1, z1, x2, z2]) => s + (x2 - x1) * (z2 - z1), 0);
+  const area = r.area || r.rects.reduce((s, [x1, z1, x2, z2]) => s + (x2 - x1) * (z2 - z1), 0);
   roomLabels.push({ name: r.name, area, pos: new THREE.Vector3(r.label[0], 0.05, r.label[1]) });
 }
 // balcony railing
@@ -174,6 +174,16 @@ for (const f of P.fixtures) {
     box((x1 + x2) / 2 - 0.2, zs - 0.2, (x1 + x2) / 2 + 0.2, zs + 0.2, 0.9, 0.91, M.steel, fx, { cast: false });
     box((x1 + x2) / 2 - 0.25, zh - 0.25, (x1 + x2) / 2 + 0.25, zh + 0.25, 0.9, 0.905, new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.2 }), fx, { cast: false });
     solids.push([x1, z1, x2, z2]);
+  } else if (f.type === 'counter') { // kitchen run along a wall; sink / hob are X ranges on top
+    box(x1, z1, x2, z2, 0.1, 0.86, M.cabinet, fx); box(x1, z1 + 0.04, x2, z2 - 0.04, 0, 0.1, M.wallTop, fx, { cast: false });
+    box(x1, z1, x2, z2 + 0.02, 0.86, 0.9, M.counter, fx);
+    if (f.sink) box(f.sink[0], z1 + 0.08, f.sink[1], z2 - 0.1, 0.9, 0.905, M.steel, fx, { cast: false });
+    if (f.hob) box(f.hob[0], z1 + 0.06, f.hob[1], z2 - 0.06, 0.9, 0.906, new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.2 }), fx, { cast: false });
+    solids.push([x1, z1, x2, z2]);
+  } else if (f.type === 'tall' || f.type === 'fridge') {
+    box(x1, z1, x2, z2, 0, f.type === 'tall' ? 2.25 : 2.0, f.type === 'tall' ? M.cabinet : M.white, fx); solids.push([x1, z1, x2, z2]);
+  } else if (f.type === 'washer') {
+    box(x1, z1, x2, z2, 0, 0.85, M.white, fx); solids.push([x1, z1, x2, z2]);
   } else if (f.type === 'vent') {
     box(x1, z1, x2, z2, 0, H, M.wall); solids.push([x1, z1, x2, z2]);
   } else if (f.type === 'bath') {
@@ -383,7 +393,7 @@ let tipRoom = null, tipHit = null;
 function showTip(x, y, room, hit) {
   const t = $('tip'); tipRoom = room; tipHit = hit.clone();
   const lab = roomLabels.find(l => l.name === room.name);
-  t.innerHTML = `<b>${room.name}</b><span>≈ ${lab.area.toFixed(1).replace('.', ',')} м²</span><button id="goIn">Зайти сюди</button>`;
+  t.innerHTML = `<b>${room.name}</b><span>${lab.area.toFixed(2).replace('.', ',')} м²</span><button id="goIn">Зайти сюди</button>`;
   t.hidden = false; t.style.left = Math.min(innerWidth - 190, x + 10) + 'px'; t.style.top = Math.max(10, y - 90) + 'px';
   $('goIn').onclick = () => {
     if (!blocked(tipHit.x, tipHit.z)) { walker.x = tipHit.x; walker.z = tipHit.z; }
@@ -395,7 +405,7 @@ function showTip(x, y, room, hit) {
 function hideTip() { $('tip').hidden = true; }
 
 /* ================= labels ================= */
-const labelEls = roomLabels.map(l => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${l.name}<small>${l.area.toFixed(1).replace('.', ',')} м²</small>`; $('labels').appendChild(d); return d; });
+const labelEls = roomLabels.map(l => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${l.name}<small>${l.area.toFixed(2).replace('.', ',')} м²</small>`; $('labels').appendChild(d); return d; });
 const v3 = new THREE.Vector3();
 function drawLabels() {
   const show = mode !== 'walk' && $('bLabels').classList.contains('on');
@@ -430,9 +440,9 @@ function renderDiary() {
   $('diary').innerHTML = log.map(e => `<div class="entry"><span class="d">ДЕНЬ ${e.day} · ${e.date.split('-').reverse().join('.')}</span><b>${e.title}</b><p>${e.text}</p></div>`).join('');
   if (log.length) $('dayline').textContent = `День ${log[0].day} · щоранку щось нове`;
   const v = app ? app.version() : ''; if (v) $('foot').textContent = `Версія ${v} · Лабораторія Claude`;
-  const total = roomLabels.reduce((s, l) => s + l.area, 0);
-  $('facts').innerHTML = roomLabels.map(l => `<div class="row"><span>${l.name}</span><b>${l.area.toFixed(1).replace('.', ',')} м²</b></div>`).join('') +
-    `<div class="row sum"><span>Разом за моделлю</span><b>${total.toFixed(1).replace('.', ',')} м²</b></div><div class="row"><span>За документом</span><b>${P.officialArea} м²</b></div>`;
+  const total = roomLabels.reduce((s, l) => s + l.area * (l.name === 'Балкон' ? 0.3 : 1), 0);
+  $('facts').innerHTML = roomLabels.map(l => `<div class="row"><span>${l.name}</span><b>${l.area.toFixed(2).replace('.', ',')} м²</b></div>`).join('') +
+    `<div class="row sum"><span>Разом (балкон × 0,3)</span><b>${total.toFixed(1).replace('.', ',')} м²</b></div><div class="row"><span>За документом</span><b>${P.officialArea} м²</b></div>`;
 }
 
 function resize() {

@@ -1,60 +1,62 @@
-// Plan of the apartment, measured from the developer's floor plan (photo, perspective-corrected).
-// Metres. X runs left→right on the plan, Z runs top (entrance side) → bottom (windows side).
-// Interior box is W×D; exterior walls sit outside it. Accuracy ≈ ±10 cm — good for a feel, not for ordering furniture.
-const W = 10.1, D = 7.75;
+// Plan of the apartment in metres, from the developer's dimensioned plan (room widths 4,05 / 3,00 / 3,00, depth 7,70, bedroom depth 4,75).
+// X runs left→right on the plan, Z runs top (entrance side) → bottom (windows side). Interior box is W×D; exterior walls sit outside it.
+const W = 10.29, D = 7.7, RT = 2.83, RB = 2.95; // RT..RB — wall between hall and the two rooms
 export const PLAN = {
-  width: W, depth: D, depthWithBalcony: 9.25, height: 2.7, officialArea: '77,3',
+  width: W, depth: D, depthWithBalcony: D + 0.3 + 0.97, height: 2.7, officialArea: '77,3',
   // windows are panoramic: glass from the floor almost to the ceiling
   winSill: 0.05, winTop: 2.55,
   walls: [
-    { axis: 'x', t1: -0.3, t2: 0, from: -0.3, to: W + 0.3, ext: 1, holes: [{ a: 5.92, b: 6.89, type: 'door' }] },
+    { axis: 'x', t1: -0.3, t2: 0, from: -0.3, to: W + 0.3, ext: 1, holes: [{ a: 6.2, b: 7.2, type: 'door' }] },
     { axis: 'x', t1: D, t2: D + 0.3, from: -0.3, to: W + 0.3, ext: 1, holes: [
-      { a: 0.98, b: 2.65, type: 'win' }, { a: 4.51, b: 6.27, type: 'win' }, { a: 7.7, b: 8.42, type: 'balcony' }, { a: 8.42, b: 9.48, type: 'win' }] },
+      { a: 1.09, b: 2.91, type: 'win' }, { a: 4.74, b: 6.51, type: 'win' }, { a: 7.85, b: 8.55, type: 'balcony' }, { a: 8.63, b: 9.66, type: 'win' }] },
     { axis: 'z', t1: -0.3, t2: 0, from: 0, to: D, ext: 1 },
     { axis: 'z', t1: W, t2: W + 0.3, from: 0, to: D, ext: 1 },
-    { axis: 'z', t1: 3.76, t2: 3.88, from: 2.83, to: D },
-    { axis: 'z', t1: 6.91, t2: 7.03, from: 2.83, to: D },
-    { axis: 'x', t1: 2.83, t2: 2.95, from: 3.76, to: W, holes: [{ a: 5.5, b: 6.3, type: 'door' }, { a: 7.25, b: 8.05, type: 'door' }] },
-    { axis: 'z', t1: 8.19, t2: 8.31, from: 0, to: 2.83, holes: [{ a: 0.28, b: 1.0, type: 'door' }, { a: 1.74, b: 2.38, type: 'door' }] },
-    { axis: 'x', t1: 1.04, t2: 1.16, from: 8.31, to: W }
+    { axis: 'z', t1: 4.05, t2: 4.17, from: RT, to: D },
+    { axis: 'z', t1: 7.17, t2: 7.29, from: RT, to: D },
+    { axis: 'x', t1: RT, t2: RB, from: 4.05, to: W, holes: [{ a: 5.77, b: 6.6, type: 'door' }, { a: 7.42, b: 8.25, type: 'door' }] },
+    { axis: 'z', t1: 8.47, t2: 8.59, from: 0, to: RT, holes: [{ a: 0.26, b: 0.9, type: 'door' }, { a: 1.75, b: 2.43, type: 'door' }] },
+    { axis: 'x', t1: 1.0, t2: 1.12, from: 8.59, to: W }
   ],
   // door leaves: hinge point, width, opening angle (degrees, three.js Y rotation of a leaf pointing +X)
   doors: [
-    { x: 5.92, z: -0.15, w: 0.95, angle: 70, entry: 1 },
-    { x: 5.5, z: 2.89, w: 0.8, angle: -72 },
-    { x: 8.05, z: 2.89, w: 0.8, angle: -108 },
-    { x: 8.25, z: 0.28, w: 0.72, angle: -120 },
-    { x: 8.25, z: 1.74, w: 0.64, angle: -120 },
-    { x: 8.42, z: 7.9, w: 0.72, angle: 108, white: 1 }
+    { x: 7.2, z: -0.15, w: 0.95, angle: 150, entry: 1 },
+    { x: 5.77, z: 2.89, w: 0.8, angle: -35 },
+    { x: 7.42, z: 2.89, w: 0.8, angle: -35 },
+    { x: 8.53, z: 0.26, w: 0.62, angle: -125 },
+    { x: 8.53, z: 2.43, w: 0.66, angle: 125 },
+    { x: 7.88, z: 7.85, w: 0.68, angle: 35, white: 1 }
   ],
   rooms: [
-    { name: 'Кухня-вітальня', floor: 'oak', rects: [[0, 0, 5.6, 2.83], [0, 2.83, 3.76, D]], label: [1.9, 3.6] },
-    { name: 'Передпокій', floor: 'stone', rects: [[5.6, 0, 8.19, 2.83]], label: [6.9, 1.5] },
-    { name: 'Кімната', floor: 'light', rects: [[3.88, 2.95, 6.91, D]], label: [5.4, 5.3] },
-    { name: 'Спальня', floor: 'walnut', rects: [[7.03, 2.95, W, D]], label: [8.55, 5.0] },
-    { name: 'Ванна', floor: 'tile', rects: [[8.31, 1.16, W, 2.83]], label: [9.2, 2.0] },
-    { name: 'Туалет', floor: 'tile', rects: [[8.31, 0, W, 1.04]], label: [9.1, 0.5] },
-    { name: 'Балкон', floor: 'stone', rects: [[7.41, D + 0.3, 9.7, 9.15]], label: [8.55, 8.6] }
+    { name: 'Кухня-вітальня', area: 31.18, floor: 'oak', rects: [[0, 0, 4.05, D]], label: [2.0, 3.9] },
+    { name: 'Передпокій', area: 12.62, floor: 'stone', rects: [[4.05, 0, 8.47, RT]], label: [6.2, 1.5] },
+    { name: 'Кімната', area: 14.2, floor: 'light', rects: [[4.17, RB, 7.17, D]], label: [5.67, 5.3] },
+    { name: 'Спальня', area: 14.25, floor: 'walnut', rects: [[7.29, RB, W, D]], label: [8.8, 5.3] },
+    { name: 'Ванна', area: 2.8, floor: 'tile', rects: [[8.59, 1.12, W, RT]], label: [9.2, 2.0] },
+    { name: 'Туалет', area: 1.65, floor: 'tile', rects: [[8.59, 0, W, 1.0]], label: [9.2, 0.5] },
+    { name: 'Балкон', area: 2.13, floor: 'stone', rects: [[7.79, D + 0.3, 9.89, D + 1.17]], label: [8.84, D + 0.75] }
   ],
-  balcony: [[7.31, D + 0.3, 7.41, 9.25], [9.7, D + 0.3, 9.8, 9.25], [7.31, 9.15, 9.8, 9.25]],
+  balcony: [[7.69, D + 0.3, 7.79, D + 1.27], [9.89, D + 0.3, 9.99, D + 1.27], [7.69, D + 1.17, 9.99, D + 1.27]],
   fixtures: [
-    { type: 'vent', r: [3.7, 0, 4.02, 1.2] }, // вентиляційний блок до стелі (між передпокоєм і кухнею-вітальнею)
-    { type: 'panel', r: [7.0, 0, 7.35, 0.08] },
-    { type: 'bath', r: [9.35, 1.2, W, 2.75] },
-    { type: 'sink', r: [8.35, 1.2, 8.95, 1.62] },
-    { type: 'toilet', r: [9.55, 0.3, W, 0.75], back: [9.92, 0.3, W, 0.75] },
-    { type: 'sink', r: [8.4, 0.62, 8.85, 1.04] }
+    { type: 'tall', r: [0, 0, 0.6, 1.18] },
+    { type: 'fridge', r: [0, 1.18, 0.65, 1.82] },
+    { type: 'counter', r: [0.6, 0, 3.45, 0.6], sink: [1.32, 1.88], hob: [2.52, 3.08] },
+    { type: 'vent', r: [4.05, 0, 4.3, 0.66] }, // вентиляційний блок до стелі (між кухнею-вітальнею й передпокоєм)
+    { type: 'panel', r: [7.4, 0, 7.75, 0.08] },
+    { type: 'bath', r: [9.52, 1.15, W, 2.8] },
+    { type: 'washer', r: [8.86, 1.15, 9.3, 1.75] },
+    { type: 'sink', r: [8.8, 2.35, 9.43, RT] },
+    { type: 'toilet', r: [9.6, 0.24, W, 0.68], back: [10.08, 0.24, W, 0.68] }
   ],
-  lamps: [[1.67, 1.51], [6.1, 1.42], [1.78, 5.14], [5.35, 5.23], [8.5, 5.23], [9.2, 2.0], [9.2, 0.5]],
-  // electrical points from the plan legend; f = which way the wall face looks (N = towards the entrance side)
+  // electrical points: the ones circled on the plan; f = which way the wall face looks
   power: [
-    { x: 2.7, z: 0, f: 'S', k: 'kitchen' }, { x: 3.3, z: 0, f: 'S', k: 'kitchen' }, { x: 3.45, z: 0, f: 'S', k: 'hood' },
-    { x: 0, z: 1.13, f: 'E', k: 'socket' }, { x: 0, z: 3.24, f: 'E', k: 'socket' }, { x: 0, z: 5.31, f: 'E', k: 'socket2' }, { x: 0, z: 6.7, f: 'E', k: 'socket' },
-    { x: 3.76, z: 3.3, f: 'W', k: 'switch' },
-    { x: 5.75, z: 0, f: 'S', k: 'intercom' }, { x: 5.75, z: 0, f: 'S', k: 'switch2' }, { x: 7.45, z: 0, f: 'S', k: 'net' },
-    { x: 3.88, z: 4.18, f: 'E', k: 'socket' }, { x: 3.88, z: 6.33, f: 'E', k: 'socket2' }, { x: 6.91, z: 5.27, f: 'W', k: 'socket' }, { x: 6.45, z: 2.95, f: 'S', k: 'switch' }, { x: 5.4, z: 2.95, f: 'S', k: 'net' },
-    { x: 10.1, z: 3.97, f: 'W', k: 'socket' }, { x: 10.1, z: 6.11, f: 'W', k: 'socket2' }, { x: 7.03, z: 5.1, f: 'E', k: 'socket' }, { x: 8.2, z: 2.95, f: 'S', k: 'switch' }, { x: 9.0, z: 2.95, f: 'S', k: 'ac' },
-    { x: 9.85, z: 1.16, f: 'S', k: 'boiler' }, { x: 8.31, z: 2.6, f: 'E', k: 'km' }, { x: 8.19, z: 0.15, f: 'W', k: 'switch2' }
+    { x: 2.74, z: 0, f: 'S', k: 'kitchen' }, { x: 3.12, z: 0, f: 'S', k: 'kitchen' }, { x: 2.8, z: 0, f: 'S', k: 'hood' },
+    { x: 0, z: 2.32, f: 'E', k: 'socket' }, { x: 0, z: 3.29, f: 'E', k: 'socket' }, { x: 0, z: 4.83, f: 'E', k: 'socket2' },
+    { x: 4.05, z: 3.35, f: 'W', k: 'socket' },
+    { x: 7.43, z: 0, f: 'S', k: 'switch2' }, { x: 7.8, z: 0, f: 'S', k: 'intercom' },
+    { x: 4.17, z: 4.55, f: 'E', k: 'socket' }, { x: 6.75, z: RB, f: 'S', k: 'switch' }, { x: 7.17, z: 5.46, f: 'W', k: 'socket2' }, { x: 7.17, z: 7.3, f: 'W', k: 'socket' },
+    { x: 8.45, z: RB, f: 'S', k: 'switch' }, { x: 7.29, z: 5.23, f: 'E', k: 'socket2' }, { x: 7.29, z: 7.3, f: 'E', k: 'socket' }, { x: W, z: 4.03, f: 'W', k: 'socket' },
+    { x: 9.9, z: 1.12, f: 'S', k: 'boiler' }
   ],
-  start: [6.4, 0.9, 3.7]
+  lamps: [[2.0, 1.7], [2.0, 5.3], [6.3, 1.4], [5.67, 5.3], [8.8, 5.3], [9.4, 2.0], [9.4, 0.5]],
+  start: [6.7, 0.9, 3.7]
 };
