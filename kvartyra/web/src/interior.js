@@ -42,7 +42,7 @@ export const STYLES = [
 
 // extra floor textures the styles use
 export function extraFloors(canvasTex, woodTex, tileTex, rnd) {
-  const herring = canvasTex(512, 512, (g, w, h) => {
+  const herring = () => canvasTex(512, 512, (g, w, h) => {
     const r = rnd(41), L = 128, Wd = 32;
     g.fillStyle = '#7a5434'; g.fillRect(0, 0, w, h);
     for (let row = -2; row < 12; row++) for (let col = -2; col < 10; col++) {
@@ -56,24 +56,24 @@ export function extraFloors(canvasTex, woodTex, tileTex, rnd) {
       }
     }
   }, 0.9, 0.9);
-  const polished = canvasTex(512, 512, (g, w, h) => {
+  const polished = () => canvasTex(512, 512, (g, w, h) => {
     const r = rnd(9); g.fillStyle = '#b4b3ae'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 6000; i++) { const v = 150 + r() * 60 | 0; g.fillStyle = `rgba(${v},${v},${v},${0.03 + r() * 0.05})`; const s = 1 + r() * 5; g.fillRect(r() * w, r() * h, s, s); }
   }, 0.4, 0.4);
   return {
     herring, polished,
-    ash: woodTex([38, 30, 76], 51),
-    oakWarm: woodTex([30, 42, 60], 61),
-    walnutDark: woodTex([24, 35, 30], 71),
-    tileWhite: tileTex('#f2f3f3', '#eceeee', 3),
-    tileSand: tileTex('#d8ccb6', '#d2c5ae', 3),
-    tileDark: tileTex('#4a4d51', '#45484c', 3),
-    tileGreen: tileTex('#5d7d6c', '#577665', 5)
+    ash: () => woodTex([38, 30, 76], 51),
+    oakWarm: () => woodTex([30, 42, 60], 61),
+    walnutDark: () => woodTex([24, 35, 30], 71),
+    tileWhite: () => tileTex('#f2f3f3', '#eceeee', 3),
+    tileSand: () => tileTex('#d8ccb6', '#d2c5ae', 3),
+    tileDark: () => tileTex('#4a4d51', '#45484c', 3),
+    tileGreen: () => tileTex('#5d7d6c', '#577665', 5)
   };
 }
 
 /** Builds the furniture group for a style. `solids` gets 2D boxes for walking. */
-export function buildInterior(S, P, solids) {
+export function buildInterior(S, P, solids, hooks = {}) {
   const g = new THREE.Group();
   const mats = new Map();
   const mat = (c, rough = 0.7, metal = 0) => {
@@ -100,7 +100,7 @@ export function buildInterior(S, P, solids) {
   const legH = S.low ? 0.05 : 0.14;
 
   // ---- feature walls (thin paint layers) ----
-  const paint = (x1, z1, x2, z2, c) => { const m = box(x1, z1, x2, z2, 0, P.height - 0.01, mat(c, 0.9)); m.userData.wallLike = true; m.castShadow = false; };
+  const paint = (x1, z1, x2, z2, c) => { const pm = new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }); if (hooks.addWallAO) hooks.addWallAO(pm); const m = box(x1, z1, x2, z2, 0, P.height - 0.01, pm); m.userData.wallLike = true; m.castShadow = false; };
   paint(0.001, 2.6, 0.012, D, S.accent.living);            // living: wall behind the sofa
   paint(W - 0.012, RB + 0.02, W - 0.001, D, S.accent.bedroom); // bedroom: wall behind the bed
   paint(4.18, RB + 0.02, 4.19, D, S.accent.room);           // room: left wall
@@ -159,10 +159,47 @@ export function buildInterior(S, P, solids) {
   cyl(0.45, 6.95, 0.14, 0.16, 0, 0.03, metal); cyl(0.45, 6.95, 0.012, 0.012, 0.03, 1.5, metal);
   const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.28, 24, 1, true), mat(S.shade, 0.8)); fl.material.side = THREE.DoubleSide; fl.position.set(0.45, 1.6, 6.95); g.add(fl);
   // curtains by the living window and bedroom window
-  const curtain = (x, z1, w) => { box(x - w / 2, z1, x + w / 2, z1 + 0.08, 0.02, P.height - 0.08, mat(S.textile, 1)).userData.wallLike = true; };
-  curtain(0.85, D - 0.26, 0.4); curtain(3.15, D - 0.26, 0.4);
-  curtain(4.5, D - 0.26, 0.32); curtain(6.8, D - 0.26, 0.32);
-  curtain(7.6, D - 0.26, 0.32); curtain(9.9, D - 0.26, 0.4);
+  // curtains: cloth gathered in folds, hanging from a thin rod
+  const curtainMat = new THREE.MeshStandardMaterial({ color: S.textile, roughness: 1, side: THREE.DoubleSide });
+  const curtain = (x, z1, w) => {
+    const hgt = P.height - 0.12, geo = new THREE.PlaneGeometry(w, hgt, 30, 1), pos = geo.attributes.position, folds = Math.max(3, Math.round(w / 0.085));
+    for (let i = 0; i < pos.count; i++) { const u = pos.getX(i) / w + 0.5; pos.setZ(i, Math.sin(u * Math.PI * 2 * folds) * 0.03 + Math.sin(u * 9.4 + x) * 0.012); }
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, curtainMat); m.position.set(x, 0.02 + hgt / 2, z1 + 0.05); m.castShadow = true; m.receiveShadow = true;
+    m.userData.wallLike = true; m.userData.y1 = 0.02; m.userData.h = hgt; g.add(m);
+  };
+  const rod = (x1, x2) => { box(x1, D - 0.225, x2, D - 0.205, P.height - 0.1, P.height - 0.08, metal).userData.wallLike = true; };
+  curtain(0.85, D - 0.26, 0.42); curtain(3.15, D - 0.26, 0.42); rod(0.55, 3.45);
+  curtain(4.5, D - 0.26, 0.34); curtain(6.8, D - 0.26, 0.34); rod(4.28, 7.05);
+  curtain(7.6, D - 0.26, 0.34); curtain(9.9, D - 0.26, 0.42); rod(7.4, 10.18);
+  // tiled splash-back between the worktop and the upper cabinets
+  box(0.6, 0.001, 3.45, 0.012, 0.9, 1.45, mat(S.id === 'loft' ? 0x3a3c40 : S.id === 'lviv' ? 0xe9e4d6 : 0xf3f1ec, 0.18));
+  // pictures: an abstract print for each room in the colours of the style
+  const hex = v => '#' + v.toString(16).padStart(6, '0');
+  const art = (cx, cy, cz, w, h, face, seed) => { // face +1: hangs on a wall at x = cx and looks along +X; −1: looks along −X
+    if (!hooks.canvasTex) return;
+    const tex = hooks.canvasTex(256, Math.round(256 * h / w), (c, cw, ch) => {
+      let q = seed; const r = () => (q = (q * 16807) % 2147483647) / 2147483647;
+      const pal = [S.cushion, S.sofa, S.wood, S.accent.bedroom, S.throw].map(hex);
+      c.fillStyle = hex(S.id === 'loft' ? 0xd8d6d0 : 0xf4f0e6); c.fillRect(0, 0, cw, ch);
+      for (let i = 0; i < 5; i++) {
+        c.globalAlpha = 0.82; c.fillStyle = pal[(i + seed) % pal.length]; c.beginPath();
+        const px = cw * (0.18 + r() * 0.64), py = ch * (0.3 + r() * 0.45), pr = ch * (0.16 + r() * 0.22);
+        if (i % 2) c.arc(px, py, pr, Math.PI, Math.PI * 2); else c.ellipse(px, py, pr * 1.2, pr * 0.75, r() * 3, 0, 7);
+        c.fill();
+      }
+      c.globalAlpha = 1; c.strokeStyle = '#26282b'; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(cw * 0.08, ch * 0.78); c.bezierCurveTo(cw * 0.35, ch * 0.5, cw * 0.6, ch * 0.95, cw * 0.93, ch * 0.62); c.stroke();
+      c.fillStyle = hex(S.cushion); c.beginPath(); c.arc(cw * 0.78, ch * 0.24, ch * 0.07, 0, 7); c.fill();
+    }, 1, 1);
+    const pm = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }); pm.userData.own = true;
+    const pic = new THREE.Mesh(new THREE.PlaneGeometry(w, h), pm); pic.position.set(cx + face * 0.024, cy, cz); pic.rotation.y = face * Math.PI / 2; pic.userData.hideLow = true; g.add(pic);
+    const fr = box(Math.min(cx, cx + face * 0.022), cz - w / 2 - 0.025, Math.max(cx, cx + face * 0.022), cz + w / 2 + 0.025, cy - h / 2 - 0.025, cy + h / 2 + 0.025, S.classic ? mat(S.metal, 0.35, 0.8) : S.id === 'loft' ? metal : wood);
+    fr.userData.hideLow = true; fr.castShadow = false;
+  };
+  art(0.013, 1.62, 5.35, 1.35, 0.85, 1, 5);
+  art(4.192, 1.6, 5.2, 0.7, 0.95, 1, 9);
+  art(W - 0.013, 1.9, 5.2, 1.1, 0.6, -1, 13);
 
   // ---- room (study / guest): daybed, desk at the window, bookcase ----
   box(4.19, 4.2, 5.05, 6.2, legH, legH + 0.36, textile, true);

@@ -3,6 +3,7 @@ import * as THREE from '../../../ruina/web/vendor/three.module.js';
 import { PLAN } from './plan.js';
 import { STYLES, extraFloors, buildInterior } from './interior.js';
 import { rbox, radiusFor } from './detail.js';
+import { mergeStatic } from './merge.js';
 import { outdoorGlow } from './sun.js';
 import { sunAt, kyivDate, dirTo, sunWindow, hhmm, buildSurroundings } from './sun.js';
 
@@ -17,22 +18,32 @@ const H = PLAN.height;
 
 /* ================= renderer & scene ================= */
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+// Sharp when still, lighter while moving: a still frame is drawn once at full resolution, moving frames at a
+// resolution that tunes itself to what the tablet can keep smooth (see tune()).
+const DPR = window.devicePixelRatio || 1, MOVE_MAX = Math.min(DPR, 1.5);
+// Picture quality: 'auto' tunes itself, 'lite' is the simplest shading (for a weak or hot tablet), 'high' never lowers anything.
+let quality = Q.get('q') || store.get('q', 'auto'), lite = quality === 'lite' || (quality === 'auto' && store.get('autoLite', false));
+const stillPR = () => Math.min(DPR, lite ? 1.5 : 2, Math.sqrt(5.2e6 / Math.max(1, innerWidth * innerHeight)));
+let movePR = quality === 'high' ? MOVE_MAX : Math.max(0.6, Math.min(MOVE_MAX, store.get('movePR', Math.min(DPR, 1.25)))), prCeil = MOVE_MAX, curPR = stillPR();
+renderer.setPixelRatio(curPR);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.autoUpdate = false; // the shadow map is redrawn only when the sun, a door or the furniture changes
+let dirty = 3, shadowDirty = true, lastActive = 0;
+function invalidate(shadow) { dirty = Math.max(dirty, 2); lastActive = performance.now(); if (shadow) shadowDirty = true; }
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.12;
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 200);
 
-const hemi = new THREE.HemisphereLight(0xdfe9ff, 0x8e8a82, 1.2);
+const hemi = new THREE.HemisphereLight(0xf1f0ee, 0xa89e90, 1.2);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048); sun.shadow.radius = 3;
 Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 100 });
-sun.shadow.bias = -0.0008;
+sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
 sun.shadow.camera.layers.enable(1); // the building across the street casts shadows even when hidden from view
 scene.add(sun, sun.target);
 const CX = PLAN.width / 2, CZ = PLAN.depth / 2;
@@ -49,32 +60,51 @@ function canvasTex(w, h, draw, rx, ry) {
 }
 function rnd(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 function woodTex(base, seed) {
-  return canvasTex(512, 512, (g, w, h) => {
-    const r = rnd(seed), ph = 64;
+  return canvasTex(1024, 1024, (g, w, h) => {
+    const r = rnd(seed), ph = 128;
     for (let y = 0; y < h; y += ph) {
-      let x = -r() * 300;
+      let x = -r() * 600;
       while (x < w) {
-        const len = 260 + r() * 200, l = (r() - 0.5) * 14;
-        g.fillStyle = `hsl(${base[0] + (r() - 0.5) * 4},${base[1]}%,${base[2] + l}%)`;
-        g.fillRect(x, y, len, ph);
-        g.globalAlpha = 0.08; g.strokeStyle = '#000';
-        for (let k = 0; k < 6; k++) { g.beginPath(); const yy = y + 6 + r() * (ph - 12); g.moveTo(x, yy); g.bezierCurveTo(x + len * 0.3, yy + (r() - 0.5) * 8, x + len * 0.7, yy + (r() - 0.5) * 8, x + len, yy); g.stroke(); }
-        g.globalAlpha = 0.35; g.fillStyle = '#2a1a0c'; g.fillRect(x, y, 2, ph); g.globalAlpha = 1;
+        const len = 520 + r() * 420, l = (r() - 0.5) * 11, hue = base[0] + (r() - 0.5) * 5, sat = base[1] + (r() - 0.5) * 6;
+        g.save(); g.beginPath(); g.rect(x, y, len, ph); g.clip();
+        g.fillStyle = `hsl(${hue},${sat}%,${base[2] + l}%)`; g.fillRect(x, y, len, ph);
+        // long fibres
+        for (let k = 0; k < 26; k++) {
+          const yy = y + r() * ph, dark = r() > 0.35;
+          g.globalAlpha = 0.03 + r() * 0.07; g.strokeStyle = dark ? '#3a2412' : '#fff3dc'; g.lineWidth = 0.6 + r() * 1.6;
+          g.beginPath(); g.moveTo(x, yy); g.bezierCurveTo(x + len * 0.3, yy + (r() - 0.5) * 10, x + len * 0.7, yy + (r() - 0.5) * 10, x + len, yy + (r() - 0.5) * 6); g.stroke();
+        }
+        // now and then a cathedral figure or a small knot
+        if (r() > 0.55) {
+          const cx = x + len * (0.25 + r() * 0.5), cy = y + ph * (0.35 + r() * 0.3);
+          g.strokeStyle = '#3a2412'; g.lineWidth = 1.2;
+          for (let k = 1; k < 6; k++) { g.globalAlpha = 0.05 + 0.012 * k; g.beginPath(); g.ellipse(cx, cy, k * (26 + r() * 10), k * 5.5, 0, 0, 7); g.stroke(); }
+        }
+        if (r() > 0.86) { const cx = x + len * r(), cy = y + ph * (0.2 + r() * 0.6); const gr = g.createRadialGradient(cx, cy, 0, cx, cy, 9); gr.addColorStop(0, 'rgba(50,28,12,.55)'); gr.addColorStop(1, 'rgba(50,28,12,0)'); g.globalAlpha = 1; g.fillStyle = gr; g.fillRect(cx - 10, cy - 10, 20, 20); }
+        // a plank is a little lighter along its middle
+        const gv = g.createLinearGradient(0, y, 0, y + ph); gv.addColorStop(0, 'rgba(0,0,0,.07)'); gv.addColorStop(0.5, 'rgba(255,255,255,.04)'); gv.addColorStop(1, 'rgba(0,0,0,.09)');
+        g.globalAlpha = 1; g.fillStyle = gv; g.fillRect(x, y, len, ph);
+        g.restore();
+        g.fillStyle = 'rgba(30,18,8,.42)'; g.fillRect(x, y, 2, ph);
         x += len;
       }
-      g.fillStyle = 'rgba(30,18,8,.4)'; g.fillRect(0, y, w, 2);
+      g.fillStyle = 'rgba(30,18,8,.42)'; g.fillRect(0, y, w, 2); g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(0, y + 2, w, 1);
     }
   }, 0.7, 0.7);
 }
 function tileTex(c1, c2, n) {
-  return canvasTex(256, 256, (g, w, h) => {
+  return canvasTex(512, 512, (g, w, h) => {
     const s = w / n, r = rnd(7);
     for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
       g.fillStyle = (i + j) % 2 ? c1 : c2; g.fillRect(i * s, j * s, s, s);
-      g.globalAlpha = 0.06; g.fillStyle = r() > 0.5 ? '#fff' : '#000'; g.fillRect(i * s, j * s, s, s); g.globalAlpha = 1;
+      g.globalAlpha = 0.03 + r() * 0.05; g.fillStyle = r() > 0.5 ? '#fff' : '#000'; g.fillRect(i * s, j * s, s, s); g.globalAlpha = 1;
+      // faint clouding inside each tile
+      for (let k = 0; k < 3; k++) { const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, r() > 0.5 ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.05)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.save(); g.beginPath(); g.rect(i * s, j * s, s, s); g.clip(); g.translate(i * s + r() * s, j * s + r() * s); g.scale(s * 0.6, s * 0.35); g.fillStyle = gr; g.fillRect(-1, -1, 2, 2); g.restore(); }
     }
-    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2;
+    g.strokeStyle = 'rgba(70,70,68,.35)'; g.lineWidth = 3;
     for (let i = 0; i <= n; i++) { g.beginPath(); g.moveTo(i * s, 0); g.lineTo(i * s, h); g.moveTo(0, i * s); g.lineTo(w, i * s); g.stroke(); }
+    g.strokeStyle = 'rgba(255,255,255,.25)'; g.lineWidth = 1;
+    for (let i = 0; i <= n; i++) { g.beginPath(); g.moveTo(i * s + 2.5, 0); g.lineTo(i * s + 2.5, h); g.moveTo(0, i * s + 2.5); g.lineTo(w, i * s + 2.5); g.stroke(); }
   }, 1.6, 1.6);
 }
 function concreteTex() {
@@ -84,23 +114,26 @@ function concreteTex() {
     for (let i = 0; i < 40; i++) { const v = 120 + r() * 70 | 0; const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, `rgba(${v},${v},${v},.10)`); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.save(); g.translate(r() * w, r() * h); g.scale(40 + r() * 90, 40 + r() * 90); g.fillStyle = gr; g.fillRect(-1, -1, 2, 2); g.restore(); }
   }, 0.4, 0.4);
 }
-const FLOORS = {
-  concrete: concreteTex(),
-  oak: woodTex([32, 45, 58], 11),
-  light: woodTex([36, 40, 70], 23),
-  walnut: woodTex([26, 38, 44], 37),
-  tile: tileTex('#d9dde0', '#cfd4d8', 4),
-  stone: tileTex('#bfb6aa', '#b5ab9e', 3)
+// floor textures are painted only when a look first needs them (faster start, less memory on the tablet)
+const FLOOR_MAKERS = {
+  concrete: concreteTex,
+  oak: () => woodTex([32, 45, 58], 11),
+  light: () => woodTex([36, 40, 70], 23),
+  walnut: () => woodTex([26, 38, 44], 37),
+  tile: () => tileTex('#d9dde0', '#cfd4d8', 4),
+  stone: () => tileTex('#bfb6aa', '#b5ab9e', 3)
 };
-
-Object.assign(FLOORS, extraFloors(canvasTex, woodTex, tileTex, rnd));
+Object.assign(FLOOR_MAKERS, extraFloors(canvasTex, woodTex, tileTex, rnd));
+const floorCache = {};
+const floorTex = key => floorCache[key] || (floorCache[key] = (FLOOR_MAKERS[key] || FLOOR_MAKERS.oak)());
 
 /* ================= build the apartment ================= */
 const M = {
   wall: new THREE.MeshStandardMaterial({ color: 0xf8f7f4, roughness: 0.92 }),
   wallTop: new THREE.MeshStandardMaterial({ color: 0x3b3f4a, roughness: 0.8 }),
   ext: new THREE.MeshStandardMaterial({ color: 0xe6ddd0, roughness: 0.95 }),
-  glass: new THREE.MeshPhysicalMaterial({ color: 0xbfe3ff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0, depthWrite: false }),
+  glass: new THREE.MeshStandardMaterial({ color: 0xcfe6f5, transparent: true, opacity: 0.2, roughness: 0.03, metalness: 0, depthWrite: false, envMapIntensity: 2.2 }),
+  base: new THREE.MeshStandardMaterial({ color: 0xf3f2ee, roughness: 0.55 }),
   frame: new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.5 }),
   door: new THREE.MeshStandardMaterial({ color: 0x8a6a4c, roughness: 0.6 }),
   entry: new THREE.MeshStandardMaterial({ color: 0x4a4f58, roughness: 0.5, metalness: 0.3 }),
@@ -113,6 +146,7 @@ const M = {
 const house = new THREE.Group(); scene.add(house);
 const wallsG = new THREE.Group(); house.add(wallsG);
 const solids = []; // 2D boxes for walking collisions: [x1,z1,x2,z2]
+const fullWalls = []; // wall pieces that stand from floor to ceiling
 
 function box(x1, z1, x2, z2, y1, y2, mat, parent, opts = {}) {
   const w = x2 - x1, d = z2 - z1, h = y2 - y1;
@@ -128,10 +162,10 @@ function box(x1, z1, x2, z2, y1, y2, mat, parent, opts = {}) {
 function wall(axis, t1, t2, from, to, holes, mat) {
   holes = (holes || []).slice().sort((a, b) => a.a - b.a);
   const seg = (a, b, y1, y2, m) => axis === 'x' ? box(a, t1, b, t2, y1, y2, m) : box(t1, a, t2, b, y1, y2, m);
-  const solid = (a, b) => solids.push(axis === 'x' ? [a, t1, b, t2] : [t1, a, t2, b]);
+  const solid = (a, b, full) => { const q = axis === 'x' ? [a, t1, b, t2] : [t1, a, t2, b]; solids.push(q); if (full) fullWalls.push(q); };
   let p = from;
   for (const h of holes) {
-    if (h.a > p) { seg(p, h.a, 0, H, mat); solid(p, h.a); }
+    if (h.a > p) { seg(p, h.a, 0, H, mat); solid(p, h.a, true); }
     const top = h.type === 'win' || h.type === 'balcony' || h.type === 'fixed' ? P.winTop : 2.1, sill = P.winSill; // the balcony door is panoramic too
     seg(h.a, h.b, top, H, mat);
     if (h.type === 'fixed') { // fixed glass beside the balcony door, with a transom like the door's crossbar
@@ -173,7 +207,7 @@ function wall(axis, t1, t2, from, to, holes, mat) {
     }
     p = h.b;
   }
-  if (to > p) { seg(p, to, 0, H, mat); solid(p, to); }
+  if (to > p) { seg(p, to, 0, H, mat); solid(p, to, true); }
 }
 // door leaf, standing open at an angle; hinge at (hx,hz)
 const openables = [];
@@ -216,12 +250,15 @@ function toggleOpenable(o) {
   o.open = !o.open;
   if (o.block) { const i = solids.indexOf(o.block); if (o.open && i >= 0) solids.splice(i, 1); if (!o.open && i < 0) solids.push(o.block); }
 }
-function animateOpenables(dt) {
+function animateOpenables(dt) { // true while something is still swinging
+  let busy = false;
   for (const o of openables) {
     const t = o.open ? 1 : 0; if (o.cur === t) continue;
+    busy = true;
     o.cur += Math.sign(t - o.cur) * Math.min(Math.abs(t - o.cur), dt * 1.6);
     const e = o.cur * o.cur * (3 - 2 * o.cur); o.g.rotation[o.axis || 'y'] = o.a0 + (o.a1 - o.a0) * e;
   }
+  return busy;
 }
 function tapOpenable(x, y) { // returns true when a door or window sash was tapped
   ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
@@ -236,12 +273,9 @@ function tapOpenable(x, y) { // returns true when a door or window sash was tapp
 // floors per room (slightly under the walls so they never flicker)
 const roomLabels = [], floorMats = [];
 for (const r of P.rooms) {
-  const tex = FLOORS[r.floor].clone(); tex.needsUpdate = true;
   for (const [x1, z1, x2, z2] of r.rects) {
-    const t = tex.clone(); t.repeat.set((x2 - x1) * 0.7, (z2 - z1) * 0.7); t.needsUpdate = true;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), new THREE.MeshStandardMaterial({ map: t, roughness: r.floor === 'tile' ? 0.35 : 0.75 }));
-    const tc = FLOORS.concrete.clone(); tc.repeat.set((x2 - x1) * 0.4, (z2 - z1) * 0.4); tc.needsUpdate = true;
-    floorMats.push({ m, room: r.name, w: x2 - x1, h: z2 - z1, fin: m.material, raw: new THREE.MeshStandardMaterial({ map: tc, roughness: 0.95 }) });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), M.wall);
+    floorMats.push({ m, room: r.name, w: x2 - x1, h: z2 - z1, key: r.floor });
     m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, 0.001, (z1 + z2) / 2); m.receiveShadow = true;
     house.add(m);
   }
@@ -252,6 +286,7 @@ for (const r of P.rooms) {
 const railMat = new THREE.MeshStandardMaterial({ color: 0x1f2226, roughness: 0.5, metalness: 0.4 });
 const radMat = new THREE.MeshStandardMaterial({ color: 0xf6f6f4, roughness: 0.45 });
 const finBatch = [];
+const radG = new THREE.Group(); radG.userData.round = true; house.add(radG);
 // balcony: open, with a black bar railing (top rail, bottom rail, vertical bars) on each side
 for (const b of P.balcony) {
   const [x1, z1, x2, z2] = b, alongX = x2 - x1 > z2 - z1, cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
@@ -265,9 +300,9 @@ for (const b of P.balcony) {
 for (const w of P.walls) for (const h of (w.holes || [])) {
   if ((h.type !== 'win' && h.type !== 'fixed') || w.axis !== 'x' || w.t1 < 1) continue;
   const c = h.type === 'fixed' ? (h.a + h.b) / 2 + 0.05 : h.b - (h.b - h.a) * 0.3, rw = Math.min(1.0, h.type === 'fixed' ? h.b - h.a - 0.25 : (h.b - h.a) * 0.6 - 0.15); // under the wide fixed part, as in the photos
-  box(c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07, 0.12, 0.62, radMat, house, { round: true });
+  box(c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07, 0.12, 0.62, radMat, radG);
   for (let x = c - rw / 2 + 0.03; x < c + rw / 2 - 0.02; x += 0.05) finBatch.push([x, w.t1 - 0.175]);
-  box(c - 0.015, w.t1 - 0.12, c + 0.015, w.t1 - 0.07, 0.0, 0.12, M.steel, house);
+  box(c - 0.015, w.t1 - 0.12, c + 0.015, w.t1 - 0.07, 0.0, 0.12, M.steel, radG);
   solids.push([c - rw / 2, w.t1 - 0.17, c + rw / 2, w.t1 - 0.07]);
 }
 
@@ -306,7 +341,7 @@ for (const f of P.fixtures) {
   } else if (f.type === 'washer') {
     box(x1, z1, x2, z2, 0, 0.85, M.white, fx); solids.push([x1, z1, x2, z2, 1]);
   } else if (f.type === 'vent') {
-    box(x1, z1, x2, z2, 0, H, M.wall); solids.push([x1, z1, x2, z2]);
+    box(x1, z1, x2, z2, 0, H, M.wall); solids.push([x1, z1, x2, z2]); fullWalls.push([x1, z1, x2, z2]);
   } else if (f.type === 'bath') {
     box(x1, z1, x2, z2, 0, 0.56, M.white, fx);
     box(x1 + 0.08, z1 + 0.08, x2 - 0.08, z2 - 0.08, 0.4, 0.565, new THREE.MeshStandardMaterial({ color: 0xcfe6ef, roughness: 0.1 }), fx, { cast: false });
@@ -333,14 +368,24 @@ for (const f of P.fixtures) {
   }
 }
 
-// ceiling lamps (lit in the evening)
+// ceiling lamps (lit in the evening): a flat ceiling light in the finished looks, a bare bulb on a wire as it is now
 const lamps = [];
+const bulbMat = new THREE.MeshBasicMaterial({ color: 0x8c8c8c }), lampRim = new THREE.MeshStandardMaterial({ color: 0xf4f3f0, roughness: 0.5 });
+const lampFin = new THREE.Group(), lampRaw = new THREE.Group(), glowG = new THREE.Group(); house.add(lampFin, lampRaw, glowG);
+const glowTex = canvasTex(128, 128, (g, w) => { const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); gr.addColorStop(0, 'rgba(255,236,200,1)'); gr.addColorStop(0.25, 'rgba(255,214,160,.45)'); gr.addColorStop(1, 'rgba(255,200,140,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, w); }, 1, 1);
+const glowMat = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.85, fog: false });
 for (const [x, z] of P.lamps) {
-  const l = new THREE.PointLight(0xffd29a, 0, 6, 1.6); l.position.set(x, H - 0.25, z); house.add(l);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 8), new THREE.MeshBasicMaterial({ color: 0x777777 }));
-  bulb.position.copy(l.position); house.add(bulb);
-  lamps.push({ l, bulb });
+  const l = new THREE.PointLight(0xffd29a, 0, 6, 1.6); l.position.set(x, H - 0.3, z); house.add(l);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.2, 0.012, 32), bulbMat); disc.position.set(x, H - 0.062, z);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.055, 32, 1, true), lampRim); rim.position.set(x, H - 0.03, z);
+  lampFin.add(disc, rim);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), bulbMat); bulb.position.set(x, H - 0.3, z);
+  const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.26, 5), M.entry); wire.position.set(x, H - 0.13, z);
+  lampRaw.add(bulb, wire);
+  const glow = new THREE.Sprite(glowMat); glow.scale.setScalar(1.1); glow.position.set(x, H - 0.16, z); glowG.add(glow);
+  lamps.push({ l });
 }
+mergeStatic(lampFin); mergeStatic(lampRaw);
 // electrical points (sockets, switches…) — heights from the plan legend
 export const POWER = {
   socket: { h: 0.3, c: 0xffffff, name: 'Розетка', note: '30 см' },
@@ -359,22 +404,22 @@ export const POWER = {
 const powerG = new THREE.Group(); powerG.visible = false; house.add(powerG);
 let elecMode = false, dimsMode = false;
 const NORM = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
-const plateGeo = new THREE.BoxGeometry(0.09, 0.09, 0.015), dotGeo = new THREE.SphereGeometry(0.032, 12, 8);
+const plateGeo = new THREE.BoxGeometry(0.09, 0.09, 0.015), dotGeo = new THREE.SphereGeometry(0.032, 12, 8), plateMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), dotMats = {};
 for (const p of P.power) {
   const k = POWER[p.k], [nx, nz] = NORM[p.f];
-  const plate = new THREE.Mesh(plateGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }));
+  const plate = new THREE.Mesh(plateGeo, plateMat);
   const wide = p.k === 'socket2' || p.k === 'kitchen' || p.k === 'switch2';
   if (wide) plate.scale.x = 1.9;
   plate.position.set(p.x + nx * 0.008, k.h, p.z + nz * 0.008);
   if (nx) plate.rotation.y = Math.PI / 2;
-  const dot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: k.c }));
+  const dot = new THREE.Mesh(dotGeo, dotMats[k.c] || (dotMats[k.c] = new THREE.MeshBasicMaterial({ color: k.c })));
   dot.position.set(p.x + nx * 0.06, k.h, p.z + nz * 0.06);
   powerG.add(plate, dot);
 }
 // daylight through the windows: a soft wide spot just inside each glazed opening, pointing into the room
-const winLights = [];
+const winLights = []; let roofShade = null;
 for (const w of P.walls) if (w.ext && w.axis === 'x' && w.t1 > 1) for (const h of (w.holes || [])) if (h.type !== 'door') {
-  const cx = (h.a + h.b) / 2, L = new THREE.SpotLight(0xe4ecff, 0, 11, 1.25, 1, 1.6);
+  const cx = (h.a + h.b) / 2, L = new THREE.SpotLight(0xf3f1ec, 0, 11, 1.25, 1, 1.6);
   L.position.set(cx, 1.5, w.t1 - 0.12); L.target.position.set(cx, 0.4, w.t1 - 4); house.add(L, L.target);
   winLights.push({ L, w: h.b - h.a });
 }
@@ -382,19 +427,117 @@ for (const w of P.walls) if (w.ext && w.axis === 'x' && w.t1 > 1) for (const h o
 // but it casts shadows, so sunlight can only come in through the windows and never through the ceiling
 {
   const shadowOnly = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-  const block = (x1, z1, x2, z2, y1, y2) => { const m = new THREE.Mesh(new THREE.BoxGeometry(x2 - x1, y2 - y1, z2 - z1), shadowOnly); m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2); m.castShadow = true; m.layers.set(2); scene.add(m); };
-  block(-40, -16, P.width + 40, P.depth + 0.3, H + 0.001, H + 3.6);      // floor above + roof
+  const block = (x1, z1, x2, z2, y1, y2) => { const m = new THREE.Mesh(new THREE.BoxGeometry(x2 - x1, y2 - y1, z2 - z1), shadowOnly); m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2); m.castShadow = true; m.layers.set(2); scene.add(m); return m; };
+  roofShade = block(-40, -16, P.width + 40, P.depth + 0.3, H + 0.001, H + 3.6);      // floor above + roof (only while walking: the doll-house has no lid, so the sun shines in)
   block(-40, -16, -0.3, P.depth + 0.3, 0, H + 0.001);                   // flats on the left
   block(P.width + 0.3, -16, P.width + 40, P.depth + 0.3, 0, H + 0.001); // flats on the right
   block(-0.3, -16, P.width + 0.3, -0.3, 0, H + 0.001);                  // the corridor side
   sun.shadow.camera.layers.enable(2);
 }
 // ceiling — only while walking, so the doll-house view stays open
-const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(P.width + 0.6, P.depth + 0.6), new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: 1, emissive: 0x9c9a96 }));
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(P.width + 0.6, P.depth + 0.6), new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: 1, envMapIntensity: 1.7 }));
 ceiling.rotation.x = Math.PI / 2; ceiling.position.set(CX, H, CZ); ceiling.visible = false; house.add(ceiling);
 // ground outside
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), M.ground);
 ground.rotation.x = -Math.PI / 2; ground.position.set(CX, -0.02, CZ); ground.receiveShadow = true; ground.visible = false; scene.add(ground);
+
+/* ================= finishing touches: skirting boards, merged geometry, soft contact shadows, sky, reflections ================= */
+// skirting boards along every full-height wall (finished looks only)
+const baseG = new THREE.Group(); house.add(baseG);
+{
+  const inWall = (x, z) => fullWalls.some(([x1, z1, x2, z2]) => x > x1 && x < x2 && z > z1 && z < z2);
+  const BH = 0.07, BT = 0.012, STEP = 0.02;
+  const piece = (x1, z1, x2, z2) => box(Math.min(x1, x2), Math.min(z1, z2), Math.max(x1, x2), Math.max(z1, z2), 0, BH, M.base, baseG, { cast: false });
+  const run = (fixed, a, b, alongX, out) => { // out: ±1 — the side on which the wall stands
+    let start = null;
+    for (let t = a; t <= b + STEP; t += STEP) {
+      const tt = t + STEP / 2, hit = tt < b && (alongX ? inWall(tt, fixed + out * 0.04) : inWall(fixed + out * 0.04, tt));
+      if (hit && start == null) start = t;
+      if (!hit && start != null) { if (t - start > 0.06) alongX ? piece(start, fixed, Math.min(t, b), fixed - out * BT) : piece(fixed, start, fixed - out * BT, Math.min(t, b)); start = null; }
+    }
+  };
+  for (const r of P.rooms) if (r.name !== 'Балкон') for (const [x1, z1, x2, z2] of r.rects) { run(z1, x1, x2, true, -1); run(z2, x1, x2, true, 1); run(x1, z1, z2, false, -1); run(x2, z1, z2, false, 1); }
+  for (const f of P.fixtures) if (f.type === 'vent') { const [x1, z1, x2, z2] = f.r; piece(x2, z1, x2 + BT, z2 + BT); piece(x1, z2, x2, z2 + BT); }
+}
+// everything that never moves becomes one mesh per material: a few dozen draw calls instead of several hundred
+for (const o of openables) { mergeStatic(o.g, true); o.g.traverse(m => { m.userData.openable = o.g; }); } // a door or a sash: one mesh per material, still tappable
+mergeStatic(baseG); mergeStatic(radG); mergeStatic(archG); archG.userData.keep = true; mergeStatic(fx); mergeStatic(powerG); mergeStatic(wallsG);
+
+// walls get a little darker towards the floor and (under a ceiling) towards the ceiling — cheap ambient occlusion in the shader
+const wallAO = { value: 0 };
+function addWallAO(mat) {
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uCeil = wallAO;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKvY;').replace('#include <project_vertex>', '#include <project_vertex>\nvKvY = (modelMatrix * vec4(transformed, 1.0)).y;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vKvY;\nuniform float uCeil;')
+      .replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.rgb *= 1.0 - 0.16 * exp(-max(vKvY, 0.0) * 6.0) - uCeil * 0.24 * exp(-max(${H.toFixed(2)} - vKvY, 0.0) * 5.0);`);
+  };
+  return mat;
+}
+addWallAO(M.wall);
+
+// soft shadows painted once on a small canvas: along the walls and under the furniture (floor), along the walls (ceiling)
+const AOK = 48, aoBox = { x0: -0.3, z0: -0.3, x1: P.width + 0.3, z1: P.depth + 0.3 };
+function aoPaint(c, furniture) {
+  const g = c.getContext('2d'), OFF = 4000;
+  g.shadowColor = 'transparent'; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  const blob = (x1, z1, x2, z2, blur, a, grow) => {
+    g.shadowColor = `rgba(0,0,0,${a})`; g.shadowBlur = blur; g.shadowOffsetX = OFF; g.fillStyle = '#000';
+    g.fillRect((x1 - grow - aoBox.x0) * AOK - OFF, (z1 - grow - aoBox.z0) * AOK, (x2 - x1 + grow * 2) * AOK, (z2 - z1 + grow * 2) * AOK);
+  };
+  for (const q of solids) {
+    if (q[4] === 3) continue;
+    if (!q[4]) blob(q[0], q[1], q[2], q[3], 24, 0.5, 0.03);
+    else if (furniture && !elecMode && !(q[4] === 1 && raw)) blob(q[0], q[1], q[2], q[3], 13, 0.42, 0.01);
+  }
+}
+function aoPlane(y, side) {
+  const c = document.createElement('canvas'); c.width = Math.round((aoBox.x1 - aoBox.x0) * AOK); c.height = Math.round((aoBox.z1 - aoBox.z0) * AOK);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(aoBox.x1 - aoBox.x0, aoBox.z1 - aoBox.z0),
+    new THREE.MeshBasicMaterial({ map: t, blending: THREE.MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, toneMapped: false, fog: false, side }));
+  m.rotation.x = -Math.PI / 2; m.position.set((aoBox.x0 + aoBox.x1) / 2, y, (aoBox.z0 + aoBox.z1) / 2); m.renderOrder = 2; house.add(m);
+  return { c, t, m };
+}
+const aoFloor = aoPlane(0.004, THREE.FrontSide), aoCeil = aoPlane(H - 0.003, THREE.BackSide);
+aoPaint(aoCeil.c, false); aoCeil.t.needsUpdate = true; aoCeil.m.visible = false;
+function refreshAO() { aoPaint(aoFloor.c, true); aoFloor.t.needsUpdate = true; }
+
+// sky: a soft gradient with the sun's glow where the real sun stands
+const skyU = { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunK: { value: 0 } };
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), new THREE.ShaderMaterial({
+  uniforms: skyU, side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform vec3 sunDir; uniform float sunK; varying vec3 vDir;
+    void main(){ vec3 d = normalize(vDir); float h = d.y;
+      vec3 c = mix(hor, top, pow(clamp(h, 0.0, 1.0), 0.55)); c = mix(c, hor * 0.92, smoothstep(0.0, -0.3, h));
+      float s = max(dot(d, sunDir), 0.0);
+      c += vec3(1.0, 0.86, 0.66) * sunK * (pow(s, 600.0) * 4.0 + pow(s, 24.0) * 0.28 + pow(s, 4.0) * 0.08);
+      gl_FragColor = vec4(c, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+}));
+skyDome.renderOrder = 10; skyDome.frustumCulled = false; scene.add(skyDome);
+
+// reflections: a tiny painted room with a bright window wall on the +Z side (where our windows are), blurred once into an environment map
+let envOK = false, envTex = null;
+try {
+  if (!renderer.capabilities.isWebGL2 || !(renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'))) throw new Error('no float targets');
+  const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene();
+  es.add(new THREE.Mesh(new THREE.SphereGeometry(20, 24, 12), new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `varying vec3 vDir; void main(){ vec3 d = normalize(vDir);
+      vec3 c = mix(vec3(0.5, 0.47, 0.43), vec3(0.78, 0.77, 0.75), smoothstep(-0.5, 0.2, d.y)); c = mix(c, vec3(0.98, 0.97, 0.95), smoothstep(0.35, 0.9, d.y));
+      c *= 0.75 + 0.35 * smoothstep(-0.6, 0.8, d.z);
+      gl_FragColor = vec4(c, 1.0); }`
+  })));
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(8, 3.4), new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(4.6, 4.8, 5.1), side: THREE.DoubleSide }));
+  pane.position.set(0, 1.2, 9); es.add(pane);
+  envTex = pm.fromScene(es, 0.03).texture; pm.dispose(); envOK = true;
+} catch (e) { /* no reflections on very old devices — everything else still works */ }
+
 // outside: the courtyard and the building across it; our floor is the 3rd (≈6,4 m above the ground)
 const SUN = { orient: store.get('orient', 150), gap: store.get('gap', 18), live: true, y: 0, m: 0, d: 0, h: 12 };
 if (store.get('sunV', 0) < 2) { SUN.orient = 150; SUN.gap = 18; store.set('orient', 150); store.set('gap', 18); store.set('sunV', 2); } // checked against the satellite map: windows face SE ≈150°
@@ -402,7 +545,7 @@ let outside = null;
 function buildOutside() {
   if (outside) { scene.remove(outside.group); outside.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   outside = buildSurroundings(P, { below: 6.45, gap: SUN.gap, floors: 4 });
-  scene.add(outside.group);
+  scene.add(outside.group); invalidate(true);
 }
 buildOutside();
 function kyivNow() {
@@ -426,35 +569,39 @@ if (Q.get('wx')) { walker.x = +Q.get('wx'); walker.z = +Q.get('wz'); walker.yaw 
 
 function applyWalls() {
   const s = mode === 'walk' ? 1 : lowWalls ? 0.42 : 1;
-  wallsG.scale.y = s; ceiling.visible = mode === 'walk';
-  if (interiorG) interiorG.traverse(o => { if (o.userData.wallLike) { o.scale.y = s; o.position.y = (o.userData.y1 + o.userData.h / 2) * s; } });
-  for (const l of lamps) l.bulb.visible = mode === 'walk' || !lowWalls;
+  wallsG.scale.y = s; ceiling.visible = aoCeil.m.visible = roofShade.visible = mode === 'walk'; wallAO.value = mode === 'walk' ? 1 : 0;
+  const full = mode === 'walk' || !lowWalls;
+  if (interiorG) interiorG.traverse(o => { if (o.userData.wallLike) { o.scale.y = s; o.position.y = (o.userData.y1 + o.userData.h / 2) * s; } if (o.userData.hideLow) o.visible = full; });
+  lampFin.visible = full && !raw; lampRaw.visible = full && raw; glowG.visible = full && lampsLit;
+  invalidate(true);
 }
 // interior look: 'raw' (as it is now), 'base' (first finished version) or a designed style from interior.js
 let look = Q.get('look') || (Q.get('raw') === '0' ? 'base' : Q.get('raw') === '1' ? 'raw' : null) || store.get('look', store.get('raw', true) ? 'raw' : 'base');
 if (!STYLES.some(st => st.id === look)) look = 'raw';
-let raw = look === 'raw', interiorG = null;
+let raw = look === 'raw', interiorG = null, lampsLit = false;
 const DEF = { wall: M.wall.color.getHex(), door: M.door.color.getHex(), cabinet: M.cabinet.color.getHex(), counter: M.counter.color.getHex() };
 const styleFloorMats = new Map();
 function styleFloor(f, key) {
   const k = key + ':' + f.w.toFixed(2) + ':' + f.h.toFixed(2);
   if (!styleFloorMats.has(k)) {
-    const t = FLOORS[key].clone(); t.repeat.set(f.w * (key === 'polished' ? 0.4 : 0.7), f.h * (key === 'polished' ? 0.4 : 0.7)); t.needsUpdate = true;
-    styleFloorMats.set(k, new THREE.MeshStandardMaterial({ map: t, roughness: key.startsWith('tile') ? 0.3 : key === 'polished' ? 0.4 : 0.7 }));
+    const coarse = key === 'polished' || key === 'concrete';
+    const t = floorTex(key).clone(); t.repeat.set(f.w * (coarse ? 0.4 : 0.7), f.h * (coarse ? 0.4 : 0.7)); t.needsUpdate = true;
+    styleFloorMats.set(k, new THREE.MeshStandardMaterial({ map: t, roughness: key.startsWith('tile') ? 0.22 : key === 'polished' ? 0.32 : key === 'concrete' ? 0.95 : key === 'stone' ? 0.6 : 0.5, envMapIntensity: key === 'concrete' ? 0.6 : 1 }));
   }
   return styleFloorMats.get(k);
 }
 function applyFinish() {
   const S = STYLES.find(st => st.id === look); raw = look === 'raw';
   const styled = !!S.wall;
-  for (const f of floorMats) f.m.material = raw ? f.raw : styled ? styleFloor(f, S.floors[f.room] || 'oak') : f.fin;
-  fx.visible = !raw && !elecMode; archG.visible = !raw; for (const d of innerDoors) d.visible = !raw;
+  for (const f of floorMats) f.m.material = styleFloor(f, raw ? 'concrete' : styled ? (S.floors[f.room] || 'oak') : f.key);
+  fx.visible = !raw && !elecMode; archG.visible = baseG.visible = !raw; for (const d of innerDoors) d.visible = !raw;
   if (raw) for (const o of openables) if (o.inner && !o.open) toggleOpenable(o);
   M.wall.color.set(styled ? S.wall : DEF.wall); M.door.color.set(styled ? S.door : DEF.door);
   M.cabinet.color.set(styled ? S.cabinet : DEF.cabinet); M.counter.color.set(styled ? S.counter : DEF.counter);
-  if (interiorG) { house.remove(interiorG); interiorG.traverse(o => { if (o.geometry && !o.geometry.userData.cached) o.geometry.dispose(); }); interiorG = null; }
+  if (interiorG) { house.remove(interiorG); interiorG.traverse(o => { if (o.geometry && !o.geometry.userData.cached) o.geometry.dispose(); if (o.material && o.material.userData.own) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); interiorG = null; }
   for (let i = solids.length - 1; i >= 0; i--) if (solids[i][4] === 2) solids.splice(i, 1);
-  if (styled) { interiorG = buildInterior(S, P, solids); interiorG.visible = !elecMode; house.add(interiorG); }
+  if (styled) { interiorG = buildInterior(S, P, solids, { canvasTex, addWallAO }); mergeStatic(interiorG); interiorG.visible = !elecMode; house.add(interiorG); }
+  refreshAO();
   for (const l of lamps) l.l.color.set(styled ? S.lamp : 0xffd29a);
   $('vFinish').textContent = S.short; $('bFinish').classList.toggle('on', look !== 'raw');
   applyWalls();
@@ -467,30 +614,41 @@ function openStyles() {
   p.hidden = false;
 }
 const SKY_DAY = new THREE.Color(0xcfe0ee), SKY_DUSK = new THREE.Color(0xe8b48a), SKY_NIGHT = new THREE.Color(0x0e1222);
+const TOP_DAY = new THREE.Color(0x4f8fd8), TOP_DUSK = new THREE.Color(0x5d6f9e), TOP_NIGHT = new THREE.Color(0x04060e);
 function applyLight() {
   const st = sunAt(kyivDate(SUN.y, SUN.m, SUN.d, SUN.h));
   const el = evening ? -20 : st.el, day = THREE.MathUtils.smoothstep(el, -6, 12);
   const sky = SKY_NIGHT.clone().lerp(SKY_DUSK, THREE.MathUtils.smoothstep(el, -8, 2)).lerp(SKY_DAY, THREE.MathUtils.smoothstep(el, 2, 18));
-  scene.background = sky; scene.fog = new THREE.Fog(sky, 60, 160);
+  scene.background = sky; if (scene.fog) scene.fog.color.copy(sky); else scene.fog = new THREE.Fog(sky, 60, 160);
+  const dusk = THREE.MathUtils.smoothstep(el, -8, 2), noon = THREE.MathUtils.smoothstep(el, 2, 18);
+  skyU.hor.value.copy(sky); skyU.top.value.copy(TOP_NIGHT).lerp(TOP_DUSK, dusk).lerp(TOP_DAY, noon);
+  skyU.sunDir.value.copy(dirTo(st.az, st.el, SUN.orient)); skyU.sunK.value = evening ? 0 : THREE.MathUtils.smoothstep(st.el, -3, 5);
   // inside, daylight comes only through the windows; the sky fill is kept low while walking
-  hemi.intensity = mode === 'walk' ? 0.1 + 0.4 * day : 0.18 + 0.9 * day;
-  for (const { L, w } of winLights) L.intensity = evening ? 0 : (mode === 'walk' ? 5 : 3) * w * day;
-  outdoorGlow(mode === 'walk' ? 0.28 * day : 0.05 * day);
+  const walkM = mode === 'walk';
+  const useEnv = envOK && !lite; // 'lite' shading: no reflections and no window lamps, the sky fill makes up for them
+  if (scene.environment !== (useEnv ? envTex : null)) scene.environment = useEnv ? envTex : null;
+  hemi.intensity = walkM ? 0.04 + 0.2 * day : 0.1 + 0.5 * day;
+  scene.environmentIntensity = walkM ? 0.08 + 0.44 * day : 0.08 + 0.3 * day;
+  if (!useEnv) hemi.intensity = walkM ? 0.12 + 0.85 * day : 0.2 + 0.8 * day;
+  hemi.groundColor.set(useEnv ? 0xa89e90 : 0xd6d0c6);
+  for (const { L, w } of winLights) { L.intensity = evening ? 0 : (walkM ? 5 : 3) * w * day; L.visible = !lite && L.intensity > 0.02; }
+  outdoorGlow(walkM ? 0.22 * day : 0.04 * day);
   const night = evening || el < -4;
   document.body.classList.toggle('night', night);
-  sun.intensity = el > 0 ? 2.8 * THREE.MathUtils.smoothstep(el, 0, 10) : 0;
+  sun.intensity = el > 0 ? 2.8 * THREE.MathUtils.smoothstep(el, 0, 10) : 0; sun.visible = sun.intensity > 0.02;
   sun.color.setHSL(0.09, 0.9, 0.55 + 0.4 * THREE.MathUtils.smoothstep(el, 0, 25));
   sun.position.copy(dirTo(st.az, Math.max(el, 1), SUN.orient).multiplyScalar(45)).add(sun.target.position);
   const lampsOn = evening || el < 2;
-  for (const { l, bulb } of lamps) { l.intensity = lampsOn ? 3.2 : 0; bulb.material.color.set(lampsOn ? 0xffe6b8 : 0x8c8c8c); }
-  ceiling.material.emissive.set(night ? 0x0d0c0a : new THREE.Color(0x56544e).multiplyScalar(day));
-  M.wall.emissive.set(night ? 0x000000 : new THREE.Color(0x0c0c0b).multiplyScalar(day));
+  lampsLit = lampsOn;
+  for (const { l } of lamps) { l.intensity = lampsOn ? 3.2 : 0; l.visible = lampsOn; }
+  bulbMat.color.set(lampsOn ? 0xfff2d6 : 0xb9b8b4); glowG.visible = lampsOn && (walkM || !lowWalls);
   $('bLight').classList.toggle('on', evening);
   $('vLight').textContent = evening ? 'Вечір' : 'День';
   $('vSun').textContent = hhmm(SUN.h); $('bSun').title = SUN.d + ' ' + MNAMES[SUN.m];
   outside.setSeason(SUN.m);
   if (!$('sunp').hidden) { sunPanelText(st); if ($('sunYear')) { $('sunYear').innerHTML = sunYearHTML(); $('sunYear').querySelectorAll('[data-m]').forEach(el => el.onclick = () => { SUN.m = +el.dataset.m; SUN.d = 21; SUN.live = false; p2close(); applyLight(); openSun(); }); } }
   if ($('sunFacts')) $('sunFacts').innerHTML = sunFactsHTML();
+  invalidate(true);
 }
 const DIRS = [['Пн', 0], ['ПнСх', 45], ['Сх', 90], ['ПдСх', 135], ['Пд', 180], ['ПдЗх', 225], ['Зх', 270], ['ПнЗх', 315]];
 const DATES = [['Сьогодні', null], ['Весна', [3, 20]], ['Літо', [6, 15]], ['Осінь', [9, 15]], ['Зима', [0, 20]]];
@@ -570,7 +728,7 @@ function updateCamera() {
     camera.position.set(orbit.tx + Math.sin(yaw) * Math.cos(pitch) * d, Math.sin(pitch) * d, orbit.tz + Math.cos(yaw) * Math.cos(pitch) * d);
     camera.lookAt(orbit.tx, 0, orbit.tz);
   }
-  camera.updateProjectionMatrix();
+  camera.updateProjectionMatrix(); skyDome.position.copy(camera.position);
 }
 function planDist() { // fit the whole plan on screen
   const a = camera.aspect, f = Math.tan(THREE.MathUtils.degToRad(30 / 2));
@@ -633,10 +791,14 @@ function panBy(dx, dy) {
 function endPtr(e) {
   const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
   if (p && performance.now() - p.t < 300 && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 8) tapAt(e.clientX, e.clientY);
+  invalidate();
 }
 cv.addEventListener('pointerup', endPtr);
 cv.addEventListener('pointercancel', e => ptrs.delete(e.pointerId));
-cv.addEventListener('wheel', e => { orbit.dist = Math.max(4, Math.min(28, orbit.dist * (1 + e.deltaY * 0.001))); }, { passive: true });
+cv.addEventListener('wheel', e => { orbit.dist = Math.max(4, Math.min(28, orbit.dist * (1 + e.deltaY * 0.001))); invalidate(); }, { passive: true });
+// any button, slider or key may change the picture
+for (const ev of ['click', 'input', 'keydown', 'keyup']) addEventListener(ev, () => invalidate(true), true);
+window.resumeAll = () => invalidate(true);
 
 // joystick for walking
 const jb = $('joy'), jk = $('knob');
@@ -715,7 +877,7 @@ mm.addEventListener('pointerdown', e => { // tap the minimap → jump there
   e.stopPropagation();
   const r = mm.getBoundingClientRect(), { k } = mmScale();
   const x = (e.clientX - r.left - MM_PAD) / k - 0.3, z = (e.clientY - r.top - MM_PAD) / k - 0.3;
-  for (let rr = 0; rr < 1; rr += 0.05) for (let i = 0; i < 12; i++) { const tx = x + Math.cos(i * 0.52) * rr, tz = z + Math.sin(i * 0.52) * rr; if (!blocked(tx, tz)) { walker.x = tx; walker.z = tz; walker.goal = null; hideMarker(); return; } }
+  for (let rr = 0; rr < 1; rr += 0.05) for (let i = 0; i < 12; i++) { const tx = x + Math.cos(i * 0.52) * rr, tz = z + Math.sin(i * 0.52) * rr; if (!blocked(tx, tz)) { walker.x = tx; walker.z = tz; walker.goal = null; hideMarker(); invalidate(); return; } }
 });
 
 /* ================= size and socket tags ================= */
@@ -757,9 +919,9 @@ for (const p of P.power) {
 }
 tag(new THREE.Vector3(7.57, 1.95, 0.15), 'Щиток · <b>160 см</b>', 'elec');
 const tagRay = new THREE.Raycaster(); let tagFrame = 0, wallMeshes = null;
-function drawTags() {
+function drawTags(final) {
   // while walking, hide tags that are behind a wall (checked every few frames)
-  const check = mode === 'walk' && (tagFrame++ % 8 === 0);
+  const check = mode === 'walk' && (final || tagFrame++ % 8 === 0);
   if (check && !wallMeshes) { wallMeshes = []; wallsG.traverse(o => { if (o.isMesh && o.material !== M.glass) wallMeshes.push(o); }); }
   for (const t of tags) {
     const on = t.kind === 'dims' ? dimsMode : elecMode;
@@ -802,6 +964,7 @@ $('bLabels').addEventListener('click', () => { $('bLabels').classList.toggle('on
 function setElec(on) { // electricity view: no furniture, every socket and switch visible with its height
   elecMode = on; powerG.visible = on; store.set('power', on); $('bPower').classList.toggle('on', on); $('legend').hidden = !on;
   if (interiorG) interiorG.visible = !on; fx.visible = !raw && !on;
+  refreshAO(); invalidate(true);
 }
 $('bPower').addEventListener('click', () => setElec(!elecMode));
 $('bDims').addEventListener('click', () => { dimsMode = !dimsMode; dimsG.visible = dimsMode; store.set('dims', dimsMode); $('bDims').classList.toggle('on', dimsMode); });
@@ -827,26 +990,53 @@ function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight;
   if (mode === 'doll') orbit.dist = Math.max(orbit.dist, camera.aspect < 1 ? 17 : 13);
+  invalidate();
 }
 addEventListener('resize', resize);
 
 /* ================= loop ================= */
 setMode(mode); applyLight(); applyFinish(); renderDiary();
 if (Q.get('dist')) orbit.dist = +Q.get('dist');
-let last = performance.now();
+let last = performance.now(), streak = 0, ema = 16, tuneN = 0;
+// keeps moving frames smooth: if they get slow, the moving resolution steps down; if there is headroom, it creeps back up
+function tune(ms) {
+  if (++streak < 6) return; // skip the frames right after a resolution switch
+  ema += (Math.min(ms, 100) - ema) * 0.08;
+  if (++tuneN < 45) return; tuneN = 0;
+  if (quality === 'high') return;
+  if (ema > 24 && movePR > 0.6) { prCeil = movePR * 0.97; movePR = Math.max(0.6, movePR * 0.87); store.set('movePR', movePR); ema = 18; }
+  else if (ema > 30 && quality === 'auto' && !lite && ++slowRuns >= 3) { store.set('autoLite', true); setQuality('auto'); } // still slow at the lowest resolution → simpler shading
+  else if (ema < 17.8 && movePR < prCeil - 0.02) { movePR = Math.min(prCeil, movePR * 1.07); store.set('movePR', movePR); }
+}
+let slowRuns = 0;
+function setQuality(q, init) {
+  quality = q;
+  if (!init) { store.set('q', q); if (q !== 'auto') store.set('autoLite', false); }
+  lite = q === 'lite' || (q === 'auto' && store.get('autoLite', false));
+  if (q === 'high') movePR = MOVE_MAX; else if (q === 'lite') movePR = Math.min(movePR, 1);
+  slowRuns = 0; ema = 16; tuneN = 0;
+  document.querySelectorAll('[data-q]').forEach(b => b.classList.toggle('on', b.dataset.q === q));
+  $('qNote').textContent = q === 'auto' ? (lite ? 'Авто: планшету було важко, тож увімкнено легший малюнок.' : 'Авто: поки рухаєшся — малюнок трохи простіший, зупинишся — стає чітким. Саме підлаштовується під планшет.')
+    : q === 'lite' ? 'Легка: без відблисків і м\'якого світла з вікон — для слабкого планшета або щоб менше грівся.' : 'Найкраща: нічого не спрощується навіть у русі.';
+  applyLight();
+}
+document.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => setQuality(b.dataset.q)));
+let frames = 0;
 function loop(t) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (t - last) / 1000); last = t;
+  const rawDt = t - last, dt = Math.min(0.05, rawDt / 1000); last = t;
+  let moving = ptrs.size > 0 || !!joy;
   if (mode === 'walk') {
     let fx = 0, fz = 0;
     if (joy) { fx = joy.x; fz = joy.y; }
     if (keys.has('w') || keys.has('ArrowUp')) fz = -1; if (keys.has('s') || keys.has('ArrowDown')) fz = 1;
     if (keys.has('a') || keys.has('ArrowLeft')) fx = -1; if (keys.has('d') || keys.has('ArrowRight')) fx = 1;
     if (fx || fz) {
-      walker.goal = null;
+      walker.goal = null; hideMarker(); moving = true;
       const sp = 1.6 * dt, s = Math.sin(walker.yaw), c = Math.cos(walker.yaw);
       walk((c * fx - s * fz) * sp, (s * fx + c * fz) * sp); walker.bob += dt * 9 * Math.min(1, Math.hypot(fx, fz));
     } else if (walker.goal) {
+      moving = true;
       const g = walker.goal, dx = g.x - walker.x, dz = g.z - walker.z, L = Math.hypot(dx, dz);
       // turn smoothly towards the goal, then step
       const want = Math.atan2(dx, -dz); let dy = ((want - walker.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -858,14 +1048,23 @@ function loop(t) {
         if (Math.hypot(walker.x - ox, walker.z - oz) < sp * 0.2) { if (++g.stuck > 20) { walker.goal = null; hideMarker(); } } else g.stuck = 0;
       }
     }
-  } else if (mode === 'doll' && !ptrs.size && Q.get('still') == null && idle(t)) orbit.yaw += dt * 0.04;
-  animateOpenables(dt);
+  } else if (mode === 'doll' && !ptrs.size && Q.get('still') == null && idle(t)) { orbit.yaw += dt * 0.04; moving = true; }
+  if (animateOpenables(dt)) { moving = true; shadowDirty = true; }
+  if (moving) lastActive = t;
+  // moving → lighter resolution; a moment after everything stops → one sharp frame, then nothing is drawn until something changes
+  const pr = t - lastActive < 200 ? movePR : stillPR();
+  if (Math.abs(pr - curPR) > 0.01) { curPR = pr; renderer.setPixelRatio(pr); dirty = Math.max(dirty, 1); }
+  if (!moving && dirty <= 0) { streak = 0; return; }
+  if (dirty > 0) dirty--;
+  if (moving) tune(rawDt); else streak = 0;
   updateCamera();
-  renderer.render(scene, camera);
-  drawLabels(); drawTags(); drawMinimap();
+  if (shadowDirty) { renderer.shadowMap.needsUpdate = true; shadowDirty = false; }
+  renderer.render(scene, camera); frames++;
+  drawLabels(); drawTags(!moving); drawMinimap();
 }
 let lastTouch = 0; cv.addEventListener('pointerdown', () => lastTouch = performance.now());
 const idle = t => t - lastTouch > 8000;
+setQuality(quality, true);
 requestAnimationFrame(loop);
 setInterval(() => store.set('yaw', orbit.yaw), 5000);
-window.__kv = { setMode, walker, orbit, solids, P, openables };
+window.__kv = { setMode, walker, orbit, solids, P, openables, stats: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, frames, pr: curPR, movePR, quality, lite }), invalidate, renderer, scene, sun };
