@@ -62,11 +62,11 @@ export const PLAN = {
 };
 
 /** Second layout, drawn by the user: a walk-in wardrobe in the hall next to the kitchen-living room.
- *  Walls from the ventilation block to the entrance side, a door facing the entrance, and an 80 cm passage
+ *  Walls from the ventilation block to the entrance side, a door facing the entrance, and a 1 m passage
  *  left between the wardrobe and the room so the hall still opens into the kitchen-living room. */
-export const CLOSET = { x1: 4.17, x2: 6.08, z2: 1.93, wall: 0.1, door: [0.35, 1.15] };
+export const CLOSET = { x1: 4.17, x2: 6.08, z2: 1.73, wall: 0.1, door: [0.35, 1.15] };
 export function withCloset(P) {
-  const C = CLOSET, xr = C.x2 + C.wall, zb = C.z2 + C.wall; // outer faces: right wall 6.18, bottom wall 2.03 → passage 2.03…2.83 = 80 cm
+  const C = CLOSET, xr = C.x2 + C.wall, zb = C.z2 + C.wall; // outer faces: right wall 6.18, bottom wall 1.83 → passage 1.83…2.83 = 1 m
   P.closet = C;
   P.walls.push(
     { axis: 'z', t1: 4.05, t2: C.x1, from: 0.66, to: C.z2 },                                  // left, from the ventilation block

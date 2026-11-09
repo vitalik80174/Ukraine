@@ -612,7 +612,7 @@ function applyFinish() {
 function openStyles() {
   const p = $('styles');
   if (!p.hidden) { p.hidden = true; return; }
-  const LAYOUTS = [['plan', 'Як у забудовника', 'відкритий передпокій'], ['closet', 'З гардеробною', 'гардеробна біля кухні, прохід 80 см']];
+  const LAYOUTS = [['plan', 'Як у забудовника', 'відкритий передпокій'], ['closet', 'З гардеробною', 'гардеробна біля кухні, прохід 1 м']];
   p.innerHTML = '<div class="sec">Планування</div>' + LAYOUTS.map(([id, n, sub]) => `<button class="chip${id === LAYOUT ? ' on' : ''}" data-layout="${id}"><b>${n}</b><span>${sub}</span></button>`).join('') +
     '<div class="sec">Інтер\'єр</div>' + STYLES.map(st => `<button class="chip${st.id === look ? ' on' : ''}" data-id="${st.id}"><b>${st.name}</b><span>${st.sub}</span></button>`).join('');
   p.querySelectorAll('[data-layout]').forEach(c => c.addEventListener('click', () => { if (c.dataset.layout === LAYOUT) { p.hidden = true; return; } store.set('layout', c.dataset.layout); location.reload(); }));

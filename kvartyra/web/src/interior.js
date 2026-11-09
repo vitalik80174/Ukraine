@@ -263,7 +263,7 @@ export function buildInterior(S, P, solids, hooks = {}) {
     for (let y = 0.05; y < 2.35; y += 0.45) box(C.x1 + 0.01, lz1, lx2, lz2, y, y + 0.02, carc, true);
     for (let y = 0.07; y < 2.2; y += 0.45) for (let z = lz1 + 0.06; z < lz2 - 0.3; z += 0.36) if (r2() > 0.25) box(C.x1 + 0.05, z, lx2 - 0.04, z + 0.3, y, y + 0.2 + r2() * 0.12, mat([0xd9c8a8, 0xe8e4dc, S.cushion, 0x9aa0a6][(r2() * 4) | 0], 0.85));
     // a tall mirror on the passage wall
-    box(C.x2 - 0.012, 1.3, C.x2 - 0.002, 1.85, 0.3, 2.0, new THREE.MeshStandardMaterial({ color: 0xcfd8de, roughness: 0.05, metalness: 0.9 }));
+    box(C.x2 - 0.012, C.door[1] + 0.1, C.x2 - 0.002, C.z2 - 0.05, 0.3, 2.0, new THREE.MeshStandardMaterial({ color: 0xcfd8de, roughness: 0.05, metalness: 0.9 }));
   }
   box(7.78, 0.02, 8.12, 0.4, 0.0, 0.45, wood, true);
   const mirror = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.02, 40), new THREE.MeshStandardMaterial({ color: 0xcfd8de, roughness: 0.05, metalness: 0.9 }));
