@@ -62,11 +62,11 @@ export const PLAN = {
 };
 
 /** Second layout, drawn by the user: a walk-in wardrobe in the hall next to the kitchen-living room.
- *  Walls from the ventilation block to the entrance side, a door facing the entrance, and a 1 m passage
+ *  Walls from the ventilation block to the entrance side, a door facing the entrance, and a 1.14 m passage
  *  left between the wardrobe and the room so the hall still opens into the kitchen-living room. */
-export const CLOSET = { x1: 4.17, x2: 6.08, z2: 1.73, wall: 0.1, door: [0.35, 1.15] };
+export const CLOSET = { x1: 4.17, x2: 6.08, z2: 1.59, wall: 0.1, door: [0.35, 1.15] };
 export function withCloset(P) {
-  const C = CLOSET, xr = C.x2 + C.wall, zb = C.z2 + C.wall; // outer faces: right wall 6.18, bottom wall 1.83 → passage 1.83…2.83 = 1 m
+  const C = CLOSET, xr = C.x2 + C.wall, zb = C.z2 + C.wall; // outer faces: right wall 6.18, bottom wall 1.69 → passage 1.69…2.83 = 1.14 m
   P.closet = C;
   P.walls.push(
     { axis: 'z', t1: 4.05, t2: C.x1, from: 0.66, to: C.z2 },                                  // left, from the ventilation block
@@ -79,7 +79,7 @@ export function withCloset(P) {
   P.rooms.splice(P.rooms.indexOf(hall) + 1, 0, { name: 'Гардеробна', floor: hall.floor, floorAs: 'Передпокій', rects: [[C.x1, 0, C.x2, C.z2]], label: [5.25, 1.05] });
   for (const r of [hall, P.rooms[P.rooms.indexOf(hall) + 1]]) r.area = r.rects.reduce((s, [a, b, c, d]) => s + (c - a) * (d - b), 0);
   // the intercom and the switch by the entrance would end up inside the wardrobe — moved onto its outer wall, below the door
-  for (const p of P.power) if (p.x === 6.05 && p.z === 0) { p.x = xr; p.z = 1.55; p.f = 'E'; }
+  for (const p of P.power) if (p.x === 6.05 && p.z === 0) { p.x = xr; p.z = C.door[1] + 0.25; p.f = 'E'; }
   P.lamps.push([5.2, 1.1]);
   return P;
 }
