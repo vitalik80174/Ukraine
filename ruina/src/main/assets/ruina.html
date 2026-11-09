@@ -76,6 +76,25 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .btn{flex:1;border:0;border-radius:12px;padding:12px;font-weight:700;background:var(--hot);color:#1d0e05}
 .btn.ghost{background:rgba(255,255,255,.08);color:var(--fg);border:1px solid var(--line)}
 
+.icon.off{opacity:.35}
+.btn.replay{width:100%;margin-top:4px;background:rgba(255,207,74,.12);color:var(--gold);border:1px solid rgba(255,207,74,.45)}
+
+/* slow-motion replay: cinema bars, a blinking REC dot, speed and progress */
+#replay{position:fixed;inset:0;pointer-events:none}
+#replay .vig{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.45));opacity:0;transition:opacity .6s}
+#replay.slow .vig{opacity:1}
+.lb{position:absolute;left:0;right:0;height:max(56px,10vh);background:#050507;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 max(22px,env(safe-area-inset-left));transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.lb.t{top:0;transform:translateY(-100%)} .lb.b{bottom:0;transform:translateY(100%)}
+#replay.in .lb{transform:none}
+.rec{font:700 15px var(--f);letter-spacing:.32em;display:flex;align-items:center;gap:10px}
+.rec i{width:11px;height:11px;border-radius:50%;background:#ff3b30;box-shadow:0 0 12px #ff3b30;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.15}}
+.spd{font:700 22px/1 var(--f);font-variant-numeric:tabular-nums;color:var(--dim);transition:color .3s}
+#replay.slow .spd{color:var(--gold)}
+.rpbar{flex:1;height:3px;background:rgba(255,255,255,.14);border-radius:2px;overflow:hidden}
+#rpFill{height:100%;width:0;background:var(--hot)}
+.skip{pointer-events:auto;color:var(--fg)}
+
 /* diary */
 .diary{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);padding:max(20px,env(safe-area-inset-top)) 20px 20px;background:rgba(16,18,26,.94);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .3s;display:flex;flex-direction:column}
 .diary.open{transform:none}
@@ -99,6 +118,7 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
       <div class="bar"><div id="fill"></div><div id="goal" title="Мета"></div></div>
     </div>
     <div class="icons">
+      <button class="icon off" id="btnReplay" aria-label="Повтор у сповільненій зйомці">▶</button>
       <button class="icon" id="btnRestart" aria-label="Почати рівень заново">↺</button>
       <button class="icon" id="btnMenu" aria-label="Меню">☰</button>
     </div>
@@ -129,12 +149,19 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
     <div class="big" id="rPct">0%</div>
     <div class="stars" id="rStars"></div>
     <p id="rText"></p>
+    <button class="btn replay" id="rReplay">▶&nbsp; Подивитися повтор</button>
     <div class="btns">
       <button class="btn ghost" id="rMenu">Рівні</button>
       <button class="btn ghost" id="rAgain">Ще раз</button>
       <button class="btn" id="rNext">Далі</button>
     </div>
   </div>
+</div>
+
+<div id="replay" hidden>
+  <div class="vig"></div>
+  <div class="lb t"><span class="rec"><i></i>ПОВТОР</span><span class="spd" id="rpSpeed">×1,0</span></div>
+  <div class="lb b"><div class="rpbar"><div id="rpFill"></div></div><button class="chip skip" id="rpSkip">Пропустити ✕</button></div>
 </div>
 
 <aside class="diary" id="diary" aria-label="Щоденник змін">

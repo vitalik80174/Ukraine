@@ -242,6 +242,7 @@ let projectiles = [], bombs = [], quake = null, shake = 0, simTime = 0;
 const orbit = { theta: 0.6, phi: 1.15, r: 26, target: new THREE.Vector3(0, 3, 0) };
 
 function clearWorld() {
+  if (rp) endReplay();
   for (const b of blocks) world.removeBody(b.body);
   for (const p of projectiles) { world.removeBody(p.body); scene.remove(p.mesh); }
   for (const b of bombs) scene.remove(b.mesh);
@@ -250,6 +251,7 @@ function clearWorld() {
   if (groundBody) world.removeBody(groundBody);
   if (groundGroup) scene.remove(groundGroup);
   blocks = []; meshes = {}; projectiles = []; bombs = []; quake = null;
+  rec.buf = null; rec.count = 0;
 }
 function startLevel(lv, isFree) {
   clearWorld();
@@ -258,7 +260,7 @@ function startLevel(lv, isFree) {
   ammo = { ...lv.ammo };
   if (free) ammo = { ball: Infinity, bomb: Infinity, meteor: Infinity, quake: Infinity, crane: Infinity };
   makeGround(!!lv.river);
-  lv.build(); materialize();
+  lv.build(); materialize(); recReset();
   orbit.r = lv.cam[0]; orbit.target.set(0, lv.cam[2], 0); orbit.theta = 0.55; orbit.phi = Math.atan2(lv.cam[0], lv.cam[1] * 1.3);
   weapon = 'ball'; if (!ammo.ball) weapon = Object.keys(ammo).find(k => ammo[k] > 0) || 'ball';
   state = 'play';
@@ -315,21 +317,22 @@ function fire(px, py) {
     spend(); sfx.shoot();
     const dir = ray.direction.clone();
     const start = camera.position.clone().addScaledVector(dir, 2).add(new THREE.Vector3(0, -0.6, 0));
+    recEvent('shot', start.x, start.y, start.z, 0);
     launch(start, dir.multiplyScalar(46), 0.5, 90, ballMat);
   } else if (weapon === 'bomb') {
     if (!hit) { toast('Торкніться будівлі, щоб закласти бомбу'); return; }
     spend();
     const mesh = new THREE.Mesh(ballGeo, bombMat); mesh.scale.setScalar(0.35); mesh.position.copy(hit.point); scene.add(mesh);
-    bombs.push({ mesh, t: 0.9, pos: hit.point.clone() }); sfx.tick();
+    bombs.push({ mesh, t: 0.9, pos: hit.point.clone() }); sfx.tick(); recEvent('tick', hit.point.x, hit.point.y, hit.point.z, 0);
   } else if (weapon === 'meteor') {
     const p = hit ? hit.point : ray.at(30, new THREE.Vector3());
     spend(); sfx.whoosh();
-    const start = new THREE.Vector3(p.x + 8, 55, p.z + 4);
+    const start = new THREE.Vector3(p.x + 8, 55, p.z + 4); recEvent('whoosh', p.x, p.y, p.z, 0);
     const v = p.clone().sub(start).normalize().multiplyScalar(38);
     const pr = launch(start, v, 1.5, 900, meteorMat); pr.meteor = true;
   } else if (weapon === 'quake') {
     spend(); quake = { t: 0, dur: 4.5, a: 0.28, f: 2.3, dir: rnd() * Math.PI }; groundBody.type = CANNON.Body.KINEMATIC;
-    for (const b of blocks) b.body.wakeUp(); sfx.rumble(); haptic(80);
+    for (const b of blocks) b.body.wakeUp(); sfx.rumble(); haptic(80); recEvent('quake', 0, 0, 0, quake.dur);
   }
 }
 function callCrane() { spend(); startCrane(); orbit.r = Math.max(orbit.r, Math.min(70, level.cam[0] * 1.35)); orbit.phi = Math.min(orbit.phi, 1.2); toast('Тягніть пальцем — баба полетить слідом. Камера — двома пальцями'); }
@@ -360,7 +363,7 @@ function explode(c, R, power) {
     b.body.angularVelocity.set(rr(-1, 1) * k * 0.4, rr(-1, 1) * k * 0.4, rr(-1, 1) * k * 0.4);
   }
   for (const pr of projectiles) { const p = pr.body.position, d = Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z); if (d < R && d > 0.1) pr.body.applyImpulse(new CANNON.Vec3((p.x - c.x) / d * pr.body.mass * 4, 2 * pr.body.mass, (p.z - c.z) / d * pr.body.mass * 4)); }
-  burst(c, R);
+  burst(c, R); recEvent('boom', c.x, c.y, c.z, R);
   flash.position.copy(c); flash.intensity = 900;
   shake = Math.min(1.4, shake + R / 6);
   sfx.boom(Math.min(1, R / 7)); haptic(60);
@@ -369,9 +372,16 @@ function shatter(b) {
   if (b.gone) return;
   b.gone = true; world.removeBody(b.body); syncBlock(b); b.mesh.instanceMatrix.needsUpdate = true;
   const p = b.body.position;
-  for (let i = 0; i < 26; i++) particles.spawn(p.x + rr(-b.size.x, b.size.x) / 2, p.y + rr(-b.size.y, b.size.y) / 2, p.z + rr(-b.size.z, b.size.z) / 2,
-    rr(-3, 3), rr(0, 4), rr(-3, 3), 0.75 + rnd() * 0.25, 0.88, 0.97, 0.9, rr(0.08, 0.16), rr(0.8, 1.6), 1);
+  glassBits(p, b.size); recEvent('glass', p.x, p.y, p.z, blocks.indexOf(b));
   sfx.glass();
+}
+function glassBits(p, sz) {
+  for (let i = 0; i < 26; i++) particles.spawn(p.x + rr(-sz.x, sz.x) / 2, p.y + rr(-sz.y, sz.y) / 2, p.z + rr(-sz.z, sz.z) / 2,
+    rr(-3, 3), rr(0, 4), rr(-3, 3), 0.75 + rnd() * 0.25, 0.88, 0.97, 0.9, rr(0.08, 0.16), rr(0.8, 1.6), 1);
+}
+function dustPuff(x, y, z, v) {
+  const n = Math.min(10, 2 + v * 0.6);
+  for (let i = 0; i < n; i++) particles.spawn(x, y, z, rr(-1.5, 1.5), rr(0.2, 2), rr(-1.5, 1.5), 0.62, 0.56, 0.5, 0.55, rr(0.5, 1.1), rr(1, 2.2), 0.08);
 }
 function glassHit(e) { const v = Math.abs(e.contact.getImpactVelocityAlongNormal()); if (v > 3.5 && e.target && e.target.userData) pendingShatter.add(e.target.userData); }
 const pendingShatter = new Set();
@@ -381,8 +391,7 @@ function impact(e) {
   if (v < 5 || dustBudget <= 0) return;
   dustBudget--;
   const bi = e.contact.bi, ri = e.contact.ri, x = bi.position.x + ri.x, y = bi.position.y + ri.y, z = bi.position.z + ri.z;
-  const n = Math.min(10, 2 + v * 0.6);
-  for (let i = 0; i < n; i++) particles.spawn(x, y, z, rr(-1.5, 1.5), rr(0.2, 2), rr(-1.5, 1.5), 0.62, 0.56, 0.5, 0.55, rr(0.5, 1.1), rr(1, 2.2), 0.08);
+  dustPuff(x, y, z, v); recEvent('dust', x, y, z, v);
   if (rnd() < 0.3) sfx.thud(Math.min(1, v / 25));
 }
 
@@ -405,8 +414,7 @@ const cableMat = new THREE.MeshStandardMaterial({ color: 0x1b1b1e, roughness: 0.
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
 
 function structureTop() { let t = 1; for (const b of blocks) if (!b.gone) t = Math.max(t, b.start.y + b.size.y / 2); return t; }
-function startCrane() {
-  const top = structureTop(), hookY = top + 5, restY = Math.max(1.5, top * 0.45), L = hookY - restY, R = 1.1;
+function buildCraneVisual(hookY, R = 1.1) {
   const g = new THREE.Group(); scene.add(g);
   const mastH = hookY + 0.7;
   const mast = new THREE.Mesh(boxGeo, latticeMat(1, mastH / 1.2)); mast.scale.set(1.2, mastH, 1.2); mast.position.set(MAST.x, mastH / 2, MAST.z); mast.castShadow = true; g.add(mast);
@@ -419,6 +427,12 @@ function startCrane() {
   const cable = new THREE.Mesh(cylGeo, cableMat); cable.scale.set(0.06, 1, 0.06); cable.castShadow = true; g.add(cable);
   const ballMesh = new THREE.Mesh(ballGeo, wreckMat); ballMesh.scale.setScalar(R); ballMesh.castShadow = true; g.add(ballMesh);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.08, 6, 14), cableMat); g.add(ring);
+  return { g, jib, counter, weight, trolley, cable, ballMesh, ring, mastH, hookY };
+}
+function disposeCraneVisual(v) { scene.remove(v.g); v.g.traverse(o => { if (o.material && o.material.map) o.material.map.dispose(); }); }
+function startCrane() {
+  const top = structureTop(), hookY = top + 5, restY = Math.max(1.5, top * 0.45), L = hookY - restY, R = 1.1;
+  const vis = buildCraneVisual(hookY, R);
 
   // hook starts between the mast and the target, so the ball never spawns inside the building
   const start = MAST.clone().lerp(new THREE.Vector3(0, 0, 0), 0.35);
@@ -431,15 +445,15 @@ function startCrane() {
   world.addBody(hook); world.addBody(ball); world.addConstraint(rope);
   ball.addEventListener('collide', e => {
     const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
-    if (v > 2.5) { sfx.clang(Math.min(1, v / 14)); haptic(Math.round(10 + v * 3)); shake = Math.min(1.2, shake + v * 0.03); }
+    if (v > 2.5) { sfx.clang(Math.min(1, v / 14)); haptic(Math.round(10 + v * 3)); shake = Math.min(1.2, shake + v * 0.03); recEvent('clang', ball.position.x, ball.position.y, ball.position.z, v); }
   });
-  crane = { g, jib, counter, weight, trolley, cable, ballMesh, ring, hook, ball, rope, hookY, restY, L, target: start.clone(), t: CRANE_TIME, lower: 0, leaving: 0, mastH };
+  crane = { ...vis, hook, ball, rope, restY, L, target: start.clone(), t: CRANE_TIME, lower: 0, leaving: 0 };
   sfx.crane();
 }
 function removeCrane() {
   if (!crane) return;
   world.removeConstraint(crane.rope); world.removeBody(crane.hook); world.removeBody(crane.ball);
-  scene.remove(crane.g); crane.g.traverse(o => { if (o.material && o.material.map) o.material.map.dispose(); });
+  disposeCraneVisual(crane);
   crane = null;
 }
 const _up = new THREE.Vector3(0, 1, 0), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _plane = new THREE.Plane();
@@ -467,21 +481,24 @@ function updateCrane(dt) {
   const vx = c.hook.velocity.x, vz = c.hook.velocity.z, ax = dx * k - vx, az = dz * k - vz, am = Math.hypot(ax, az), lim = 30 * dt;
   const s = am > lim ? lim / am : 1;
   c.hook.velocity.set(vx + ax * s, 0, vz + az * s);
-  // visuals: jib turns toward the hook, cable from hook to ball
+  poseCrane(c, h.x, h.y, h.z, c.ball.position, c.ball.quaternion);
+  if (c.leaving > 1.6) removeCrane();
+}
+// visuals: jib turns toward the hook, cable from hook to ball (also used by the replay's ghost crane)
+function poseCrane(c, hx, hy, hz, bp, bq) {
+  const h = { x: hx, y: hy, z: hz };
   const jx = h.x - MAST.x, jz = h.z - MAST.z, jl = Math.hypot(jx, jz) + 1.6, ang = Math.atan2(-jz, jx), y = c.mastH + 0.75;
   c.jib.scale.set(jl, 0.8, 0.8); c.jib.rotation.y = ang; c.jib.position.set(MAST.x + Math.cos(ang) * jl / 2, y, MAST.z - Math.sin(ang) * jl / 2);
   c.jib.material.map.repeat.set(jl / 0.8, 1);
   c.counter.scale.set(5, 0.7, 0.7); c.counter.rotation.y = ang; c.counter.position.set(MAST.x - Math.cos(ang) * 2.5, y, MAST.z + Math.sin(ang) * 2.5);
   c.weight.rotation.y = ang; c.weight.position.set(MAST.x - Math.cos(ang) * 4.4, y - 0.9, MAST.z + Math.sin(ang) * 4.4);
   c.trolley.rotation.y = ang; c.trolley.position.set(h.x, c.hookY + 0.3, h.z);
-  const bp = c.ball.position;
-  c.ballMesh.position.copy(bp); c.ballMesh.quaternion.copy(c.ball.quaternion);
+  c.ballMesh.position.set(bp.x, bp.y, bp.z); c.ballMesh.quaternion.set(bq.x, bq.y, bq.z, bq.w);
   _a.set(h.x, h.y, h.z); _b.set(bp.x, bp.y, bp.z);
   const top = _b.clone().addScaledVector(_a.clone().sub(_b).normalize(), 1.15);
   c.ring.position.copy(top); c.ring.lookAt(_a); c.ring.rotateY(Math.PI / 2);
   c.cable.position.copy(_a).add(top).multiplyScalar(0.5); c.cable.scale.y = _a.distanceTo(top);
   c.cable.quaternion.setFromUnitVectors(_up, _a.clone().sub(top).normalize());
-  if (c.leaving > 1.6) removeCrane();
 }
 const craneActive = () => crane && !crane.leaving && weapon === 'crane';
 
@@ -566,6 +583,161 @@ const sfx = (() => {
 })();
 function haptic(ms) { if (app && store.get('vibro', true)) try { app.tick(ms); } catch (e) {} }
 
+/* ================= slow-motion replay =================
+   While you play, the last 8 seconds are recorded 30 times a second: every block, projectile, bomb,
+   the crane's hook and ball, the ground (it slides in an earthquake) and events like explosions,
+   shattering glass and dust. The replay plays that tape back with interpolation, slowing to ×0.3
+   around every hit, re-spawning the particles and sounds, while the camera slowly circles. */
+const REC_HZ = 30, REC_N = 240, MAXD = 16;
+const rec = { nb: 0, buf: null, dyn: new Float32Array(REC_N * MAXD * 9), dn: new Uint8Array(REC_N), cr: new Float32Array(REC_N * 14), t: new Float64Array(REC_N), head: 0, count: 0, next: 0, events: [] };
+const SLOW_EV = { shot: 1, tick: 1, whoosh: 1, quake: 1, boom: 1, glass: 1, clang: 1 };
+function recReset() { rec.nb = blocks.length; rec.buf = new Float32Array(REC_N * rec.nb * 7); rec.head = 0; rec.count = 0; rec.next = 0; rec.events = []; }
+function recEvent(kind, x, y, z, a) {
+  if (state !== 'play' || !rec.buf) return;
+  rec.events.push({ t: simTime, kind, x, y, z, a });
+  if (rec.events.length > 600) rec.events.splice(0, 100);
+}
+const recIdx = k => (rec.head - rec.count + k + REC_N) % REC_N;
+function recFrame() {
+  if (!rec.buf || simTime < rec.next) return;
+  rec.next = simTime + 1 / REC_HZ - 1e-4;
+  const f = rec.head; rec.head = (f + 1) % REC_N; rec.count = Math.min(REC_N, rec.count + 1); rec.t[f] = simTime;
+  const B = rec.buf; let o = f * rec.nb * 7;
+  for (const b of blocks) {
+    const p = b.body.position, q = b.body.quaternion;
+    B[o] = p.x; B[o + 1] = b.gone ? -999 : p.y; B[o + 2] = p.z; B[o + 3] = q.x; B[o + 4] = q.y; B[o + 5] = q.z; B[o + 6] = q.w; o += 7;
+  }
+  let n = 0; const D = rec.dyn;
+  const put = (k, p, q, s) => { if (n >= MAXD) return; const j = (f * MAXD + n++) * 9; D[j] = k; D[j + 1] = p.x; D[j + 2] = p.y; D[j + 3] = p.z; D[j + 4] = q.x; D[j + 5] = q.y; D[j + 6] = q.z; D[j + 7] = q.w; D[j + 8] = s; };
+  for (const pr of projectiles) put(pr.meteor ? 1 : 0, pr.body.position, pr.body.quaternion, pr.mesh.scale.x);
+  for (const bm of bombs) put(2, bm.mesh.position, _q.identity(), 0.35);
+  rec.dn[f] = n;
+  const C = rec.cr, j = f * 14;
+  if (crane) { const h = crane.hook.position, bp = crane.ball.position, bq = crane.ball.quaternion; C[j] = 1; C[j + 1] = h.x; C[j + 2] = h.y; C[j + 3] = h.z; C[j + 4] = bp.x; C[j + 5] = bp.y; C[j + 6] = bp.z; C[j + 7] = bq.x; C[j + 8] = bq.y; C[j + 9] = bq.z; C[j + 10] = bq.w; }
+  else C[j] = 0;
+  const gp = groundBody ? groundBody.position : { x: 0, y: 0, z: 0 }; C[j + 11] = gp.x; C[j + 12] = gp.y; C[j + 13] = gp.z;
+}
+function replayRange() {
+  if (rec.count < 4) return null;
+  const oldest = rec.t[recIdx(0)], newest = rec.t[recIdx(rec.count - 1)];
+  const ev = rec.events.filter(e => e.t >= oldest && e.t <= newest);
+  const big = ev.filter(e => SLOW_EV[e.kind]);
+  if (!big.length) return null;
+  return { t0: Math.max(oldest, big[0].t - 0.7), t1: Math.min(newest, Math.max(big[big.length - 1].t + 3.5, ev[ev.length - 1].t + 0.8)), ev };
+}
+const hasReplay = () => rec.events.some(e => SLOW_EV[e.kind] && simTime - e.t < REC_N / REC_HZ);
+
+const dynMats = [ballMat, meteorMat, bombMat.clone()];
+const dynPool = [];
+function dynMesh(i) { if (!dynPool[i]) { const m = new THREE.Mesh(ballGeo, ballMat); m.castShadow = true; m.visible = false; scene.add(m); dynPool[i] = m; } return dynPool[i]; }
+
+let rp = null;
+function startReplay() {
+  if (rp) return;
+  const r = replayRange();
+  if (!r) { toast('Ще нема чого повторювати — спершу щось зруйнуйте'); return; }
+  rp = { ...r, rt: r.t0, speed: 1, prev: state, evi: 0, ghost: null, focus: orbit.target.clone(), real: 0,
+         saved: { theta: orbit.theta, phi: orbit.phi, r: orbit.r, target: orbit.target.clone() } };
+  while (rp.evi < rp.ev.length && rp.ev[rp.evi].t < rp.t0) rp.evi++;
+  state = 'replay';
+  particles.clear(); flash.intensity = 0; shake = 0;
+  for (const p of projectiles) p.mesh.visible = false;
+  for (const b of bombs) b.mesh.visible = false;
+  if (crane) crane.g.visible = false;
+  orbit.r = Math.max(10, orbit.r * 0.88); orbit.phi = Math.min(1.3, orbit.phi + 0.08);
+  $('hud').hidden = true; $('result').hidden = true; $('toast').style.opacity = 0;
+  const el = $('replay'); el.hidden = false; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
+  haptic(10);
+}
+function endReplay() {
+  if (!rp) return;
+  for (const b of blocks) syncBlock(b);
+  for (const m of Object.values(meshes)) m.instanceMatrix.needsUpdate = true;
+  for (const p of projectiles) p.mesh.visible = true;
+  for (const b of bombs) b.mesh.visible = true;
+  for (const m of dynPool) m.visible = false;
+  if (rp.ghost) disposeCraneVisual(rp.ghost);
+  if (crane) crane.g.visible = true;
+  if (groundGroup && groundBody) groundGroup.position.copy(groundBody.position);
+  Object.assign(orbit, { theta: rp.saved.theta, phi: rp.saved.phi, r: rp.saved.r }); orbit.target.copy(rp.saved.target);
+  particles.clear(); flash.intensity = 0; shake = 0;
+  state = rp.prev; rp = null;
+  $('replay').hidden = true;
+  if (state === 'result') $('result').hidden = false; else if (state === 'play') $('hud').hidden = false;
+}
+function playEvent(e) {
+  const pos = new THREE.Vector3(e.x, e.y, e.z);
+  switch (e.kind) {
+    case 'boom': burst(pos, e.a); flash.position.copy(pos); flash.intensity = 900; shake = Math.min(1.4, shake + e.a / 6); sfx.boom(Math.min(1, e.a / 7)); haptic(40); break;
+    case 'glass': { const b = blocks[e.a]; glassBits(pos, b ? b.size : new THREE.Vector3(1, 1, 1)); sfx.glass(); break; }
+    case 'dust': dustPuff(e.x, e.y, e.z, e.a); if (rnd() < 0.25) sfx.thud(Math.min(1, e.a / 25)); break;
+    case 'shot': sfx.shoot(); break;
+    case 'tick': sfx.tick(); break;
+    case 'whoosh': sfx.whoosh(); break;
+    case 'quake': sfx.rumble(); break;
+    case 'clang': sfx.clang(Math.min(1, e.a / 14)); shake = Math.min(1.2, shake + e.a * 0.03); break;
+  }
+  if (SLOW_EV[e.kind] && e.kind !== 'quake') rp.focus.set(e.x, Math.max(1, e.y), e.z);
+}
+const _qa2 = new THREE.Quaternion(), _qb2 = new THREE.Quaternion(), _pa = new THREE.Vector3(), _pb = new THREE.Vector3();
+function poseAt(t) {
+  // find the two recorded frames around t
+  let lo = 0, hi = rec.count - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (rec.t[recIdx(mid)] <= t) lo = mid; else hi = mid; }
+  const fa = recIdx(lo), fb = recIdx(hi), ta = rec.t[fa], tb = rec.t[fb];
+  const al = tb > ta ? Math.min(1, Math.max(0, (t - ta) / (tb - ta))) : 0;
+  const B = rec.buf, nb = rec.nb;
+  for (let i = 0; i < nb; i++) {
+    const a = (fa * nb + i) * 7, c = (fb * nb + i) * 7, b = blocks[i];
+    if (B[a + 1] < -500 || (al > 0.5 && B[c + 1] < -500)) { _m.compose(_p.set(0, -999, 0), _q.identity(), _zero); b.mesh.setMatrixAt(b.idx, _m); continue; }
+    _pa.set(B[a], B[a + 1], B[a + 2]); _pb.set(B[c], B[c + 1], B[c + 2]); _pa.lerp(_pb, al);
+    _qa2.set(B[a + 3], B[a + 4], B[a + 5], B[a + 6]); _qb2.set(B[c + 3], B[c + 4], B[c + 5], B[c + 6]); _qa2.slerp(_qb2, al);
+    _m.compose(_pa, _qa2, b.size); b.mesh.setMatrixAt(b.idx, _m);
+  }
+  for (const m of Object.values(meshes)) m.instanceMatrix.needsUpdate = true;
+  // projectiles and bombs
+  const D = rec.dyn, na = rec.dn[fa], nB = rec.dn[fb];
+  for (let i = 0; i < MAXD; i++) {
+    const m = dynPool[i];
+    if (i >= na) { if (m) m.visible = false; continue; }
+    const j = (fa * MAXD + i) * 9, k = (fb * MAXD + i) * 9, mesh = dynMesh(i), kind = D[j];
+    mesh.material = dynMats[kind] || ballMat; mesh.scale.setScalar(D[j + 8]); mesh.visible = true;
+    _pa.set(D[j + 1], D[j + 2], D[j + 3]); _qa2.set(D[j + 4], D[j + 5], D[j + 6], D[j + 7]);
+    let fast = 0;
+    if (i < nB && D[k] === kind) { _pb.set(D[k + 1], D[k + 2], D[k + 3]); const d = _pa.distanceTo(_pb); if (d < 8) { fast = d * REC_HZ; _pa.lerp(_pb, al); _qb2.set(D[k + 4], D[k + 5], D[k + 6], D[k + 7]); _qa2.slerp(_qb2, al); } }
+    mesh.position.copy(_pa); mesh.quaternion.copy(_qa2);
+    if (kind === 2) mesh.material.emissiveIntensity = 0.4 + Math.abs(Math.sin(t * 18)) * 2;
+    if (kind === 1 && fast > 12 && rnd() < 0.35 + rp.speed) for (let n = 0; n < 2; n++) particles.spawn(_pa.x + rr(-1, 1), _pa.y + rr(-1, 1), _pa.z + rr(-1, 1), rr(-1, 1), rr(0, 2), rr(-1, 1), 1, rr(0.4, 0.7), 0.2, 0.9, rr(0.9, 1.8), rr(0.4, 0.9), 0);
+  }
+  // crane (a ghost copy, so it shows even after the real one has driven away)
+  const C = rec.cr, ca = fa * 14, cb = fb * 14;
+  if (C[ca]) {
+    if (!rp.ghost) rp.ghost = buildCraneVisual(C[ca + 2]);
+    rp.ghost.g.visible = true;
+    const w = C[cb] ? al : 0, L = (x, y) => C[ca + x] + (C[cb + x] - C[ca + x]) * w;
+    _qa2.set(C[ca + 7], C[ca + 8], C[ca + 9], C[ca + 10]); if (w) { _qb2.set(C[cb + 7], C[cb + 8], C[cb + 9], C[cb + 10]); _qa2.slerp(_qb2, w); }
+    poseCrane(rp.ghost, L(1), L(2), L(3), { x: L(4), y: L(5), z: L(6) }, _qa2);
+  } else if (rp.ghost) rp.ghost.g.visible = false;
+  if (groundGroup) groundGroup.position.set(C[ca + 11] + (C[cb + 11] - C[ca + 11]) * al, C[ca + 12] + (C[cb + 12] - C[ca + 12]) * al, C[ca + 13] + (C[cb + 13] - C[ca + 13]) * al);
+}
+function updateReplay(dt) {
+  const near = rp.ev.some(e => SLOW_EV[e.kind] && e.t > rp.rt - 1.6 && e.t < rp.rt + 0.3);
+  const want = near ? 0.3 : 1;
+  rp.speed += (want - rp.speed) * Math.min(1, dt * (want < rp.speed ? 6 : 1.5));
+  const sdt = dt * rp.speed; rp.rt += sdt; rp.real += dt;
+  while (rp.evi < rp.ev.length && rp.ev[rp.evi].t <= rp.rt) playEvent(rp.ev[rp.evi++]);
+  poseAt(Math.min(rp.rt, rp.t1));
+  // cinematic camera: slow drift around, gently leaning toward the latest hit
+  orbit.theta += dt * 0.09;
+  _pa.copy(rp.focus); _pa.y = Math.min(_pa.y, level ? level.cam[2] * 1.6 + 2 : 6);
+  orbit.target.lerp(_pa.lerp(rp.saved.target, 0.55), Math.min(1, dt * 0.8));
+  $('rpFill').style.width = Math.min(100, (rp.rt - rp.t0) / (rp.t1 - rp.t0) * 100) + '%';
+  $('rpSpeed').textContent = '×' + rp.speed.toFixed(1).replace('.', ',');
+  $('replay').classList.toggle('slow', rp.speed < 0.6);
+  if (rp.rt >= rp.t1 + 0.4) endReplay();
+  return sdt;
+}
+
 /* ================= camera controls ================= */
 const pointers = new Map(); let gesture = null;
 canvas.addEventListener('pointerdown', e => {
@@ -642,6 +814,7 @@ function finish(p) {
   $('rText').textContent = stars ? `Зруйновано ${Math.round(p * 100)}% за ${shots} ${plural(shots)}.` : `Потрібно ${Math.round(level.goal * 100)}%. Спробуйте влучати в опори.`;
   const ix = LEVELS.indexOf(level), next = LEVELS[ix + 1];
   $('rNext').hidden = !(stars && next); $('rNext').onclick = () => startLevel(next);
+  $('rReplay').hidden = !replayRange();
   $('result').hidden = false; haptic(stars ? 40 : 10);
 }
 const plural = n => n % 10 === 1 && n % 100 !== 11 ? 'постріл' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? 'постріли' : 'пострілів';
@@ -662,6 +835,9 @@ function showMenu() {
   if (!blocks.length) { startLevel(LEVELS[2], true); state = 'menu'; $('hud').hidden = true; $('menu').hidden = false; }
 }
 $('btnMenu').onclick = showMenu;
+$('btnReplay').onclick = startReplay;
+$('rReplay').onclick = startReplay;
+$('rpSkip').onclick = endReplay;
 $('btnRestart').onclick = () => startLevel(level, free);
 $('rAgain').onclick = () => startLevel(level, free);
 $('rMenu').onclick = showMenu;
@@ -687,6 +863,10 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
   dustBudget = 6;
   if (state === 'menu') orbit.theta += dt * 0.08;
+  if (state === 'replay') {
+    const sdt = updateReplay(dt);
+    if (rp) { particles.update(sdt); flash.intensity *= Math.pow(0.02, sdt); shake *= Math.pow(0.05, dt); placeCamera(); renderer.render(scene, camera); return; }
+  }
 
   // earthquake: the whole ground slides back and forth
   if (quake && groundBody) {
@@ -727,6 +907,7 @@ function loop(now) {
     if (b.body.position.y < -40) { b.gone = true; world.removeBody(b.body); syncBlock(b); dirty[b.type] = 1; continue; }
     if (b.body.sleepState !== CANNON.Body.SLEEPING || quake || frame < 3) { syncBlock(b); dirty[b.type] = 1; } }
   for (const t in dirty) meshes[t].instanceMatrix.needsUpdate = true;
+  if (state === 'play') recFrame();
 
   particles.update(dt);
   flash.intensity *= Math.pow(0.02, dt);
@@ -735,7 +916,7 @@ function loop(now) {
   renderer.render(scene, camera);
 
   if (state === 'play' && frame % 10 === 0) {
-    const p = destruction(); updateHud(p);
+    const p = destruction(); updateHud(p); $('btnReplay').classList.toggle('off', !hasReplay());
     if (!free && !ended) {
       const left = Object.values(ammo).reduce((a, b) => a + b, 0) + bombs.length + (crane ? 1 : 0);
       const awake = blocks.filter(b => !b.gone && b.body.sleepState !== CANNON.Body.SLEEPING).length;
@@ -744,7 +925,7 @@ function loop(now) {
     }
   }
 }
-window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, callCrane, steerCrane, get crane() { return crane; }, get blocks() { return blocks.length; } };
+window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, callCrane, steerCrane, get crane() { return crane; }, get blocks() { return blocks.length; }, startReplay, endReplay, get replay() { return rp; }, finish: () => finish(destruction()) };
 
 renderDiary();
 showMenu();
