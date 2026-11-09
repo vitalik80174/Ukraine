@@ -60,3 +60,26 @@ export const PLAN = {
   lamps: [[2.0, 1.7], [2.0, 5.3], [6.3, 1.4], [5.67, 5.3], [8.8, 5.3], [9.4, 2.0], [9.4, 0.5]],
   start: [6.7, 0.9, 3.7]
 };
+
+/** Second layout, drawn by the user: a walk-in wardrobe in the hall next to the kitchen-living room.
+ *  Walls from the ventilation block to the entrance side, a door facing the entrance, and an 80 cm passage
+ *  left between the wardrobe and the room so the hall still opens into the kitchen-living room. */
+export const CLOSET = { x1: 4.17, x2: 6.08, z2: 1.93, wall: 0.1, door: [0.35, 1.15] };
+export function withCloset(P) {
+  const C = CLOSET, xr = C.x2 + C.wall, zb = C.z2 + C.wall; // outer faces: right wall 6.18, bottom wall 2.03 → passage 2.03…2.83 = 80 cm
+  P.closet = C;
+  P.walls.push(
+    { axis: 'z', t1: 4.05, t2: C.x1, from: 0.66, to: C.z2 },                                  // left, from the ventilation block
+    { axis: 'x', t1: C.z2, t2: zb, from: 4.05, to: xr },                                       // bottom, along the passage
+    { axis: 'z', t1: C.x2, t2: xr, from: 0, to: C.z2, holes: [{ a: C.door[0], b: C.door[1], type: 'door' }] } // right, with the door
+  );
+  P.doors.push({ x: (C.x2 + xr) / 2, z: C.door[0], w: C.door[1] - C.door[0], angle: -125 }); // opens into the wardrobe
+  const hall = P.rooms.find(r => r.name === 'Передпокій');
+  hall.rects = [[xr, 0, 8.47, 2.83], [4.05, zb, xr, 2.83]]; hall.area = 0; hall.label = [7.25, 1.5];
+  P.rooms.splice(P.rooms.indexOf(hall) + 1, 0, { name: 'Гардеробна', floor: hall.floor, floorAs: 'Передпокій', rects: [[C.x1, 0, C.x2, C.z2]], label: [5.25, 1.05] });
+  for (const r of [hall, P.rooms[P.rooms.indexOf(hall) + 1]]) r.area = r.rects.reduce((s, [a, b, c, d]) => s + (c - a) * (d - b), 0);
+  // the intercom and the switch by the entrance would end up inside the wardrobe — moved onto its outer wall, below the door
+  for (const p of P.power) if (p.x === 6.05 && p.z === 0) { p.x = xr; p.z = 1.55; p.f = 'E'; }
+  P.lamps.push([5.2, 1.1]);
+  return P;
+}

@@ -238,8 +238,33 @@ export function buildInterior(S, P, solids, hooks = {}) {
   for (const x of [9.0, 9.22, 9.59, 9.81]) box(x - 0.008, 3.57, x + 0.008, 3.6, 0.95, 1.35, mat(0xb9bec4, 0.25, 0.9)); // handles
 
   // ---- hall: wardrobe, bench, round mirror ----
-  box(4.35, 0.01, 5.95, 0.6, 0, 2.5, mat(S.id === 'loft' ? 0x26282b : S.upper, 0.55), true);
-  for (const x of [4.75, 5.15, 5.55]) box(x - 0.003, 0.6, x + 0.003, 0.61, 0.05, 2.45, mat(0x333333, 0.6));
+  if (!P.closet) {
+    box(4.35, 0.01, 5.95, 0.6, 0, 2.5, mat(S.id === 'loft' ? 0x26282b : S.upper, 0.55), true);
+    for (const x of [4.75, 5.15, 5.55]) box(x - 0.003, 0.6, x + 0.003, 0.61, 0.05, 2.45, mat(0x333333, 0.6));
+  } else { // walk-in wardrobe: an open system along the back wall and the left wall
+    const C = P.closet, carc = mat(S.id === 'loft' ? 0x26282b : S.id === 'lviv' ? 0xf4efe6 : S.upper, 0.55), rail = mat(0xb9bec4, 0.25, 0.9);
+    const clothes = [S.sofa, S.textile, S.throw, S.cushion, S.duvet, 0x2e3440, 0xd9d4ca, 0x7a8a9a].map(c => mat(c, 0.95));
+    let q = 3; const r2 = () => (q = (q * 16807) % 2147483647) / 2147483647;
+    // back wall (z = 0): two hanging sections and a column of shelves, kept clear of the door's swing
+    const bx1 = C.x1 + 0.02, bx2 = C.x2 - 0.38, bd = 0.56;
+    for (const x of [bx1, (bx1 + bx2) / 2 - 0.25, (bx1 + bx2) / 2 + 0.25, bx2 - 0.02]) box(x - 0.01, 0.01, x + 0.01, bd, 0, 2.3, carc, true);
+    box(bx1, 0.01, bx2, bd, 2.28, 2.3, carc); box(bx1, 0.01, bx2, bd, 0, 0.06, carc);
+    for (const [a, b] of [[bx1 + 0.01, (bx1 + bx2) / 2 - 0.26], [(bx1 + bx2) / 2 + 0.26, bx2 - 0.03]]) {
+      box(a, 0.01, b, bd, 1.9, 1.92, carc); box(a, bd / 2 - 0.01, b, bd / 2 + 0.01, 1.78, 1.8, rail); // shelf + rail
+      for (let x = a + 0.05; x < b - 0.04; x += 0.045 + r2() * 0.03) { const len = 0.65 + r2() * 0.35; box(x - 0.012, 0.07, x + 0.012, bd - 0.05, 1.78 - len, 1.77, clothes[(r2() * clothes.length) | 0]); }
+      box(a + 0.02, 0.05, b - 0.02, bd - 0.05, 0.12, 0.14, carc); // shoe shelf
+      for (let x = a + 0.1; x < b - 0.1; x += 0.22) box(x - 0.08, 0.1, x + 0.08, 0.36, 0.14, 0.24, clothes[5]);
+    }
+    for (let y = 0.4; y < 2.2; y += 0.36) box((bx1 + bx2) / 2 - 0.25, 0.01, (bx1 + bx2) / 2 + 0.25, bd, y, y + 0.02, carc); // middle shelves
+    for (let y = 0.42; y < 2.2; y += 0.36) box((bx1 + bx2) / 2 - 0.2, 0.08, (bx1 + bx2) / 2 + 0.2, bd - 0.08, y, y + 0.18, clothes[(r2() * 4) | 0]); // folded things
+    // left wall: shelves for boxes and bags
+    const lx2 = C.x1 + 0.42, lz1 = bd + 0.02, lz2 = C.z2 - 0.02;
+    box(C.x1 + 0.01, lz1, lx2, lz1 + 0.02, 0, 2.3, carc, true); box(C.x1 + 0.01, lz2 - 0.02, lx2, lz2, 0, 2.3, carc, true);
+    for (let y = 0.05; y < 2.35; y += 0.45) box(C.x1 + 0.01, lz1, lx2, lz2, y, y + 0.02, carc, true);
+    for (let y = 0.07; y < 2.2; y += 0.45) for (let z = lz1 + 0.06; z < lz2 - 0.3; z += 0.36) if (r2() > 0.25) box(C.x1 + 0.05, z, lx2 - 0.04, z + 0.3, y, y + 0.2 + r2() * 0.12, mat([0xd9c8a8, 0xe8e4dc, S.cushion, 0x9aa0a6][(r2() * 4) | 0], 0.85));
+    // a tall mirror on the passage wall
+    box(C.x2 - 0.012, 1.3, C.x2 - 0.002, 1.85, 0.3, 2.0, new THREE.MeshStandardMaterial({ color: 0xcfd8de, roughness: 0.05, metalness: 0.9 }));
+  }
   box(7.78, 0.02, 8.12, 0.4, 0.0, 0.45, wood, true);
   const mirror = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.02, 40), new THREE.MeshStandardMaterial({ color: 0xcfd8de, roughness: 0.05, metalness: 0.9 }));
   mirror.rotation.x = Math.PI / 2; mirror.position.set(7.95, 1.25, 0.012); mirror.scale.set(0.7, 1, 0.7); g.add(mirror);

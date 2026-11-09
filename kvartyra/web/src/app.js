@@ -1,6 +1,6 @@
 // «Квартира» — 3D model of the apartment from its floor plan. three.js only; build with ../build.sh.
 import * as THREE from '../../../ruina/web/vendor/three.module.js';
-import { PLAN } from './plan.js';
+import { PLAN, withCloset } from './plan.js';
 import { STYLES, extraFloors, buildInterior } from './interior.js';
 import { rbox, radiusFor } from './detail.js';
 import { mergeStatic } from './merge.js';
@@ -15,6 +15,9 @@ const store = {
   set(k, v) { try { localStorage.setItem('kv.' + k, JSON.stringify(v)); } catch (e) {} }
 };
 const H = PLAN.height;
+// layout: 'plan' — as on the developer's plan, 'closet' — with the walk-in wardrobe the user drew
+const LAYOUT = Q.get('layout') || store.get('layout', 'plan');
+if (LAYOUT === 'closet') withCloset(PLAN);
 
 /* ================= renderer & scene ================= */
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -275,7 +278,7 @@ const roomLabels = [], floorMats = [];
 for (const r of P.rooms) {
   for (const [x1, z1, x2, z2] of r.rects) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), M.wall);
-    floorMats.push({ m, room: r.name, w: x2 - x1, h: z2 - z1, key: r.floor });
+    floorMats.push({ m, room: r.name, as: r.floorAs, w: x2 - x1, h: z2 - z1, key: r.floor });
     m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, 0.001, (z1 + z2) / 2); m.receiveShadow = true;
     house.add(m);
   }
@@ -593,7 +596,7 @@ function styleFloor(f, key) {
 function applyFinish() {
   const S = STYLES.find(st => st.id === look); raw = look === 'raw';
   const styled = !!S.wall;
-  for (const f of floorMats) f.m.material = styleFloor(f, raw ? 'concrete' : styled ? (S.floors[f.room] || 'oak') : f.key);
+  for (const f of floorMats) f.m.material = styleFloor(f, raw ? 'concrete' : styled ? (S.floors[f.room] || S.floors[f.as] || 'oak') : f.key);
   fx.visible = !raw && !elecMode; archG.visible = baseG.visible = !raw; for (const d of innerDoors) d.visible = !raw;
   if (raw) for (const o of openables) if (o.inner && !o.open) toggleOpenable(o);
   M.wall.color.set(styled ? S.wall : DEF.wall); M.door.color.set(styled ? S.door : DEF.door);
@@ -609,8 +612,11 @@ function applyFinish() {
 function openStyles() {
   const p = $('styles');
   if (!p.hidden) { p.hidden = true; return; }
-  p.innerHTML = STYLES.map(st => `<button class="chip${st.id === look ? ' on' : ''}" data-id="${st.id}"><b>${st.name}</b><span>${st.sub}</span></button>`).join('');
-  p.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => { look = c.dataset.id; store.set('look', look); applyFinish(); p.hidden = true; }));
+  const LAYOUTS = [['plan', 'Як у забудовника', 'відкритий передпокій'], ['closet', 'З гардеробною', 'гардеробна біля кухні, прохід 80 см']];
+  p.innerHTML = '<div class="sec">Планування</div>' + LAYOUTS.map(([id, n, sub]) => `<button class="chip${id === LAYOUT ? ' on' : ''}" data-layout="${id}"><b>${n}</b><span>${sub}</span></button>`).join('') +
+    '<div class="sec">Інтер\'єр</div>' + STYLES.map(st => `<button class="chip${st.id === look ? ' on' : ''}" data-id="${st.id}"><b>${st.name}</b><span>${st.sub}</span></button>`).join('');
+  p.querySelectorAll('[data-layout]').forEach(c => c.addEventListener('click', () => { if (c.dataset.layout === LAYOUT) { p.hidden = true; return; } store.set('layout', c.dataset.layout); location.reload(); }));
+  p.querySelectorAll('.chip[data-id]').forEach(c => c.addEventListener('click', () => { look = c.dataset.id; store.set('look', look); applyFinish(); p.hidden = true; }));
   p.hidden = false;
 }
 const SKY_DAY = new THREE.Color(0xcfe0ee), SKY_DUSK = new THREE.Color(0xe8b48a), SKY_NIGHT = new THREE.Color(0x0e1222);
@@ -996,6 +1002,7 @@ addEventListener('resize', resize);
 
 /* ================= loop ================= */
 setMode(mode); applyLight(); applyFinish(); renderDiary();
+if (LAYOUT === 'closet') document.querySelector('.title p').textContent = '77,3 м² · дві кімнати · з гардеробною';
 if (Q.get('dist')) orbit.dist = +Q.get('dist');
 let last = performance.now(), streak = 0, ema = 16, tuneN = 0;
 // keeps moving frames smooth: if they get slow, the moving resolution steps down; if there is headroom, it creeps back up
