@@ -1067,4 +1067,4 @@ const idle = t => t - lastTouch > 8000;
 setQuality(quality, true);
 requestAnimationFrame(loop);
 setInterval(() => store.set('yaw', orbit.yaw), 5000);
-window.__kv = { setMode, walker, orbit, solids, P, openables, stats: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, frames, pr: curPR, movePR, quality, lite }), invalidate, renderer, scene, sun };
+window.__kv = { setMode, walker, orbit, solids, P, openables, stats: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, frames, free: (x, z) => !blocked(x, z), pr: curPR, movePR, quality, lite }), invalidate, renderer, scene, sun };

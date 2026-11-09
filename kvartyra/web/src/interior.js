@@ -106,12 +106,13 @@ export function buildInterior(S, P, solids, hooks = {}) {
   paint(4.18, RB + 0.02, 4.19, D, S.accent.room);           // room: left wall
 
   // ---- kitchen: upper cabinets + pendant lamps over the table ----
-  box(0.6, 0, 3.45, 0.36, 1.45, 2.25, mat(S.upper, 0.55));
-  box(0.62, 0.36, 3.43, 0.365, 1.47, 2.23, mat(S.upper, 0.4)); // fronts
-  for (let x = 0.6 + 0.57; x < 3.45; x += 0.57) box(x - 0.004, 0.362, x + 0.004, 0.37, 1.47, 2.23, mat(0x222222, 0.6));
+  const KX = 4.05, KM = (KX - 0.6) / 6; // the kitchen runs right up to the ventilation block: six equal modules
+  box(0.6, 0, KX, 0.36, 1.45, 2.25, mat(S.upper, 0.55));
+  box(0.62, 0.36, KX - 0.02, 0.365, 1.47, 2.23, mat(S.upper, 0.4)); // fronts
+  for (let x = 0.6 + KM; x < KX - 0.05; x += KM) box(x - 0.004, 0.362, x + 0.004, 0.37, 1.47, 2.23, mat(0x222222, 0.6));
   const steel = mat(0xb9bec4, 0.25, 0.9);
-  for (let x = 0.6 + 0.285; x < 3.45; x += 0.57) { box(x - 0.09, 0.37, x + 0.09, 0.39, 1.5, 1.515, steel); box(x - 0.09, 0.6, x + 0.09, 0.625, 0.78, 0.795, steel); } // handles
-  for (let x = 0.6 + 0.57; x < 3.45; x += 0.57) box(x - 0.003, 0.598, x + 0.003, 0.606, 0.12, 0.84, mat(0x333333, 0.6)); // gaps between base fronts
+  for (let x = 0.6 + KM / 2; x < KX; x += KM) { box(x - 0.09, 0.37, x + 0.09, 0.39, 1.5, 1.515, steel); box(x - 0.09, 0.6, x + 0.09, 0.625, 0.78, 0.795, steel); } // handles
+  for (let x = 0.6 + KM; x < KX - 0.05; x += KM) box(x - 0.003, 0.598, x + 0.003, 0.606, 0.12, 0.84, mat(0x333333, 0.6)); // gaps between base fronts
   cyl(1.6, 0.1, 0.022, 0.026, 0.9, 1.18, steel); { const sp = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.016, 8, 16, Math.PI), steel); sp.position.set(1.6, 1.18, 0.21); sp.rotation.y = Math.PI / 2; g.add(sp); } // faucet
   for (const [hx, hz, rr] of [[2.65, 0.18, 0.09], [2.95, 0.18, 0.07], [2.65, 0.42, 0.07], [2.95, 0.42, 0.09]]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.006, 6, 28), mat(0x555555, 0.5)); ring.rotation.x = Math.PI / 2; ring.position.set(hx, 0.908, hz); g.add(ring); } // hob rings
   // dining table with four chairs
@@ -173,7 +174,7 @@ export function buildInterior(S, P, solids, hooks = {}) {
   curtain(4.5, D - 0.26, 0.34); curtain(6.8, D - 0.26, 0.34); rod(4.28, 7.05);
   curtain(7.6, D - 0.26, 0.34); curtain(9.9, D - 0.26, 0.42); rod(7.4, 10.18);
   // tiled splash-back between the worktop and the upper cabinets
-  box(0.6, 0.001, 3.45, 0.012, 0.9, 1.45, mat(S.id === 'loft' ? 0x3a3c40 : S.id === 'lviv' ? 0xe9e4d6 : 0xf3f1ec, 0.18));
+  box(0.6, 0.001, KX, 0.012, 0.9, 1.45, mat(S.id === 'loft' ? 0x3a3c40 : S.id === 'lviv' ? 0xe9e4d6 : 0xf3f1ec, 0.18));
   // pictures: an abstract print for each room in the colours of the style
   const hex = v => '#' + v.toString(16).padStart(6, '0');
   const art = (cx, cy, cz, w, h, face, seed) => { // face +1: hangs on a wall at x = cx and looks along +X; −1: looks along −X
@@ -199,7 +200,7 @@ export function buildInterior(S, P, solids, hooks = {}) {
   };
   art(0.013, 1.62, 5.35, 1.35, 0.85, 1, 5);
   art(4.192, 1.6, 5.2, 0.7, 0.95, 1, 9);
-  art(W - 0.013, 1.9, 5.2, 1.1, 0.6, -1, 13);
+  art(W - 0.013, 1.9, 5.6, 1.1, 0.6, -1, 13);
 
   // ---- room (study / guest): daybed, desk at the window, bookcase ----
   box(4.19, 4.2, 5.05, 6.2, legH, legH + 0.36, textile, true);
@@ -219,7 +220,7 @@ export function buildInterior(S, P, solids, hooks = {}) {
   box(4.6, 4.0, 6.3, 6.4, 0.002, 0.012, mat(S.rug2, 1));
 
   // ---- bedroom: bed against the right wall, nightstands, wardrobe, rug ----
-  const bx2 = W - 0.01, bx1 = bx2 - 2.05, bz1 = 4.4, bz2 = 6.0;
+  const bx2 = W - 0.01, bx1 = bx2 - 2.05, bz1 = 4.8, bz2 = 6.4;
   box(bx1, bz1, bx2, bz2, S.low ? 0.0 : 0.12, 0.34, mat(S.bed, 0.8), true);
   box(bx1 + 0.04, bz1 + 0.04, bx2 - 0.05, bz2 - 0.04, 0.34, 0.56, white);
   box(bx1 + 0.02, bz1 + 0.02, bx2 - 0.55, bz2 - 0.02, 0.56, 0.6, mat(S.duvet, 0.95));
@@ -230,10 +231,11 @@ export function buildInterior(S, P, solids, hooks = {}) {
     box(bx2 - 0.45, z, bx2 - 0.02, z + 0.45, S.low ? 0 : 0.12, 0.5, wood, true);
     cyl(bx2 - 0.22, z + 0.22, 0.07, 0.09, 0.5, 0.75, mat(S.shade, 0.6)); ball(bx2 - 0.22, 0.8, z + 0.22, 0.03, new THREE.MeshBasicMaterial({ color: S.lamp }));
   }
-  box(7.8, 3.9, 9.6, 6.6, 0.002, 0.012, mat(S.rug, 1));
-  // wardrobe on the left wall
-  box(7.3, 3.7, 7.92, 5.7, 0, 2.4, mat(S.id === 'scandi' ? 0xf4f2ec : S.id === 'loft' ? 0x26282b : S.id === 'lviv' ? 0xf4efe6 : 0xd9cbb5, 0.6), true);
-  for (const z of [4.2, 4.7, 5.2]) box(7.92, z - 0.003, 7.93, z + 0.003, 0.05, 2.35, mat(0x333333, 0.6));
+  box(7.8, 4.3, 9.6, 7.0, 0.002, 0.012, mat(S.rug, 1));
+  // wardrobe along the wall by the door (right of the switch, under the AC outlet) — the left side of the room stays a free path to the balcony
+  box(8.52, 2.96, W - 0.01, 3.56, 0, 2.25, mat(S.id === 'scandi' ? 0xf4f2ec : S.id === 'loft' ? 0x26282b : S.id === 'lviv' ? 0xf4efe6 : 0xd9cbb5, 0.6), true);
+  for (const x of [9.11, 9.7]) box(x - 0.003, 3.56, x + 0.003, 3.57, 0.05, 2.2, mat(0x333333, 0.6));
+  for (const x of [9.0, 9.22, 9.59, 9.81]) box(x - 0.008, 3.57, x + 0.008, 3.6, 0.95, 1.35, mat(0xb9bec4, 0.25, 0.9)); // handles
 
   // ---- hall: wardrobe, bench, round mirror ----
   box(4.35, 0.01, 5.95, 0.6, 0, 2.5, mat(S.id === 'loft' ? 0x26282b : S.upper, 0.55), true);
