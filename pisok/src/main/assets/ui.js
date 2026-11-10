@@ -343,6 +343,17 @@ function buildScenes(){
   for(const [id,name,desc] of SCENE_LIST){ const b=document.createElement("button"); b.className="scene"; b.innerHTML=`<b>${name}</b><span>${desc}</span>`;
     b.onclick=()=>{ snap(); loadScene(id); saveWorld(); $("panel").classList.remove("open"); toast(name); if (sceneSky!==null && skyNow()!==sceneSky) setSky(sceneSky,true); }; box.appendChild(b); }
 }
+function newWorld(biome){
+  snap(); const w=genWorld(0,biome); saveWorld(); $("panel").classList.remove("open");
+  toast(`${w.name} · світ №${w.seed}. ${w.desc}`); tick(12);
+}
+function buildGens(){
+  const box=$("gens"); box.innerHTML="";
+  const any=document.createElement("button"); any.className="scene gen"; any.innerHTML="<b>⚄ Будь-який</b><span>Сюрприз: щоразу інший краєвид</span>"; any.onclick=()=>newWorld(); box.appendChild(any);
+  for(const id of BIOME_IDS){ const B=BIOMES[id], b=document.createElement("button"); b.className="scene"; b.innerHTML=`<b>${B.name}</b><span>${B.desc}</span>`;
+    b.onclick=()=>newWorld(id); box.appendChild(b); }
+}
+$("btnGen").onclick=()=>newWorld();
 function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); }
 function unb64(s){ const b=atob(s), u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
 function snapshot(){ // types + whatever per-cell state matters across a save (clone memory, plant growth)
@@ -381,12 +392,12 @@ function renderDiary(){
 
 /* ================= start ================= */
 const Q=new URLSearchParams(location.search);
-function start(){ makeWorld(); if (Q.get("scene")) loadScene(Q.get("scene")); else if (!restore(store.get("world",null))) loadScene("demo"); }
+function start(){ makeWorld(); if (Q.get("gen")) genWorld(+Q.get("gen"),Q.get("biome")); else if (Q.get("scene")) loadScene(Q.get("scene")); else if (!restore(store.get("world",null))) loadScene("demo"); }
 let resizeT; addEventListener("resize",()=>{ clearTimeout(resizeT); resizeT=setTimeout(()=>{ saveWorld(); start(); },300); });
 document.addEventListener("visibilitychange",()=>{ if (document.hidden) saveWorld(); });
 setInterval(saveWorld,15000);
 start(); if (Q.get("view")) view=+Q.get("view"); if (Q.get("sky")) skyMode=+Q.get("sky");
-buildDock(); applyGravity(); buildScenes(); renderDiary(); $("btnUndo").disabled=true;
+buildDock(); applyGravity(); buildScenes(); buildGens(); renderDiary(); $("btnUndo").disabled=true;
 let acc=0;
 function loop(){
   requestAnimationFrame(loop);
