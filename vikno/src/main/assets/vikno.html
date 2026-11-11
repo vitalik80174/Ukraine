@@ -15,7 +15,7 @@
 [hidden]{display:none!important}
 html,body{margin:0;height:100%;overflow:hidden;background:#000;color:var(--fg);font:15px/1.45 var(--f);-webkit-tap-highlight-color:transparent;user-select:none}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
-.shade{position:fixed;left:0;bottom:0;width:70vw;height:42vh;pointer-events:none;background:radial-gradient(ellipse at 0% 100%,rgba(0,0,0,.34),rgba(0,0,0,0) 70%);transition:opacity .8s}
+.shade{position:fixed;left:0;bottom:0;width:70vw;height:52vh;pointer-events:none;background:radial-gradient(ellipse at 0% 100%,rgba(0,0,0,.42),rgba(0,0,0,0) 72%);transition:opacity .8s}
 .hud{position:fixed;left:max(28px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));pointer-events:none;text-shadow:0 2px 18px rgba(0,0,0,.45);transition:opacity .8s}
 .clock{font:200 min(16vw,128px)/0.95 var(--f);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .clock small{font-size:.38em;font-weight:300;opacity:.7;margin-left:.08em}
@@ -55,6 +55,24 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .entry .d{color:var(--warm);font-size:12px;font-weight:600;letter-spacing:.04em}
 .entry p{margin:6px 0 0;color:var(--dim);font-size:13.5px}
 .close{position:absolute;top:max(14px,env(safe-area-inset-top));right:12px;background:none;border:0;color:var(--dim);font-size:26px;cursor:pointer;padding:6px 10px;line-height:1}
+.fc{display:flex;gap:min(2.6vw,18px);margin-top:12px;font-size:min(2.9vw,14px);color:var(--dim);font-variant-numeric:tabular-nums}
+.fc div{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:2.6em}
+.fc div b{font-weight:500;color:var(--fg)}
+.fc svg{width:min(5.4vw,30px);height:min(5.4vw,30px);filter:drop-shadow(0 1px 6px rgba(0,0,0,.35))}
+.fc div.wet b{color:#a9d4ff}
+.hint{font-size:min(3vw,15px);color:var(--fg);opacity:.85;margin-top:8px}
+.hint:empty{display:none}
+.days{display:flex;flex-direction:column;gap:6px}
+.day{display:grid;grid-template-columns:5.2em 34px 1fr auto;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;color:var(--dim);font-size:13.5px}
+.day b{color:var(--fg);font-weight:600}
+.day svg{width:30px;height:30px}
+.day .t{color:var(--fg);font-variant-numeric:tabular-nums}
+.day .pp{color:#a9d4ff;font-size:12.5px}
+.hours{display:grid;grid-template-columns:repeat(6,1fr);gap:4px 2px;margin-bottom:10px;font-size:12.5px;color:var(--dim);text-align:center}
+.hours div{display:flex;flex-direction:column;align-items:center;gap:1px}
+.hours b{color:var(--fg);font-weight:500}
+.hours svg{width:26px;height:26px}
+.hours i{font-style:normal;color:#a9d4ff;font-size:11px;min-height:1.2em}
 .foot{color:var(--dim);font-size:11.5px;margin-top:12px}
 </style>
 </head>
@@ -65,6 +83,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="hud" id="hud">
   <div class="clock" id="clock">--:--</div>
   <div class="line" id="line">Вікно відчиняється…</div>
+  <div class="hint" id="hint"></div>
+  <div class="fc" id="fc"></div>
 </div>
 <div class="toast" id="toast" style="opacity:0"></div>
 <button class="menuBtn" id="menuBtn" aria-label="Меню">⋯</button>
@@ -90,6 +110,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <label class="opt"><span>Гучність</span><input type="range" class="vol" id="optVolume" min="0" max="100" step="1"></label>
     <div class="opt"><span>Заставка на зарядці<em>Налаштування → Дисплей → Заставка → «Вікно»</em></span></div>
   </div>
+
+  <h2>Погода у Львові</h2>
+  <div class="hours" id="hours"></div>
+  <div class="days" id="days"><div class="card2">Прогноз з'явиться, щойно планшет вийде в інтернет. Потім він збережеться й без мережі.</div></div>
+  <label class="opt"><span>Прогноз під годинником<em>Найближчі години й підказка, коли почнеться чи вщухне дощ</em></span><span class="switch"><input type="checkbox" id="optFc"><i></i></span></label>
 
   <h2>Цікавинка дня</h2>
   <div class="card2" id="fact"></div>
@@ -176,10 +201,17 @@ if (Q.get("wx") && PRESETS[Q.get("wx")]) weather = Object.assign({t:Date.now()},
 async function loadWeather(){
   if (Q.get("wx")) return;
   try{
-    const u=`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m,rain,showers,snowfall&timezone=auto`;
+    const u=`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m,rain,showers,snowfall`+
+      `&hourly=temperature_2m,weather_code,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=4&timeformat=unixtime&timezone=auto`;
     const r=await fetch(u); const j=await r.json(); const c=j.current;
     weather={t:Date.now(),code:c.weather_code,cloud:c.cloud_cover,wind:c.wind_speed_10m,temp:c.temperature_2m,rain:(c.rain||0)+(c.showers||0),snow:c.snowfall||0};
     store.set("weather", weather);
+    try{ const h=j.hourly, dd=j.daily;
+      forecast={t:Date.now(),
+        hours:h.time.map((t,i)=>({t:t*1000,code:h.weather_code[i],temp:h.temperature_2m[i],pp:h.precipitation_probability?h.precipitation_probability[i]||0:0})),
+        days:dd.time.map((t,i)=>({t:t*1000,code:dd.weather_code[i],max:dd.temperature_2m_max[i],min:dd.temperature_2m_min[i],pp:dd.precipitation_probability_max?dd.precipitation_probability_max[i]||0:0}))};
+      store.set("forecast", forecast); renderForecast();
+    }catch(e){}
   }catch(e){ /* offline: keep the last known sky */ }
 }
 function wx(){
@@ -193,6 +225,79 @@ function wx(){
     rain: rainy && !snowy ? intensity : 0, snow: snowy ? intensity : 0,
     fog: (c===45||c===48) ? 1 : 0, storm: c>=95, code:c
   };
+}
+
+/* ============ forecast: the next hours under the clock, three days in the menu ============ */
+let forecast = store.get("forecast", null);
+const WET=[51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99], SNOWY=[71,73,75,77,85,86];
+function kindOf(code, temp){
+  if (code>=95) return "storm";
+  if (SNOWY.includes(code) || (WET.includes(code) && temp<=0)) return "snow";
+  if (WET.includes(code)) return "rain";
+  if (code===45||code===48) return "fog";
+  if (code===3) return "cloud";
+  if (code===2) return "partly";
+  return "clear";
+}
+function icon(kind, night){
+  const sun='<circle cx="12" cy="12" r="4.6" fill="#ffd27a"/><g stroke="#ffd27a" stroke-width="1.7" stroke-linecap="round">'+
+    [0,45,90,135,180,225,270,315].map(a=>{const r=a*Math.PI/180,c=Math.cos(r),s=Math.sin(r);return `<line x1="${12+c*7}" y1="${12+s*7}" x2="${12+c*9.4}" y2="${12+s*9.4}"/>`;}).join("")+'</g>';
+  const moon='<path d="M15.5 4.2a8 8 0 1 0 4.6 12.6A6.6 6.6 0 0 1 15.5 4.2z" fill="#e9e6ff"/>';
+  const cloud=(c="#e6eaf2",dy=0)=>`<path transform="translate(0 ${dy})" d="M7 18.5h10.2a3.8 3.8 0 0 0 .4-7.6 5.3 5.3 0 0 0-10.1-1.3A4.5 4.5 0 0 0 7 18.5z" fill="${c}"/>`;
+  const small=night?'<g transform="translate(-3 -4) scale(.75)">'+moon+'</g>':'<g transform="translate(-2.5 -3) scale(.72)">'+sun+'</g>';
+  let b="";
+  if (kind==="clear") b=night?moon:sun;
+  else if (kind==="partly") b=small+cloud("#eef1f6",1.5);
+  else if (kind==="cloud") b=cloud("#c9d0dc",-3)+'<g transform="translate(3 2) scale(.85)">'+cloud("#e6eaf2")+'</g>';
+  else if (kind==="fog") b='<g stroke="#d6dbe4" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="2.5" y1="12.5" x2="17.5" y2="12.5"/><line x1="6" y1="17" x2="21" y2="17"/></g>';
+  else if (kind==="rain") b=cloud("#d3d9e4",-4)+'<g stroke="#7fc0ff" stroke-width="1.8" stroke-linecap="round"><line x1="8.5" y1="17" x2="7.3" y2="20.5"/><line x1="12.5" y1="17" x2="11.3" y2="21.5"/><line x1="16.5" y1="17" x2="15.3" y2="20.5"/></g>';
+  else if (kind==="snow") b=cloud("#e2e7ef",-4)+'<g fill="#ffffff"><circle cx="8.3" cy="18.6" r="1.3"/><circle cx="12.4" cy="20.6" r="1.3"/><circle cx="16.4" cy="18.6" r="1.3"/></g>';
+  else if (kind==="storm") b=cloud("#aab2c2",-4)+'<path d="M12.8 13.5 9.6 18.6h2.6l-1.3 4.2 4.4-6h-2.7l1.6-3.3z" fill="#ffd34d"/>';
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${b}</svg>`;
+}
+const isNightAt=t=>sunPos(new Date(t)).el<0;
+const deg=v=>`${Math.round(v)>0?"+":""}${Math.round(v)}°`;
+const hh2=t=>String(new Date(t).getHours()).padStart(2,"0")+":00";
+const DOW2=["Нд","Пн","Вт","Ср","Чт","Пт","Сб"];
+const WORD={clear:"ясно",partly:"мінлива хмарність",cloud:"хмарно",fog:"туман",rain:"дощ",snow:"сніг",storm:"гроза"};
+function demoForecast(){ // previews (?wx=…) get a believable story instead of a network call
+  const base=new Date(now()); base.setMinutes(0,0,0); const t0=base.getTime(), P=PRESETS[Q.get("wx")]||PRESETS.cloudy;
+  const story={clear:[0,0,1,2,2,3,3,61,61,3,2,1], cloudy:[3,3,3,61,63,63,3,3,2,2,1,0], rain:[63,63,61,61,3,3,2,2,1,0,0,0],
+    snow:[73,73,71,71,3,3,3,2,2,71,73,73], fog:[45,45,45,3,3,2,2,1,0,0,0,0], storm:[95,95,63,61,3,3,2,2,1,1,0,0]}[Q.get("wx")]||[3,3,2,2,1,1,0,0,0,0,0,0];
+  const hours=[]; for(let i=-2;i<74;i++){ const c=story[Math.max(0,i)%12]; hours.push({t:t0+i*3600e3,code:c,temp:P.temp+3*Math.sin((base.getHours()+i-9)/24*Math.PI*2),pp:WET.includes(c)||SNOWY.includes(c)?80:10}); }
+  const days=[]; const d0=new Date(base); d0.setHours(0,0,0,0);
+  [[Q.get("wx")==="clear"?1:P.code,0],[61,0],[3,1],[0,-2]].forEach(([c,k],i)=>days.push({t:d0.getTime()+i*864e5,code:c,max:P.temp+4+k,min:P.temp-3+k,pp:WET.includes(c)?70:5}));
+  return {t:Date.now(),hours,days};
+}
+if (Q.get("wx")) forecast=demoForecast();
+let showFc = store.get("fc", true);
+function rainHint(hours, nowT){
+  const next=hours.filter(h=>h.t>=nowT-1800e3 && h.t<nowT+12*3600e3); if (next.length<2) return "";
+  const wetH=h=>WET.includes(h.code)||SNOWY.includes(h.code)||h.pp>=70, cur=wetH(next[0]);
+  const snowy=h=>kindOf(h.code,h.temp)==="snow";
+  if (!cur){ const k=next.findIndex(wetH); if (k>0){ const h=next[k]; return `${snowy(h)?"Сніг":"Дощ"} почнеться близько ${hh2(h.t)}${h.pp?` · ${h.pp}%`:""}`; } }
+  else { const k=next.findIndex(h=>!wetH(h)); if (k>0) return `${snowy(next[0])?"Сніг":"Дощ"} ущухне близько ${hh2(next[k].t)}`; return `${snowy(next[0])?"Сніг":"Дощ"} до вечора`; }
+  const d=new Date(nowT); if (d.getHours()>=18){ const tm=(forecast.days||[]).find(x=>new Date(x.t).getDate()!==d.getDate() && x.t>nowT-864e5);
+    if (tm) return `Завтра ${deg(tm.min)}…${deg(tm.max)}, ${WORD[kindOf(tm.code,tm.max)]}`; }
+  return "";
+}
+function renderForecast(){
+  const fc=$("fc"), hint=$("hint");
+  if (!forecast || !forecast.hours){ fc.innerHTML=""; hint.textContent=""; return; }
+  const nowT=now().getTime(), fresh=Date.now()-forecast.t<36*3600e3;
+  const up=forecast.hours.filter(h=>h.t>nowT-1800e3);
+  const slots=[]; for(let i=1;i<up.length && slots.length<6;i+=2) slots.push(up[i]);
+  const on=showFc && fresh && !lapse && slots.length>2;
+  fc.innerHTML = on ? slots.map(h=>{const k=kindOf(h.code,h.temp);return `<div class="${k==="rain"||k==="snow"||k==="storm"?"wet":""}"><span>${new Date(h.t).getHours()}</span>${icon(k,isNightAt(h.t))}<b>${deg(h.temp)}</b></div>`;}).join("") : "";
+  hint.textContent = on ? rainHint(forecast.hours, nowT) : "";
+  // the menu: 12 hours and the next days
+  const h12=up.slice(1,13);
+  $("hours").innerHTML = fresh ? h12.map(h=>`<div><span>${new Date(h.t).getHours()}</span>${icon(kindOf(h.code,h.temp),isNightAt(h.t))}<b>${deg(h.temp)}</b><i>${h.pp>=30?h.pp+"%":""}</i></div>`).join("") : "";
+  const today=new Date(nowT); today.setHours(0,0,0,0);
+  const days=(forecast.days||[]).filter(x=>x.t>=today.getTime()-3600e3).slice(0,4);
+  if (days.length) $("days").innerHTML=days.map((x,i)=>{const k=kindOf(x.code,x.max), dt=new Date(x.t);
+    return `<div class="day"><span><b>${i===0?"Сьогодні":i===1?"Завтра":DOW2[dt.getDay()]+", "+dt.getDate()}</b></span>${icon(k,false)}<span><span class="t">${deg(x.min)}…${deg(x.max)}</span> · ${WORD[k]}</span><span class="pp">${x.pp>=20?"опади "+x.pp+"%":""}</span></div>`;}).join("")+
+    `<div class="foot" style="margin-top:2px">Оновлено о ${new Date(forecast.t).toTimeString().slice(0,5)}${fresh?"":" — давно, планшет без інтернету"}</div>`;
 }
 
 /* ============ seasons ============ */
@@ -461,7 +566,7 @@ function frame(ms){
   if (W_.storm) lightning(dt);
 
   // HUD
-  if (ms-lastHud>500){ lastHud=ms; hud(d, W_); }
+  if (ms-lastHud>500){ lastHud=ms; hud(d, W_); if (d.getMinutes()!==hud.fcMin){ hud.fcMin=d.getMinutes(); renderForecast(); } }
   nightDim(night);
 }
 
@@ -592,6 +697,7 @@ $("optClock").checked=settings.clock; $("optDim").checked=settings.dim;
 $("optAwake").checked = app ? app.getAwake() : true;
 $("optClock").onchange=e=>{ settings.clock=e.target.checked; store.set("clock",settings.clock); applySettings(); };
 $("optDim").onchange=e=>{ settings.dim=e.target.checked; store.set("dim",settings.dim); if(!settings.dim&&app){app.brightness(-1);dimmed=false;} };
+$("optFc").checked=showFc; $("optFc").onchange=e=>{ showFc=e.target.checked; store.set("fc",showFc); renderForecast(); };
 $("optAwake").onchange=e=>{ if(app) app.setAwake(e.target.checked); };
 $("lapse").onclick=()=>{ const s=new Date(); s.setHours(0,0,0,0); lapse={from:Date.now(),simFrom:s.getTime(),rate:24*60}; closePanel(); toast("Доба за хвилину"); setTimeout(()=>{ if(lapse&&lapse.rate===1440){ lapse=null; toast("Знову зараз"); } },60000); };
 $("now").onclick=()=>{ lapse=null; closePanel(); toast("Знову зараз"); };
