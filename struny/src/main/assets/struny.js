@@ -245,6 +245,20 @@ function drawString(s, t) {
   // pegs
   cx.fillStyle = "rgba(255,244,220,.85)";
   cx.beginPath(); cx.arc(s.x1, s.y1, 3.2, 0, 7); cx.arc(x2, y2, 3.2, 0, 7); cx.fill();
+  if (tool === "move" || s.lift) { // grab handles
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3 + s.id);
+    cx.strokeStyle = noteColor(s.semi, s.lift ? 0.95 : 0.35 + 0.25 * pulse, 74); cx.lineWidth = s.lift ? 2.4 : 1.6;
+    cx.beginPath(); cx.arc(s.x1, s.y1, s.lift ? 13 : 9, 0, 7); cx.stroke();
+    cx.beginPath(); cx.arc(x2, y2, s.lift ? 13 : 9, 0, 7); cx.stroke();
+  }
+  if (s.lift) noteTag(s.semi, (s.x1 + s.x2) / 2, (s.y1 + s.y2) / 2 - 22);
+}
+function noteTag(semi, lx, ly) {
+  cx.font = "600 15px Golos Text, Roboto, sans-serif"; cx.textAlign = "center";
+  const nm = noteName(semi), tw = cx.measureText(nm).width + 18;
+  cx.fillStyle = "rgba(10,11,22,.72)"; cx.beginPath();
+  if (cx.roundRect) cx.roundRect(lx - tw / 2, ly - 16, tw, 24, 12); else cx.rect(lx - tw / 2, ly - 16, tw, 24);
+  cx.fill(); cx.fillStyle = noteColor(semi, 1, 76); cx.fillText(nm, lx, ly + 1);
 }
 function drawSource(e, t) {
   const spb = 60 / TEMPOS[tempoIx], ph = ((t - beatT0) / spb) % e.period, pr = (ph + ((e.period - (e.id % e.period)) % e.period)) % e.period / e.period;
@@ -264,6 +278,10 @@ function drawSource(e, t) {
     cx.fillStyle = "rgba(255,244,220,.7)"; cx.beginPath(); cx.arc(e.x + Math.cos(a) * 21, e.y + Math.sin(a) * 21, 1.6, 0, 7); cx.fill();
   }
   cx.fillStyle = "#fff4dc"; cx.beginPath(); cx.arc(e.x, e.y, 5 + 3 * e.flash, 0, 7); cx.fill();
+  if (tool === "move" || e.lift) {
+    cx.strokeStyle = `rgba(242,180,92,${e.lift ? 0.95 : 0.45 + 0.2 * Math.sin(t * 3 + e.id)})`; cx.lineWidth = 1.8; cx.setLineDash([3, 5]);
+    cx.beginPath(); cx.arc(e.x, e.y, e.lift ? 30 : 27, 0, 7); cx.stroke(); cx.setLineDash([]);
+  }
   if (e.vx || e.vy) { // aim arrow
     const L = Math.hypot(e.vx, e.vy), ux = e.vx / L, uy = e.vy / L;
     cx.strokeStyle = "rgba(255,244,220,.45)"; cx.lineWidth = 2;
@@ -323,12 +341,7 @@ function render(t, dt) {
     const L = Math.hypot(preview.x2 - preview.x1, preview.y2 - preview.y1), ok = L >= 36, semi = noteForLength(L);
     cx.setLineDash([6, 8]); cx.lineWidth = 2; cx.strokeStyle = ok ? noteColor(semi, 0.9) : "rgba(255,255,255,.35)";
     cx.beginPath(); cx.moveTo(preview.x1, preview.y1); cx.lineTo(preview.x2, preview.y2); cx.stroke(); cx.setLineDash([]);
-    if (ok) {
-      cx.font = "600 15px Golos Text, Roboto, sans-serif"; cx.textAlign = "center";
-      const lx = (preview.x1 + preview.x2) / 2, ly = (preview.y1 + preview.y2) / 2 - 18;
-      cx.fillStyle = "rgba(10,11,22,.7)"; const tw = cx.measureText(noteName(semi)).width + 18; cx.fillRect(lx - tw / 2, ly - 16, tw, 24);
-      cx.fillStyle = noteColor(semi, 1, 76); cx.fillText(noteName(semi), lx, ly + 1);
-    }
+    if (ok) noteTag(semi, (preview.x1 + preview.x2) / 2, (preview.y1 + preview.y2) / 2 - 18);
   }
   if (preview && preview.kind === "aim") {
     const dx = preview.x2 - preview.x1, dy = preview.y2 - preview.y1;
@@ -361,6 +374,36 @@ function distSeg(px, py, s) {
 }
 function nearString(x, y, r) { let best = null, bd = r; for (const s of strings) { const [d] = distSeg(x, y, s); if (d < bd) { bd = d; best = s; } } return best; }
 function nearSource(x, y, r) { return sources.find(e => Math.hypot(e.x - x, e.y - y) < r) || null; }
+/* ---- rearranging: grab a peg (retune), a whole string, or a source ---- */
+function nearPeg(x, y, r) {
+  let best = null, bd = r;
+  for (const s of strings) for (const end of [1, 2]) { const d = Math.hypot(s["x" + end] - x, s["y" + end] - y); if (d < bd) { bd = d; best = { s, end }; } }
+  return best;
+}
+function grabAt(x, y) {
+  const e = nearSource(x, y, 30); if (e) return { kind: "src", e, dx: e.x - x, dy: e.y - y };
+  const p = nearPeg(x, y, 24); if (p) return { kind: "peg", s: p.s, end: p.end };
+  const s = nearString(x, y, 18); if (s) return { kind: "body", s, ax: s.x1 - x, ay: s.y1 - y, bx: s.x2 - x, by: s.y2 - y };
+  return null;
+}
+const clampX = v => Math.max(6, Math.min(W - 6, v)), clampY = v => Math.max(6, Math.min(H - 6, v));
+function dragTo(g, x, y) {
+  if (g.kind === "src") { g.e.x = clampX(x + g.dx); g.e.y = clampY(y + g.dy); return; }
+  const s = g.s;
+  if (g.kind === "body") { s.x1 = x + g.ax; s.y1 = y + g.ay; s.x2 = x + g.bx; s.y2 = y + g.by; return; }
+  // peg: snap to another string's peg so shapes close neatly; never shorter than 36 px
+  let px = clampX(x), py = clampY(y);
+  const o = g.end === 1 ? 2 : 1;
+  for (const t of strings) if (t !== s) for (const k of [1, 2]) if (Math.hypot(t["x" + k] - px, t["y" + k] - py) < 14) { px = t["x" + k]; py = t["y" + k]; }
+  const ox = s["x" + o], oy = s["y" + o], L = Math.hypot(px - ox, py - oy);
+  if (L < 36) { const k = 36 / (L || 1); px = ox + (px - ox) * k; py = oy + (py - oy) * k; }
+  s["x" + g.end] = px; s["y" + g.end] = py;
+  const semi = noteForLength(len(s));
+  if (semi !== s.semi) { // retuning click: the new note sounds softly as you stretch the string
+    s.semi = semi; const tt = now();
+    if (tt - (g.tickT || 0) > 0.07) { g.tickT = tt; pluck(s, 0.22, px, py); }
+  }
+}
 function strum(x0, y0, x1, y1) {
   const sp = Math.hypot(x1 - x0, y1 - y0);
   for (const s of strings) { const p = segCross(x0, y0, x1, y1, s.x1, s.y1, s.x2, s.y2); if (p) pluck(s, Math.min(1, 0.25 + sp / 60), p[0], p[1]); }
@@ -379,9 +422,14 @@ cv.addEventListener("pointerdown", ev => {
   const x = ev.clientX, y = ev.clientY;
   cv.setPointerCapture(ev.pointerId);
   const st = { x0: x, y0: y, x, y, moved: false, t0: now() };
-  if (tool === "string") {
-    const s = nearString(x, y, 14);
-    if (s) { st.mode = "tap"; st.target = s; } else { st.mode = "draw"; preview = { kind: "string", x1: x, y1: y, x2: x, y2: y }; st.prev = preview; }
+  if (tool === "move") {
+    const g = grabAt(x, y);
+    if (g) { st.mode = "drag"; st.grab = g; if (g.kind !== "src") g.s.lift = 1; else g.e.lift = 1; }
+    else { st.mode = "none"; toast("Візьми кілочок, струну або джерело"); }
+  } else if (tool === "string") {
+    const pg = nearPeg(x, y, 18), s = pg ? null : nearString(x, y, 14);
+    if (pg) { st.mode = "drag"; st.grab = { kind: "peg", s: pg.s, end: pg.end }; st.tapPluck = true; pg.s.lift = 1; }
+    else if (s) { st.mode = "tap"; st.target = s; } else { st.mode = "draw"; preview = { kind: "string", x1: x, y1: y, x2: x, y2: y }; st.prev = preview; }
   } else if (tool === "source") {
     const e = nearSource(x, y, 28);
     st.mode = "aim"; st.src = e; const ox = e ? e.x : x, oy = e ? e.y : y;
@@ -396,6 +444,7 @@ cv.addEventListener("pointermove", ev => {
   const x = ev.clientX, y = ev.clientY;
   if (Math.hypot(x - st.x0, y - st.y0) > 8) st.moved = true;
   if (st.mode === "draw" || st.mode === "aim") { st.prev.x2 = x; st.prev.y2 = y; }
+  else if (st.mode === "drag") { if (st.moved) dragTo(st.grab, x, y); }
   else if (st.mode === "play") { strum(st.x, st.y, x, y); }
   else if (st.mode === "erase") { eraseTrail.push(x, y); if (eraseTrail.length > 40) eraseTrail.splice(0, 2); eraseAt(x, y); }
   st.x = x; st.y = y;
@@ -416,10 +465,17 @@ function endPtr(ev) {
       save();
     } else addSource(st.ox, st.oy, far ? dx * 3 : 0, far ? dy * 3 : 0, 2);
     preview = null;
+  } else if (st.mode === "drag") {
+    const g = st.grab, obj = g.kind === "src" ? g.e : g.s; obj.lift = 0;
+    if (!st.moved && g.kind !== "src") { const [, px, py] = distSeg(x, y, g.s); pluck(g.s, 0.5, px, py); }
+    else if (st.moved) { if (g.kind !== "src") { g.s.semi = noteForLength(len(g.s)); pluck(g.s, 0.4, (g.s.x1 + g.s.x2) / 2, (g.s.y1 + g.s.y2) / 2); } warmCache(); save(); }
   } else if (st.mode === "erase") { if (!ptrs.size) eraseTrail = []; }
 }
 cv.addEventListener("pointerup", endPtr);
-cv.addEventListener("pointercancel", ev => { ptrs.delete(ev.pointerId); preview = null; eraseTrail = []; });
+cv.addEventListener("pointercancel", ev => {
+  const st = ptrs.get(ev.pointerId); if (st && st.mode === "drag") { (st.grab.kind === "src" ? st.grab.e : st.grab.s).lift = 0; save(); }
+  ptrs.delete(ev.pointerId); preview = null; eraseTrail = [];
+});
 
 let started = false;
 function firstTouch() {
@@ -535,4 +591,4 @@ function loop() {
   render(t, dt);
 }
 requestAnimationFrame(loop);
-window.__struny = { get hits() { return HITS; }, get strings() { return strings; }, get balls() { return balls; }, loadScene, strum, setScale };
+window.__struny = { get hits() { return HITS; }, get strings() { return strings; }, get balls() { return balls; }, loadScene, strum, setScale, grabAt, dragTo, get sources() { return sources; } };
