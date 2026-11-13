@@ -133,12 +133,12 @@ function makeGround(river) {
 
 /* ================= levels ================= */
 const LEVELS = [
-  { id: 'pyramid', name: 'Піраміда', desc: 'Розминка: кам\'яні сходи до неба', ammo: { ball: 6, bomb: 3, meteor: 0, quake: 0, crane: 1 }, goal: 0.6, cam: [24, 14, 3], build: pyramid },
-  { id: 'house', name: 'Будинок', desc: 'Цегла, бетонні перекриття і скло', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 0, crane: 1 }, goal: 0.7, cam: [24, 9, 3.5], build: house },
-  { id: 'tower', name: 'Вежа', desc: 'Кругла цегляна вежа з зубцями', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 1, crane: 1 }, goal: 0.7, cam: [26, 10, 4.5], build: tower },
-  { id: 'bridge', name: 'Міст', desc: 'Сталеві балки над річкою', ammo: { ball: 4, bomb: 3, meteor: 1, quake: 0, crane: 1 }, goal: 0.65, cam: [26, 9, -1], build: bridge, river: true },
-  { id: 'sky', name: 'Хмарочос', desc: 'Тонкі колони, важкі поверхи', ammo: { ball: 3, bomb: 2, meteor: 1, quake: 1, crane: 1 }, goal: 0.7, cam: [30, 14, 9], build: skyscraper },
-  { id: 'castle', name: 'Замок', desc: 'Мури, вежі й бійниці', ammo: { ball: 6, bomb: 3, meteor: 2, quake: 1, crane: 2 }, goal: 0.7, cam: [34, 16, 3], build: castle }
+  { id: 'pyramid', name: 'Піраміда', desc: 'Розминка: кам\'яні сходи до неба', ammo: { ball: 6, bomb: 3, meteor: 0, quake: 0, crane: 1, rocket: 1 }, goal: 0.6, cam: [24, 14, 3], build: pyramid },
+  { id: 'house', name: 'Будинок', desc: 'Цегла, бетонні перекриття і скло', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 0, crane: 1, rocket: 1 }, goal: 0.7, cam: [24, 9, 3.5], build: house },
+  { id: 'tower', name: 'Вежа', desc: 'Кругла цегляна вежа з зубцями', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 1, crane: 1, rocket: 1 }, goal: 0.7, cam: [26, 10, 4.5], build: tower },
+  { id: 'bridge', name: 'Міст', desc: 'Сталеві балки над річкою', ammo: { ball: 4, bomb: 3, meteor: 1, quake: 0, crane: 1, rocket: 2 }, goal: 0.65, cam: [26, 9, -1], build: bridge, river: true },
+  { id: 'sky', name: 'Хмарочос', desc: 'Тонкі колони, важкі поверхи', ammo: { ball: 3, bomb: 2, meteor: 1, quake: 1, crane: 1, rocket: 2 }, goal: 0.7, cam: [30, 14, 9], build: skyscraper },
+  { id: 'castle', name: 'Замок', desc: 'Мури, вежі й бійниці', ammo: { ball: 6, bomb: 3, meteor: 2, quake: 1, crane: 2, rocket: 2 }, goal: 0.7, cam: [34, 16, 3], build: castle }
 ];
 
 function pyramid() {
@@ -247,7 +247,7 @@ function clearWorld() {
   for (const p of projectiles) { world.removeBody(p.body); scene.remove(p.mesh); }
   for (const b of bombs) scene.remove(b.mesh);
   for (const m of Object.values(meshes)) { scene.remove(m); m.material.dispose(); m.dispose(); }
-  removeCrane();
+  removeCrane(); removeRocket();
   if (groundBody) world.removeBody(groundBody);
   if (groundGroup) scene.remove(groundGroup);
   blocks = []; meshes = {}; projectiles = []; bombs = []; quake = null;
@@ -258,7 +258,7 @@ function startLevel(lv, isFree) {
   particles.clear(); shake = 0;
   level = lv; free = !!isFree; ended = false; shots = 0; lastShot = 0; simTime = 0;
   ammo = { ...lv.ammo };
-  if (free) ammo = { ball: Infinity, bomb: Infinity, meteor: Infinity, quake: Infinity, crane: Infinity };
+  if (free) ammo = { ball: Infinity, bomb: Infinity, meteor: Infinity, quake: Infinity, crane: Infinity, rocket: Infinity };
   makeGround(!!lv.river);
   lv.build(); materialize(); recReset();
   orbit.r = lv.cam[0]; orbit.target.set(0, lv.cam[2], 0); orbit.theta = 0.55; orbit.phi = Math.atan2(lv.cam[0], lv.cam[1] * 1.3);
@@ -292,7 +292,8 @@ const WEAPONS = [
   { id: 'bomb', name: 'Бомба', icon: '✸' },
   { id: 'meteor', name: 'Метеорит', icon: '☄' },
   { id: 'quake', name: 'Землетрус', icon: '≋' },
-  { id: 'crane', name: 'Баба', icon: '⚲' }
+  { id: 'crane', name: 'Баба', icon: '⚲' },
+  { id: 'rocket', name: 'Ракета', icon: '➶' }
 ];
 const ballGeo = new THREE.SphereGeometry(1, 24, 16);
 const ballMat = new THREE.MeshStandardMaterial({ color: 0x2b2d33, roughness: 0.35, metalness: 0.7 });
@@ -310,6 +311,7 @@ function aim(px, py) {
 }
 function fire(px, py) {
   if (state !== 'play' || ended) return;
+  if (weapon === 'rocket') { if (!rocket) { if (ammo.rocket > 0) launchRocket(px, py); else toast('Ракети закінчились — оберіть іншу зброю'); } return; }
   if (weapon === 'crane') { if (crane && !crane.leaving) return; if (ammo.crane > 0) callCrane(); else toast('Кран уже поїхав — оберіть іншу зброю'); return; }
   if (!(ammo[weapon] > 0)) { toast('Цей набій закінчився — оберіть інший'); return; }
   const { ray, hit } = aim(px, py);
@@ -393,6 +395,83 @@ function impact(e) {
   const bi = e.contact.bi, ri = e.contact.ri, x = bi.position.x + ri.x, y = bi.position.y + ri.y, z = bi.position.z + ri.z;
   dustPuff(x, y, z, v); recEvent('dust', x, y, z, v);
   if (rnd() < 0.3) sfx.thud(Math.min(1, v / 25));
+}
+
+
+/* ================= guided rocket =================
+   Launched from just below the camera; while your finger is on the screen the rocket turns toward
+   whatever is under it (limited turn rate, so it draws curves), leaves a smoke trail and blows up
+   on the first contact — or in the air when the fuel runs out. */
+const ROCKET_SPEED = 24, ROCKET_TURN = 2.6, ROCKET_FUEL = 7;
+let rocket = null;
+function buildRocketMesh() {
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xeeeae2, roughness: 0.45, metalness: 0.2 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xd2322a, roughness: 0.45 });
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.9, fog: false });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1.5, 12), white); body.rotation.x = Math.PI / 2; body.castShadow = true; g.add(body);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.55, 12), red); nose.rotation.x = Math.PI / 2; nose.position.z = 1.02; nose.castShadow = true; g.add(nose);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.14, 12), red); band.rotation.x = Math.PI / 2; band.position.z = 0.35; g.add(band);
+  for (let i = 0; i < 4; i++) { const f = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.42, 0.42), red); const a = i * Math.PI / 2;
+    f.position.set(Math.cos(a) * 0.3, Math.sin(a) * 0.3, -0.55); f.rotation.z = a; g.add(f); }
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.9, 10), flameMat); flame.rotation.x = -Math.PI / 2; flame.position.z = -1.2; g.add(flame);
+  g.userData.flame = flame;
+  scene.add(g); return g;
+}
+function aimPoint(px, py, from) {
+  const { ray, hit } = aim(px, py);
+  if (hit) return hit.point.clone();
+  return ray.at(Math.max(30, camera.position.distanceTo(from) + 18), new THREE.Vector3());
+}
+function launchRocket(px, py) {
+  spend();
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+  const start = camera.position.clone().addScaledVector(right, 1.2).add(new THREE.Vector3(0, -1.4, 0));
+  const target = aimPoint(px, py, start);
+  const dir = target.clone().sub(start).normalize(); dir.y += 0.25; dir.normalize();          // starts with a little lift, then curves to the finger
+  const body = new CANNON.Body({ mass: 60, shape: new CANNON.Sphere(0.35), linearDamping: 0 });
+  body.position.set(start.x, start.y, start.z); body.velocity.set(dir.x * ROCKET_SPEED, dir.y * ROCKET_SPEED, dir.z * ROCKET_SPEED);
+  body.allowSleep = false;
+  rocket = { body, mesh: buildRocketMesh(), dir, target, fuel: ROCKET_FUEL, hit: false, steering: true };
+  body.addEventListener('collide', () => { if (rocket && rocket.body === body) rocket.hit = true; });
+  world.addBody(body); buildWeapons();
+  sfx.rocket(); haptic(25); recEvent('launch', start.x, start.y, start.z, 0);
+  if (!store.get('rocketHint', false)) { store.set('rocketHint', true); toast('Ведіть пальцем — ракета полетить, куди вкажете'); }
+}
+function steerRocket(px, py) { if (rocket) { rocket.target = aimPoint(px, py, rocket.body.position); rocket.steering = true; } }
+function removeRocket() {
+  if (!rocket) return;
+  world.removeBody(rocket.body); scene.remove(rocket.mesh);
+  rocket.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  rocket = null;
+}
+const _rd = new THREE.Vector3(), _rz = new THREE.Vector3(0, 0, 1);
+function updateRocket(dt) {
+  if (!rocket) return;
+  const r = rocket, p = r.body.position;
+  if (r.hit || r.fuel <= 0 || p.y < -1.5) { const c = new THREE.Vector3(p.x, Math.max(p.y, 0.3), p.z); removeRocket(); explode(c, 6.5, 21); buildWeapons(); return; }
+  r.fuel -= dt;
+  // turn toward the target, but no faster than ROCKET_TURN rad/s
+  _rd.set(r.target.x - p.x, r.target.y - p.y, r.target.z - p.z);
+  if (_rd.lengthSq() > 0.25) {
+    _rd.normalize();
+    const ang = r.dir.angleTo(_rd), mx = ROCKET_TURN * dt;
+    if (ang > 1e-4) { const axis = new THREE.Vector3().crossVectors(r.dir, _rd); if (axis.lengthSq() < 1e-8) axis.set(0, 1, 0); r.dir.applyAxisAngle(axis.normalize(), Math.min(ang, mx)).normalize(); }
+  }
+  const sp = ROCKET_SPEED * (1 + 0.25 * Math.min(1, (ROCKET_FUEL - r.fuel) / 1.5));
+  r.body.velocity.set(r.dir.x * sp, r.dir.y * sp, r.dir.z * sp);
+  r.mesh.position.set(p.x, p.y, p.z); r.mesh.quaternion.setFromUnitVectors(_rz, r.dir);
+  const fl = r.mesh.userData.flame; fl.scale.set(1, 1, 0.8 + rnd() * 0.6); fl.material.opacity = 0.7 + rnd() * 0.3;
+  rocketTrail(p, r.dir, dt);
+}
+function rocketTrail(p, d, dt) {
+  const n = dt > 0.03 ? 4 : 3;
+  for (let i = 0; i < n; i++) {
+    const k = rnd() * 0.5, x = p.x - d.x * (1.1 + k), y = p.y - d.y * (1.1 + k), z = p.z - d.z * (1.1 + k);
+    particles.spawn(x, y, z, -d.x * 3 + rr(-0.5, 0.5), -d.y * 3 + rr(-0.5, 0.5), -d.z * 3 + rr(-0.5, 0.5), 1, rr(0.55, 0.8), 0.25, 0.95, rr(0.25, 0.45), rr(0.12, 0.25), 0);
+    const g = rr(0.72, 0.88);
+    particles.spawn(x, y, z, rr(-0.4, 0.4), rr(0.1, 0.6), rr(-0.4, 0.4), g, g, g * 0.98, 0.5, rr(0.45, 0.8), rr(1.6, 2.6), 0.02);
+  }
 }
 
 /* ================= crane with a wrecking ball =================
@@ -578,6 +657,7 @@ const sfx = (() => {
     whoosh() { burstN(1.6, 300, 0.4, 2, 'bandpass', 6); },
     rumble() { burstN(4.5, 120, 0.8, 1, 'lowpass', 0.6); },
     clang(k) { const t = performance.now(); if (t - lastThud < 90) return; lastThud = t; tone(220 + k * 90, 140, 0.7, 0.25 + k * 0.3, 'triangle'); tone(523, 470, 0.5, 0.08 + k * 0.1, 'sine'); burstN(0.4, 400 + k * 500, 0.4 + k * 0.4, 1, 'lowpass', 0.3); },
+    rocket() { burstN(2.2, 700, 0.45, 1.5, 'bandpass', 2.5); tone(110, 60, 0.5, 0.35, 'sawtooth'); },
     crane() { tone(70, 90, 1.4, 0.25, 'sawtooth'); burstN(1.4, 900, 0.12, 6, 'bandpass', 1.5); }
   };
 })();
@@ -590,7 +670,7 @@ function haptic(ms) { if (app && store.get('vibro', true)) try { app.tick(ms); }
    around every hit, re-spawning the particles and sounds, while the camera slowly circles. */
 const REC_HZ = 30, REC_N = 240, MAXD = 16;
 const rec = { nb: 0, buf: null, dyn: new Float32Array(REC_N * MAXD * 9), dn: new Uint8Array(REC_N), cr: new Float32Array(REC_N * 14), t: new Float64Array(REC_N), head: 0, count: 0, next: 0, events: [] };
-const SLOW_EV = { shot: 1, tick: 1, whoosh: 1, quake: 1, boom: 1, glass: 1, clang: 1 };
+const SLOW_EV = { shot: 1, tick: 1, whoosh: 1, quake: 1, boom: 1, glass: 1, clang: 1, launch: 1 };
 function recReset() { rec.nb = blocks.length; rec.buf = new Float32Array(REC_N * rec.nb * 7); rec.head = 0; rec.count = 0; rec.next = 0; rec.events = []; }
 function recEvent(kind, x, y, z, a) {
   if (state !== 'play' || !rec.buf) return;
@@ -611,6 +691,7 @@ function recFrame() {
   const put = (k, p, q, s) => { if (n >= MAXD) return; const j = (f * MAXD + n++) * 9; D[j] = k; D[j + 1] = p.x; D[j + 2] = p.y; D[j + 3] = p.z; D[j + 4] = q.x; D[j + 5] = q.y; D[j + 6] = q.z; D[j + 7] = q.w; D[j + 8] = s; };
   for (const pr of projectiles) put(pr.meteor ? 1 : 0, pr.body.position, pr.body.quaternion, pr.mesh.scale.x);
   for (const bm of bombs) put(2, bm.mesh.position, _q.identity(), 0.35);
+  if (rocket) put(3, rocket.mesh.position, rocket.mesh.quaternion, 1);
   rec.dn[f] = n;
   const C = rec.cr, j = f * 14;
   if (crane) { const h = crane.hook.position, bp = crane.ball.position, bq = crane.ball.quaternion; C[j] = 1; C[j + 1] = h.x; C[j + 2] = h.y; C[j + 3] = h.z; C[j + 4] = bp.x; C[j + 5] = bp.y; C[j + 6] = bp.z; C[j + 7] = bq.x; C[j + 8] = bq.y; C[j + 9] = bq.z; C[j + 10] = bq.w; }
@@ -643,6 +724,7 @@ function startReplay() {
   particles.clear(); flash.intensity = 0; shake = 0;
   for (const p of projectiles) p.mesh.visible = false;
   for (const b of bombs) b.mesh.visible = false;
+  if (rocket) rocket.mesh.visible = false;
   if (crane) crane.g.visible = false;
   orbit.r = Math.max(10, orbit.r * 0.88); orbit.phi = Math.min(1.3, orbit.phi + 0.08);
   $('hud').hidden = true; $('result').hidden = true; $('toast').style.opacity = 0;
@@ -657,6 +739,8 @@ function endReplay() {
   for (const b of bombs) b.mesh.visible = true;
   for (const m of dynPool) m.visible = false;
   if (rp.ghost) disposeCraneVisual(rp.ghost);
+  if (rp.rocket) { scene.remove(rp.rocket); rp.rocket.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  if (rocket) rocket.mesh.visible = true;
   if (crane) crane.g.visible = true;
   if (groundGroup && groundBody) groundGroup.position.copy(groundBody.position);
   Object.assign(orbit, { theta: rp.saved.theta, phi: rp.saved.phi, r: rp.saved.r }); orbit.target.copy(rp.saved.target);
@@ -674,6 +758,7 @@ function playEvent(e) {
     case 'shot': sfx.shoot(); break;
     case 'tick': sfx.tick(); break;
     case 'whoosh': sfx.whoosh(); break;
+    case 'launch': sfx.rocket(); break;
     case 'quake': sfx.rumble(); break;
     case 'clang': sfx.clang(Math.min(1, e.a / 14)); shake = Math.min(1.2, shake + e.a * 0.03); break;
   }
@@ -700,7 +785,9 @@ function poseAt(t) {
   for (let i = 0; i < MAXD; i++) {
     const m = dynPool[i];
     if (i >= na) { if (m) m.visible = false; continue; }
-    const j = (fa * MAXD + i) * 9, k = (fb * MAXD + i) * 9, mesh = dynMesh(i), kind = D[j];
+    const j = (fa * MAXD + i) * 9, k = (fb * MAXD + i) * 9, kind = D[j];
+    if (kind === 3) { if (m) m.visible = false; replayRocket(i < nB && D[k] === 3, j, k, al); continue; }
+    const mesh = dynMesh(i);
     mesh.material = dynMats[kind] || ballMat; mesh.scale.setScalar(D[j + 8]); mesh.visible = true;
     _pa.set(D[j + 1], D[j + 2], D[j + 3]); _qa2.set(D[j + 4], D[j + 5], D[j + 6], D[j + 7]);
     let fast = 0;
@@ -709,6 +796,7 @@ function poseAt(t) {
     if (kind === 2) mesh.material.emissiveIntensity = 0.4 + Math.abs(Math.sin(t * 18)) * 2;
     if (kind === 1 && fast > 12 && rnd() < 0.35 + rp.speed) for (let n = 0; n < 2; n++) particles.spawn(_pa.x + rr(-1, 1), _pa.y + rr(-1, 1), _pa.z + rr(-1, 1), rr(-1, 1), rr(0, 2), rr(-1, 1), 1, rr(0.4, 0.7), 0.2, 0.9, rr(0.9, 1.8), rr(0.4, 0.9), 0);
   }
+  if (!rp.rocketSeen && rp.rocket) rp.rocket.visible = false; rp.rocketSeen = false;
   // crane (a ghost copy, so it shows even after the real one has driven away)
   const C = rec.cr, ca = fa * 14, cb = fb * 14;
   if (C[ca]) {
@@ -719,6 +807,14 @@ function poseAt(t) {
     poseCrane(rp.ghost, L(1), L(2), L(3), { x: L(4), y: L(5), z: L(6) }, _qa2);
   } else if (rp.ghost) rp.ghost.g.visible = false;
   if (groundGroup) groundGroup.position.set(C[ca + 11] + (C[cb + 11] - C[ca + 11]) * al, C[ca + 12] + (C[cb + 12] - C[ca + 12]) * al, C[ca + 13] + (C[cb + 13] - C[ca + 13]) * al);
+}
+function replayRocket(both, j, k, al) {
+  const D = rec.dyn;
+  if (!rp.rocket) rp.rocket = buildRocketMesh();
+  _pa.set(D[j + 1], D[j + 2], D[j + 3]); _qa2.set(D[j + 4], D[j + 5], D[j + 6], D[j + 7]);
+  if (both) { _pb.set(D[k + 1], D[k + 2], D[k + 3]); if (_pa.distanceTo(_pb) < 8) { _pa.lerp(_pb, al); _qb2.set(D[k + 4], D[k + 5], D[k + 6], D[k + 7]); _qa2.slerp(_qb2, al); } }
+  rp.rocket.visible = true; rp.rocket.position.copy(_pa); rp.rocket.quaternion.copy(_qa2); rp.rocketSeen = true;
+  if (rnd() < 0.4 + rp.speed * 0.6) rocketTrail(_pa, _rd.copy(_rz).applyQuaternion(_qa2), 0.02);
 }
 function updateReplay(dt) {
   const near = rp.ev.some(e => SLOW_EV[e.kind] && e.t > rp.rt - 1.6 && e.t < rp.rt + 0.3);
@@ -743,7 +839,8 @@ const pointers = new Map(); let gesture = null;
 canvas.addEventListener('pointerdown', e => {
   sfx.unlock(); canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 1) { gesture = { x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: 0, multi: false }; if (craneActive() && state === 'play') steerCrane(e.clientX, e.clientY); }
+  if (pointers.size === 1) { gesture = { x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: 0, multi: false }; if (craneActive() && state === 'play') steerCrane(e.clientX, e.clientY);
+    else if (weapon === 'rocket' && state === 'play' && !ended) { gesture.rocket = true; if (rocket) steerRocket(e.clientX, e.clientY); else fire(e.clientX, e.clientY); } }
   else if (gesture) gesture.multi = true;
 });
 canvas.addEventListener('pointermove', e => {
@@ -752,6 +849,7 @@ canvas.addEventListener('pointermove', e => {
   if (pointers.size === 1) {
     if (gesture) gesture.moved += Math.abs(dx) + Math.abs(dy);
     if (craneActive() && state === 'play') steerCrane(e.clientX, e.clientY);
+    else if (gesture && gesture.rocket) { if (rocket) steerRocket(e.clientX, e.clientY); }
     else if (!gesture || gesture.moved > 8) { orbit.theta -= dx * 0.006; orbit.phi = Math.min(1.5, Math.max(0.25, orbit.phi - dy * 0.005)); }
   } else if (pointers.size === 2) {
     const [a, b] = [...pointers.values()], before = Math.hypot(a.x - b.x, a.y - b.y), mx0 = (a.x + b.x) / 2, my0 = (a.y + b.y) / 2;
@@ -766,7 +864,7 @@ canvas.addEventListener('pointermove', e => {
 const endPtr = e => {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
-  if (pointers.size === 0 && gesture && !gesture.multi && gesture.moved < 10 && performance.now() - gesture.t0 < 400) fire(e.clientX, e.clientY);
+  if (pointers.size === 0 && gesture && !gesture.multi && !gesture.rocket && gesture.moved < 10 && performance.now() - gesture.t0 < 400) fire(e.clientX, e.clientY);
   if (pointers.size === 0) gesture = null;
 };
 canvas.addEventListener('pointerup', endPtr); canvas.addEventListener('pointercancel', endPtr);
@@ -785,8 +883,8 @@ function buildWeapons() {
   const el = $('weapons'); el.innerHTML = '';
   for (const w of WEAPONS) {
     const n = ammo[w.id]; if (!free && level && level.ammo[w.id] === 0) continue;
-    const b = document.createElement('button'); b.className = 'wpn' + (weapon === w.id ? ' on' : '') + (n > 0 || (w.id === 'crane' && crane && !crane.leaving) ? '' : ' empty');
-    const badge = w.id === 'crane' && crane && !crane.leaving ? (free ? '●' : Math.ceil(crane.t) + 'с') : n === Infinity ? '∞' : n;
+    const b = document.createElement('button'); b.className = 'wpn' + (weapon === w.id ? ' on' : '') + (n > 0 || (w.id === 'crane' && crane && !crane.leaving) || (w.id === 'rocket' && rocket) ? '' : ' empty');
+    const badge = w.id === 'crane' && crane && !crane.leaving ? (free ? '●' : Math.ceil(crane.t) + 'с') : w.id === 'rocket' && rocket ? '●' : n === Infinity ? '∞' : n;
     b.innerHTML = `<b>${w.icon}</b><span>${w.name}</span><em>${badge}</em>`;
     b.onclick = () => { weapon = w.id; buildWeapons(); haptic(8); if (w.id === 'quake' && ammo.quake > 0) toast('Торкніться екрана — і земля затруситься');
       if (w.id === 'crane' && state === 'play' && !ended) { if (crane && !crane.leaving) toast('Тягніть пальцем — баба полетить слідом'); else if (ammo.crane > 0) callCrane(); } };
@@ -879,7 +977,7 @@ function loop(now) {
   world.step(1 / 60, dt, 3); simTime += dt;
   if (groundGroup && groundBody) groundGroup.position.copy(groundBody.position);
 
-  updateCrane(dt);
+  updateCrane(dt); updateRocket(dt);
   if (crane && frame % 15 === 0 && state === 'play') buildWeapons();
   for (const b of pendingShatter) shatter(b); pendingShatter.clear();
 
@@ -918,14 +1016,14 @@ function loop(now) {
   if (state === 'play' && frame % 10 === 0) {
     const p = destruction(); updateHud(p); $('btnReplay').classList.toggle('off', !hasReplay());
     if (!free && !ended) {
-      const left = Object.values(ammo).reduce((a, b) => a + b, 0) + bombs.length + (crane ? 1 : 0);
+      const left = Object.values(ammo).reduce((a, b) => a + b, 0) + bombs.length + (crane ? 1 : 0) + (rocket ? 1 : 0);
       const awake = blocks.filter(b => !b.gone && b.body.sleepState !== CANNON.Body.SLEEPING).length;
-      const calm = !crane && simTime - lastShot > 2.5 && awake < blocks.length * 0.03 && !quake;
+      const calm = !crane && !rocket && simTime - lastShot > 2.5 && awake < blocks.length * 0.03 && !quake;
       if ((left === 0 && (calm || simTime - lastShot > 9)) || p >= 0.995) setTimeout(() => { if (!ended && state === 'play') finish(destruction()); }, 600);
     }
   }
 }
-window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, callCrane, steerCrane, get crane() { return crane; }, get blocks() { return blocks.length; }, startReplay, endReplay, get replay() { return rp; }, finish: () => finish(destruction()) };
+window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, callCrane, steerCrane, get crane() { return crane; }, get blocks() { return blocks.length; }, startReplay, endReplay, get replay() { return rp; }, launchRocket, steerRocket, get rocket() { return rocket; }, finish: () => finish(destruction()) };
 
 renderDiary();
 showMenu();
