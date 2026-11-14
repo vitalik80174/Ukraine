@@ -5,8 +5,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
@@ -28,6 +32,8 @@ final class Runner {
     private TextToSpeech tts;
     private volatile int ttsState; // 0 = starting, 1 = ready, -1 = unavailable
     private PowerManager.WakeLock awake;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private Runnable torchOff;
 
     Runner(Context c) {
         ctx = c.getApplicationContext();
@@ -47,6 +53,7 @@ final class Runner {
     void shutdown() {
         if (tts != null) try { tts.shutdown(); } catch (Exception ignored) {}
         if (awake != null && awake.isHeld()) try { awake.release(); } catch (Exception ignored) {}
+        if (torchOff != null) { main.removeCallbacks(torchOff); torchOff = null; setTorch(false); }
     }
 
     /** Runs all actions; returns the journal lines. Sets ok[0] = false if something failed. */
@@ -79,6 +86,8 @@ final class Runner {
             case "show": return show(a.optString("text"));
             case "home": return home();
             case "awake": return keepAwake(a.optInt("minutes", 10));
+            case "brightness": return brightness(a.optString("level", "50"));
+            case "torch": return torch(a.optString("mode", "on"), a.optInt("minutes", 0), a.optInt("times", 3));
             case "wait": Thread.sleep(Math.max(0, Math.min(30000, a.optLong("ms", 1000)))); return "· пауза " + a.optLong("ms", 1000) + " мс";
             default: return "✗ не знаю дії «" + a.optString("do") + "»";
         }
@@ -192,5 +201,77 @@ final class Runner {
         int m = Math.min(minutes, 240);
         awake.acquire(m * 60_000L);
         return "✓ екран не гасне " + m + " хв";
+    }
+
+    /** Screen brightness: "0".."100" or "auto". Needs «Змінювати налаштування системи» (WRITE_SETTINGS). */
+    private String brightness(String level) {
+        if (!Settings.System.canWrite(ctx)) return "✗ яскравість: дайте Пульту дозвіл «Змінювати налаштування системи»";
+        android.content.ContentResolver cr = ctx.getContentResolver();
+        String l = level == null ? "" : level.trim().toLowerCase(Locale.ROOT);
+        if (l.equals("auto") || l.equals("авто")) {
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC);
+            return "✓ яскравість — автоматична";
+        }
+        int pct;
+        try { pct = Math.max(0, Math.min(100, Math.round(Float.parseFloat(l.replace("%", ""))))); }
+        catch (NumberFormatException e) { return "✗ яскравість: не зрозумів «" + level + "»"; }
+        Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+        // perceived brightness is roughly quadratic: 50% on the slider ≈ a quarter of the backlight
+        int v = Math.max(1, Math.round((pct / 100f) * (pct / 100f) * 255));
+        Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, v);
+        return "✓ яскравість " + pct + "%";
+    }
+
+    private String flashCamera() {
+        try {
+            CameraManager cm = (CameraManager) ctx.getSystemService(Context.CAMERA_SERVICE);
+            String back = null, any = null;
+            for (String id : cm.getCameraIdList()) {
+                CameraCharacteristics c = cm.getCameraCharacteristics(id);
+                Boolean f = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                if (f == null || !f) continue;
+                if (any == null) any = id;
+                Integer face = c.get(CameraCharacteristics.LENS_FACING);
+                if (face != null && face == CameraCharacteristics.LENS_FACING_BACK) back = id;
+            }
+            return back != null ? back : any;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean setTorch(boolean on) {
+        String id = flashCamera();
+        if (id == null) return false;
+        try {
+            ((CameraManager) ctx.getSystemService(Context.CAMERA_SERVICE)).setTorchMode(id, on);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Flashlight: mode "on" (optionally for N minutes), "off", or "blink" N times — to find the tablet in the dark. */
+    private String torch(String mode, int minutes, int times) throws InterruptedException {
+        if (flashCamera() == null) return "✗ ліхтарика на цьому планшеті немає";
+        if (torchOff != null) { main.removeCallbacks(torchOff); torchOff = null; }
+        String m = mode == null ? "on" : mode.trim().toLowerCase(Locale.ROOT);
+        if (m.equals("off")) return setTorch(false) ? "✓ ліхтарик вимкнено" : "✗ ліхтарик не слухається (камера зайнята?)";
+        if (m.equals("blink")) {
+            int n = Math.max(1, Math.min(20, times));
+            for (int i = 0; i < n; i++) {
+                if (!setTorch(true)) return "✗ ліхтарик не слухається (камера зайнята?)";
+                Thread.sleep(250);
+                setTorch(false);
+                Thread.sleep(350);
+            }
+            return "✓ блимнув ліхтариком " + n + " р.";
+        }
+        if (!setTorch(true)) return "✗ ліхтарик не слухається (камера зайнята?)";
+        int mins = Math.max(0, Math.min(120, minutes));
+        if (mins == 0) mins = 30; // never leave it burning forever by accident
+        torchOff = () -> { setTorch(false); torchOff = null; };
+        main.postDelayed(torchOff, mins * 60_000L);
+        return "✓ ліхтарик увімкнено на " + mins + " хв";
     }
 }

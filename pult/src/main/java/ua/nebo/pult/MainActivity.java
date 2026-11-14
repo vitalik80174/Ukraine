@@ -75,6 +75,7 @@ public class MainActivity extends Activity {
                 o.put("notif", Build.VERSION.SDK_INT < 33
                         || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
                 o.put("secure", km.isDeviceSecure());
+                o.put("settings", Settings.System.canWrite(MainActivity.this));
                 return o.toString();
             } catch (Exception e) {
                 return "{}";
@@ -111,6 +112,14 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 try { startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()))); }
                 catch (Exception e) { startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
+            });
+        }
+
+        @JavascriptInterface
+        public void openWriteSettings() {
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + getPackageName()))); }
+                catch (Exception e) { startActivity(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)); }
             });
         }
 

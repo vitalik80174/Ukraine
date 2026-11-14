@@ -61,6 +61,8 @@ h2{margin:0 0 12px;font:700 13px var(--f);letter-spacing:.12em;text-transform:up
 .can{display:flex;flex-wrap:wrap;gap:8px}
 .can span{padding:8px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);font-size:13.5px}
 .can span em{font-style:normal;color:var(--dim)}
+.can span.new{border-color:rgba(255,200,90,.35);background:linear-gradient(135deg,rgba(255,200,90,.12),rgba(255,200,90,.03))}
+.can span.new::before{content:"✦ ";color:#ffc85a}
 
 /* journal */
 .right{display:flex;flex-direction:column;gap:20px;min-width:0}
@@ -119,7 +121,8 @@ h2{margin:0 0 12px;font:700 13px var(--f);letter-spacing:.12em;text-transform:up
         <div class="step" id="sOverlay"><span class="dot">1</span><div><b>Поверх інших застосунків</b><span>Без цього Android не дасть Пульту відкривати застосунки й будити екран</span></div><button id="bOverlay">Дозволити</button></div>
         <div class="step" id="sBattery"><span class="dot">2</span><div><b>Без економії батареї</b><span>Щоб Пульт не засинав, коли екран згас</span></div><button id="bBattery">Дозволити</button></div>
         <div class="step" id="sNotif"><span class="dot">3</span><div><b>Сповіщення</b><span>Маленький значок, що Пульт на зв'язку</span></div><button id="bNotif">Дозволити</button></div>
-        <div class="step" id="sLock"><span class="dot">4</span><div><b>Замок — лише свайп</b><span id="lockText">PIN чи пароль Пульт зняти не може, а свайп — так</span></div></div>
+        <div class="step" id="sLight"><span class="dot">4</span><div><b>Змінювати налаштування</b><span>Щоб Пульт міг робити екран яскравішим чи тьмянішим</span></div><button id="bLight">Дозволити</button></div>
+        <div class="step" id="sLock"><span class="dot">5</span><div><b>Замок — лише свайп</b><span id="lockText">PIN чи пароль Пульт зняти не може, а свайп — так</span></div></div>
       </div>
     </section>
   </div>
@@ -134,6 +137,7 @@ h2{margin:0 0 12px;font:700 13px var(--f);letter-spacing:.12em;text-transform:up
       <div class="can">
         <span>Розбудити й зняти свайп</span><span>Відкрити застосунок <em>· будь-який</em></span><span>Відкрити посилання</span>
         <span>Сказати вголос</span><span>Показати великий напис</span><span>Гучність</span><span>Не гасити екран</span><span>На головний екран</span>
+        <span class="new">Яскравість <em>· або авто</em></span><span class="new">Ліхтарик <em>· увімкнути чи блимнути</em></span>
       </div>
     </section>
     <div class="foot"><button class="chip" id="btnTest">Перевірити голосом</button><span class="ver" id="ver">Лабораторія Claude</span></div>
@@ -155,20 +159,21 @@ const $ = id => document.getElementById(id);
 const demo = !window.Pult;
 const now = Date.now();
 const fake = {
-  st: { on: true, running: true, online: true, status: "На зв'язку", lastCheck: now - 2000, overlay: true, battery: true, notif: true, secure: false },
+  st: { on: true, running: true, online: true, status: "На зв'язку", lastCheck: now - 2000, overlay: true, battery: true, notif: true, settings: true, secure: false },
   log: [
     { t: now - 4 * 60e3, title: 'Розбуди планшет і відкрий Вікно', ok: true, lines: ['✓ розбудив і розблокував', '✓ відкрив «Вікно»'] },
+    { t: now - 9 * 60e3, title: 'Де планшет? Блимни ліхтариком', ok: true, lines: ['✓ яскравість 100%', '✓ блимнув ліхтариком 5 р.'] },
     { t: now - 52 * 60e3, title: 'Скажи доброго ранку', ok: true, lines: ['✓ гучність 40%', '✓ сказав: «Доброго ранку!»'] },
     { t: now - 26 * 3600e3, title: 'Відкрий YouTube', ok: false, lines: ['✓ розбудив і розблокував', '✗ не знайшов застосунок «YouTube Kids»'] }
   ]
 };
 const qs = new URLSearchParams(location.search);
-if (qs.get('state') === 'off') Object.assign(fake.st, { on: false, running: false, online: false, overlay: false, battery: false, notif: false, status: 'Вимкнено' });
+if (qs.get('state') === 'off') Object.assign(fake.st, { on: false, running: false, online: false, overlay: false, battery: false, notif: false, settings: false, status: 'Вимкнено' });
 if (qs.get('state') === 'empty') fake.log = [];
 const P = window.Pult || {
   status: () => JSON.stringify(fake.st), log: () => JSON.stringify(fake.log),
   setOn: v => { fake.st.on = fake.st.running = fake.st.online = v; fake.st.lastCheck = Date.now(); },
-  openOverlay: () => fake.st.overlay = true, openBattery: () => fake.st.battery = true, askNotif: () => fake.st.notif = true,
+  openOverlay: () => fake.st.overlay = true, openBattery: () => fake.st.battery = true, openWriteSettings: () => fake.st.settings = true, askNotif: () => fake.st.notif = true,
   test: () => { fake.log.unshift({ t: Date.now(), title: 'Перевірка з планшета', ok: true, lines: ["✓ сказав: «Пульт на зв'язку»"] }); },
   takeMessage: () => { const m = qs.get('msg') || ''; qs.delete('msg'); return m; }, version: () => ''
 };
@@ -197,9 +202,9 @@ function render() {
   $('state').textContent = title; $('sub').textContent = sub;
   $('tog').setAttribute('aria-checked', st.on ? 'true' : 'false');
   const step = (id, ok) => { const el = $(id); el.classList.toggle('done', !!ok); el.querySelector('.dot').textContent = ok ? '✓' : el.dataset.n || (el.dataset.n = el.querySelector('.dot').textContent); };
-  step('sOverlay', st.overlay); step('sBattery', st.battery); step('sNotif', st.notif);
+  step('sOverlay', st.overlay); step('sBattery', st.battery); step('sNotif', st.notif); step('sLight', st.settings);
   const lk = $('sLock'); lk.classList.toggle('done', st.secure === false); lk.classList.toggle('bad', st.secure === true);
-  lk.querySelector('.dot').textContent = st.secure === true ? '!' : st.secure === false ? '✓' : '4';
+  lk.querySelector('.dot').textContent = st.secure === true ? '!' : st.secure === false ? '✓' : '5';
   $('lockText').textContent = st.secure === true ? 'Зараз стоїть PIN, пароль чи відбиток — розблокувати Пульт не зможе' : 'Зараз свайп — Пульт зможе зняти замок сам';
 
   const raw = P.log(); let log = []; try { log = JSON.parse(raw); } catch (e) {}
@@ -217,6 +222,7 @@ $('tog').onclick = () => { P.setOn($('tog').getAttribute('aria-checked') !== 'tr
 $('bOverlay').onclick = () => P.openOverlay();
 $('bBattery').onclick = () => P.openBattery();
 $('bNotif').onclick = () => P.askNotif();
+$('bLight').onclick = () => P.openWriteSettings && P.openWriteSettings();
 $('btnTest').onclick = () => { P.test(); setTimeout(render, 600); };
 $('msg').onclick = () => $('msg').hidden = true;
 $('btnDiary').onclick = () => $('diary').classList.add('open');

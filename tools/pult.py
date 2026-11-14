@@ -8,6 +8,7 @@ Usage (from the repo root):
   python3 tools/pult.py "Сирий JSON" --json '[{"do":"open","app":"YouTube"}]'
 Actions: wake | open:<package or app name> | url:<https://…> | volume:<0-100> | say:<text> | show:<text>
          | home | awake:<minutes, 0 = stop> | wait:<ms>
+         | brightness:<0-100|auto> | torch:on | torch:on:<minutes> | torch:off | torch:blink[:<times>]
 The tablet skips commands older than 10 minutes, so send them right when needed.
 """
 import json, subprocess, sys, tempfile, uuid, os
@@ -25,6 +26,12 @@ def parse(tok):
     if k == "wait": return {"do": "wait", "ms": int(v)}
     if k == "open": return {"do": "open", "app": v}
     if k == "url": return {"do": "url", "url": v}
+    if k == "brightness": return {"do": "brightness", "level": v}
+    if k == "torch":
+        mode, _, n = v.partition(":")
+        a = {"do": "torch", "mode": mode or "on"}
+        if n: a["times" if mode == "blink" else "minutes"] = int(n)
+        return a
     return {"do": k, "text": v}
 
 def main():
