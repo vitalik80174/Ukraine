@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Акваріум</title>
+<style>
+:root{
+  --fg:#eef7f6; --dim:rgba(238,247,246,.62); --panel:rgba(6,26,34,.86); --line:rgba(255,255,255,.13); --accent:#ffb347; --on:rgba(255,255,255,.1);
+  --f:"Golos Text","Roboto",system-ui,sans-serif; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;overflow:hidden;background:#08222e;color:var(--fg);font:14px/1.4 var(--f);-webkit-tap-highlight-color:transparent;user-select:none;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+button{font:inherit;color:inherit;cursor:pointer}
+.glass{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+
+.dock{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:4px;align-items:center;padding:6px;border-radius:22px;max-width:calc(100vw - 20px);overflow-x:auto;scrollbar-width:none;transition:opacity 1.2s}
+.dock::-webkit-scrollbar{display:none}
+.dock.idle{opacity:.12}
+.b{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:68px;padding:7px 6px 6px;border-radius:15px;border:1px solid transparent;background:none;color:var(--dim);font:500 11.5px var(--f)}
+.b svg{width:24px;height:24px;stroke:var(--fg);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.b.on{background:var(--on);border-color:rgba(255,255,255,.22);color:var(--fg)}
+.b.on svg{stroke:var(--accent)}
+.sep{width:1px;align-self:stretch;background:var(--line);margin:6px 3px;flex:none}
+
+.title{position:fixed;top:max(30px,calc(env(safe-area-inset-top) + 14px));left:max(22px,env(safe-area-inset-left));pointer-events:none;transition:opacity 1.6s;text-shadow:0 1px 8px rgba(0,0,0,.35)}
+.title h1{margin:0;font:300 30px/1 var(--f);letter-spacing:.06em}
+.title p{margin:6px 0 0;color:var(--dim);font-size:13px}
+.toast{position:fixed;top:max(84px,calc(env(safe-area-inset-top) + 70px));left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:999px;font-size:13.5px;transition:opacity .5s;pointer-events:none;opacity:0;white-space:nowrap;max-width:calc(100vw - 24px);overflow:hidden;text-overflow:ellipsis}
+
+.pop{position:fixed;bottom:calc(max(12px,env(safe-area-inset-bottom)) + 84px);left:50%;transform:translateX(-50%);border-radius:20px;padding:10px;display:flex;flex-wrap:wrap;gap:6px;max-width:min(640px,calc(100vw - 20px));justify-content:center}
+.chip{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:14px;padding:8px 8px 8px 10px;width:300px;max-width:100%;text-align:left}
+.chip canvas{position:static;width:64px;height:42px;flex:none}
+.chip .t{flex:1}
+.chip b{display:block;font:600 14px var(--f)}
+.chip span{display:block;font-size:11.5px;color:var(--dim)}
+.chip .m{border:1px solid var(--line);background:none;border-radius:10px;width:34px;height:34px;font-size:18px;color:var(--dim);flex:none}
+.pop .note{width:100%;text-align:center;color:var(--dim);font-size:12px;padding:2px 0 4px}
+
+.panel{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column;padding:max(22px,env(safe-area-inset-top)) 22px 22px;border-width:0 0 0 1px}
+.panel.open{transform:none}
+.panel h1{font:300 28px/1.1 var(--f);margin:0;letter-spacing:.04em}
+.panel .sub{color:var(--dim);font-size:13px;margin-top:6px}
+.panel h2{font:600 11px/1 var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:24px 0 10px}
+.panel .scroll{overflow:auto;flex:1;margin-right:-10px;padding-right:10px;touch-action:pan-y}
+.panel .x{position:absolute;top:max(16px,env(safe-area-inset-top));right:14px;border:0;background:none;font-size:26px;color:var(--dim);width:44px;height:44px}
+.how p{margin:0 0 9px;color:var(--dim);font-size:13.5px}
+.how b{color:var(--fg);font-weight:600}
+.entry{padding:12px 0;border-top:1px solid var(--line)}
+.entry .d{font:600 10.5px var(--f);letter-spacing:.08em;color:var(--accent)}
+.entry b{display:block;font:600 15px var(--f);margin:3px 0}
+.entry p{margin:0;color:var(--dim);font-size:13.5px}
+.foot{margin-top:14px;color:var(--dim);font-size:11.5px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="title" id="title"><h1>Акваріум</h1><p id="dayline">Торкнись — насиплю корму · веди пальцем — риби підпливуть</p></div>
+<div class="toast glass" id="toast"></div>
+
+<div class="dock glass" id="dock">
+  <button class="b" id="bFish"><svg viewBox="0 0 24 24"><path d="M3 12c3-4.5 8-6 12-3.5L20 5v14l-5-3.5C11 18 6 16.5 3 12z"/><circle cx="7.5" cy="11" r=".8"/></svg>Риби</button>
+  <button class="b" id="bKnock"><svg viewBox="0 0 24 24"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11M12 10V4.5a1.5 1.5 0 0 1 3 0V11M15 10.5V7a1.5 1.5 0 0 1 3 0v6c0 4-2.5 7-6 7-2.6 0-4-1.4-5.3-3.6L5 13.6a1.5 1.5 0 0 1 2.5-1.6L9 14"/><path d="M3 4l2 2M2 9h2"/></svg>Постукати</button>
+  <button class="b" id="bLamp"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg><span id="vLamp">Лампа</span></button>
+  <button class="b" id="bSound"><svg viewBox="0 0 24 24" id="iSound"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l4 6M21 9l-4 6"/></svg>Звук</button>
+  <div class="sep"></div>
+  <button class="b" id="bMore"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Щоденник</button>
+</div>
+
+<div class="pop glass" id="pop" hidden></div>
+
+<div class="panel glass" id="panel">
+  <button class="x" id="close" aria-label="Закрити">×</button>
+  <h1>Акваріум</h1>
+  <div class="sub" id="dayline2">Живий акваріум з Лабораторії Claude</div>
+  <div class="scroll">
+    <h2>Як доглядати</h2>
+    <div class="how">
+      <p><b>Годувати:</b> торкнись води — зверху посиплеться корм. Голодні риби кинуться до пластівців, а сомики доїдять те, що впало на пісок.</p>
+      <p><b>Гратися:</b> веди пальцем по склу — цікаві риби підпливуть подивитися, а зграйка неонів піде слідом.</p>
+      <p><b>Познайомитись:</b> торкнись риби — побачиш, як її звати й скільки вона з'їла.</p>
+      <p><b>Риби:</b> додай новеньких або відпусти когось. У кожної риби свій характер: неони й барбуси тримаються зграйкою, скалярії повільно пливуть, сомики риються в піску.</p>
+      <p><b>Лампа:</b> світло вмикається саме о 8:00 й гасне о 22:00, як справжній таймер. Уночі риби сплять і повільно дрейфують, а в акваріумі лише місячне світло. Кнопкою можна ввімкнути чи вимкнути лампу самому.</p>
+      <p><b>Постукати:</b> легенько стукни по склу — риби злякано розметаються. Не зловживай!</p>
+      <p>Поки акваріум відкритий, екран не гасне — можна поставити планшет, як справжній акваріум на поличці. Інтернет не потрібен.</p>
+    </div>
+    <h2>Щоденник змін</h2>
+    <div id="diary"></div>
+    <div class="foot" id="foot">Лабораторія Claude</div>
+  </div>
+</div>
+
+<script src="changelog.js"></script>
+<script src="akvarium.js"></script>
+</body>
+</html>
