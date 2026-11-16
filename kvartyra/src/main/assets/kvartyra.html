@@ -38,6 +38,17 @@ body.night{background:#0e1222}
 .tag.dims{background:#c9733a;color:#fff;box-shadow:0 1px 6px rgba(0,0,0,.25)}
 .tag.elec{background:rgba(255,255,255,.95);color:var(--fg);box-shadow:0 1px 6px rgba(0,0,0,.2)}
 .tag.elec b{color:#c9733a}
+.tag.tape{background:#1e2128;color:#fff;padding:4px 9px;border-radius:9px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.3);border:2px solid #f3c623}
+.tag.tape b{font:700 14px/1.15 var(--f)}
+.tag.tape small{display:block;font:500 10.5px var(--f);color:rgba(255,255,255,.72)}
+.tapebar{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:999px;font-size:13.5px;max-width:calc(100vw - 32px);white-space:nowrap}
+.tapebar #tapeMsg{overflow:hidden;text-overflow:ellipsis}
+.tapebar .ico{width:20px;height:20px;flex:none;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tapebar button{border:1px solid var(--line);background:rgba(255,255,255,.6);border-radius:999px;padding:7px 13px;font:600 12.5px var(--f)}
+.tapebar button.dk{background:var(--fg);color:#fff;border-color:var(--fg)}
+body.walking .tapebar{bottom:auto;top:max(116px,calc(env(safe-area-inset-top) + 106px))}
+body.taping .hint{display:none}
+#tags .tag.tape{z-index:2}
 #tags{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 .lbl{position:absolute;left:0;top:0;padding:5px 10px;border-radius:10px;background:rgba(255,255,255,.88);font:600 13px/1.2 var(--f);text-align:center;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,.12)}
 .lbl small{display:block;font:500 11px var(--f);color:var(--dim)}
@@ -120,11 +131,13 @@ body.walking .side::-webkit-scrollbar{display:none}
   <button class="b on" id="bLabels"><svg viewBox="0 0 24 24"><path d="M4 6h16v9H13l-4 4v-4H4z"/></svg>Назви</button>
   <button class="b" id="bPower"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg>Електрика</button>
   <button class="b" id="bDims"><svg viewBox="0 0 24 24"><path d="M3 17l14-14 4 4-14 14z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Розміри</button>
+  <button class="b" id="bTape"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="3"/><circle cx="9" cy="12" r="2.2"/><path d="M15 15h6v3h-6"/><path d="M18 15v1.5"/></svg>Рулетка</button>
   <button class="b" id="bMore"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Більше</button>
 </div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
 <canvas class="minimap glass" id="minimap" hidden></canvas>
 <div class="tip glass" id="tip" hidden></div>
+<div class="tapebar glass" id="tapebar" hidden><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="3"/><circle cx="9" cy="12" r="2.2"/><path d="M15 15h6v3h-6"/></svg><span id="tapeMsg"></span><button id="tapeUndo">Назад</button><button id="tapeClear">Стерти все</button><button id="tapeDone" class="dk">Готово</button></div>
 <div class="legend glass" id="legend" hidden></div>
 <div class="styles glass" id="styles" hidden></div>
 <div class="styles sunp glass" id="sunp" hidden></div>
@@ -147,6 +160,7 @@ body.walking .side::-webkit-scrollbar{display:none}
     <div class="how">
       <p><b>Будиночок:</b> веди пальцем — квартира обертається; двома пальцями — наблизити й посунути. Торкнись кімнати — можна зайти в неї.</p>
       <p><b>Прогулянка:</b> торкнись підлоги — підеш туди сам; торкнись мапки в куті — опинишся в тій точці. Круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни й зачинені двері не пройдеш, а на балкон — можна.</p>
+      <p><b>Рулетка:</b> торкніться двох точок — на стіні, підлозі, підвіконні чи меблях — і побачите відстань у сантиметрах. Якщо майже вздовж стіни чи прямовисно, рулетка сама вирівнюється. Для косих вимірів видно ще окремо по горизонталі (↔) і висоті (↕). Виміри зберігаються; «Назад» прибирає останній.</p>
       <p><b>Розміри:</b> показує ширину й довжину кожної кімнати, висоту стелі, розміри вікон і дверей — помаранчевими позначками.</p>
       <p><b>Електрика:</b> прибирає всі меблі й показує кожну розетку, вимикач, щиток і виводи з підписом висоти від підлоги.</p>
       <p><b>Двері й вікна:</b> торкнись дверей — відчиняться чи зачиняться; вікно поділене на широку глуху частину й вужчу з перемичкою посередині — торкнись верхньої шибки вужчої частини, і вона відкинеться на провітрювання (вікна відчиняються лише так). Балконні двері панорамні, скляні й відчиняються повністю. Вхідні двері спочатку зачинені.</p>

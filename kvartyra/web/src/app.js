@@ -716,7 +716,7 @@ function setMode(m) {
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   $('joy').hidden = m !== 'walk'; $('bWalls').hidden = m === 'walk';
   if (m === 'plan') { orbit.tx = CX + 0.6; orbit.tz = P.depthWithBalcony / 2 - 0.3; } else if (m === 'doll') { orbit.tx = CX; orbit.tz = CZ + 0.3; }
-  applyWalls(); resize(); applyLight();
+  applyWalls(); resize(); applyLight(); if (tapeReady) rebuildTape(); // the tape is thinner up close
 }
 
 function updateCamera() {
@@ -823,6 +823,7 @@ addEventListener('keydown', e => keys.add(e.key)); addEventListener('keyup', e =
 // tap a room in doll/plan view → walk into it
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function tapAt(x, y) {
+  if (tapeOn) { tapeTap(x, y); return; }
   if (tapOpenable(x, y)) return;
   if (mode === 'walk') { // tap the floor → walk there
     ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
@@ -942,6 +943,127 @@ function drawTags(final) {
   }
 }
 
+/* ================= tape measure: tap two points anywhere — walls, floor, furniture — and read the distance ================= */
+const TAPE_KEY = 'tape.' + LAYOUT; var tapeReady = true;
+const tapeG = new THREE.Group(); scene.add(tapeG);
+const tapeTex = (() => { // yellow tape with a black tick every 10 cm (the texture is 10 cm long)
+  const c = document.createElement('canvas'); c.width = 64; c.height = 16; const g = c.getContext('2d');
+  g.fillStyle = '#f3c623'; g.fillRect(0, 0, 64, 16); g.fillStyle = '#1e2128'; g.fillRect(0, 0, 3, 16); g.fillRect(32, 0, 2, 7);
+  const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+})();
+const tapeEndMat = new THREE.MeshBasicMaterial({ color: 0xc9733a });
+const tapeGhostMat = new THREE.MeshBasicMaterial({ color: 0xc9733a, transparent: true, opacity: 0.35, depthTest: false });
+const tapeDotGeo = new THREE.SphereGeometry(1, 16, 10), tapeCylGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
+let tapeOn = false, tapeA = null, tapes = []; // tapes: [{ a: [x,y,z], b: [x,y,z] }]
+const tapeViews = []; // { g, el, mid }
+const cm = v => Math.round(v * 100);
+function tapeTargets() {
+  const out = [];
+  const visible = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
+  scene.traverse(o => {
+    if (!o.isMesh || o === skyDome || o === marker || o.parent === tapeG || tapeG.children.includes(o.parent)) return;
+    const m = o.material; if (!m || Array.isArray(m) || m.isShaderMaterial || m.depthWrite === false || (m.transparent && m.opacity < 0.2 && m !== M.glass)) return;
+    if (!o.layers.test(camera.layers) || !visible(o)) return;
+    out.push(o);
+  });
+  return out;
+}
+function tapePick(x, y) {
+  ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); ray.layers.mask = camera.layers.mask;
+  const hit = ray.intersectObjects(tapeTargets(), false).find(h => h.distance > 0.05 && h.distance < 60);
+  ray.layers.set(0);
+  if (!hit) { const p = new THREE.Vector3(); return ray.ray.intersectPlane(floorPlane, p) ? p : null; }
+  const p = hit.point.clone();
+  if (hit.face) p.add(hit.face.normal.clone().transformDirection(hit.object.matrixWorld).multiplyScalar(0.012)); // just off the surface so the tape never sinks into it
+  return p;
+}
+function snapAxis(a, b) { // nearly along a wall, the floor or straight up → make it exactly straight
+  const d = b.clone().sub(a), L = d.length(); if (L < 1e-3) return b;
+  for (const ax of ['x', 'y', 'z']) if (Math.abs(d[ax]) / L > Math.cos(THREE.MathUtils.degToRad(7))) {
+    const s = a.clone(); s[ax] = b[ax]; return s;
+  }
+  return b;
+}
+function tapeHtml(a, b) {
+  const d = b.clone().sub(a), L = d.length(), parts = [];
+  const big = `<b>${cm(L)} см</b>`;
+  const h = Math.hypot(d.x, d.z), v = Math.abs(d.y);
+  if (h > 0.03 && v > 0.03) parts.push(`↔ ${cm(h)}`, `↕ ${cm(v)}`);
+  else if (Math.abs(d.x) > 0.03 && Math.abs(d.z) > 0.03) parts.push(`${cm(Math.abs(d.x))} × ${cm(Math.abs(d.z))}`);
+  return big + (parts.length ? `<small>${parts.join(' · ')}</small>` : '');
+}
+function tapeMesh(a, b, ghost) {
+  const g = new THREE.Group(), L = a.distanceTo(b);
+  const r = mode === 'walk' ? 0.008 : 0.018;
+  if (L > 0.005) {
+    const mat = ghost ? tapeGhostMat : new THREE.MeshBasicMaterial({ map: tapeTex.clone() });
+    if (!ghost) { mat.map.needsUpdate = true; mat.map.repeat.set(1, L / 0.1); mat.map.rotation = Math.PI / 2; mat.map.center.set(0.5, 0.5); }
+    const c = new THREE.Mesh(tapeCylGeo, mat); c.scale.set(r, L, r);
+    c.position.copy(a).lerp(b, 0.5); c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    c.renderOrder = 20; g.add(c);
+  }
+  for (const p of (L > 0.005 ? [a, b] : [a])) { const d = new THREE.Mesh(tapeDotGeo, tapeEndMat); d.scale.setScalar(r * 2.4); d.position.copy(p); d.renderOrder = 21; g.add(d); }
+  return g;
+}
+function disposeView(v) { v.g.traverse(o => { if (o.material && o.material !== tapeEndMat && o.material !== tapeGhostMat) { o.material.map && o.material.map.dispose(); o.material.dispose(); } }); tapeG.remove(v.g); v.el && v.el.remove(); }
+function rebuildTape() {
+  while (tapeViews.length) disposeView(tapeViews.pop());
+  for (const t of tapes) {
+    const a = new THREE.Vector3(...t.a), b = new THREE.Vector3(...t.b);
+    const el = document.createElement('div'); el.className = 'tag tape'; el.innerHTML = tapeHtml(a, b); $('tags').appendChild(el);
+    tapeViews.push({ g: tapeMesh(a, b), el, mid: a.clone().lerp(b, 0.5) }); tapeG.add(tapeViews[tapeViews.length - 1].g);
+  }
+  if (tapeA) { const v = { g: tapeMesh(tapeA, tapeA, true), el: null, mid: tapeA }; tapeG.add(v.g); tapeViews.push(v); }
+  store.set(TAPE_KEY, tapes); tapeBar(); invalidate();
+}
+function tapeTap(x, y) {
+  const p = tapePick(x, y); if (!p) return;
+  if (mode === 'plan') p.y = 0.015; // seen from above, everything is measured along the floor
+  if (!tapeA) { tapeA = p; }
+  else { const b = snapAxis(tapeA, p); if (b.distanceTo(tapeA) > 0.02) { tapes.push({ a: tapeA.toArray().map(v => +v.toFixed(3)), b: b.toArray().map(v => +v.toFixed(3)) }); if (tapes.length > 12) tapes.shift(); } tapeA = null; }
+  rebuildTape();
+}
+function tapeBar() {
+  const bar = $('tapebar'); bar.hidden = !tapeOn; if (!tapeOn) return;
+  const last = tapes[tapes.length - 1];
+  $('tapeMsg').innerHTML = tapeA ? 'Тепер торкніться <b>другої точки</b>' : last ? `Останній вимір: <b>${cm(new THREE.Vector3(...last.a).distanceTo(new THREE.Vector3(...last.b)))} см</b> · торкніться, щоб міряти ще` : 'Торкніться <b>першої точки</b> — стіни, підлоги чи меблів';
+  $('tapeUndo').hidden = !tapes.length && !tapeA; $('tapeClear').hidden = tapes.length < 2;
+}
+function setTape(on) {
+  tapeOn = on; $('bTape').classList.toggle('on', on); if (!on) tapeA = null; hideTip(); rebuildTape();
+  document.body.classList.toggle('taping', on);
+}
+function drawTape() {
+  const show = tapeOn || tapes.length; tapeG.visible = !!show;
+  const placed = []; // labels that would overlap are nudged apart (the newest stays where it belongs)
+  for (let i = tapeViews.length - 1; i >= 0; i--) { const v = tapeViews[i];
+    if (!v.el) continue;
+    if (!show) { v.el.style.display = 'none'; continue; }
+    if (mode === 'walk') { // the label of a tape hidden behind a wall is hidden too (the tape itself is hidden by the wall)
+      if (!wallMeshes) { wallMeshes = []; wallsG.traverse(o => { if (o.isMesh && o.material !== M.glass) wallMeshes.push(o); }); }
+      const dist = v.mid.distanceTo(camera.position);
+      tagRay.set(camera.position, v.mid.clone().sub(camera.position).normalize()); tagRay.far = dist - 0.05;
+      if (dist > 10 || tagRay.intersectObjects(wallMeshes, false).length) { v.el.style.display = 'none'; continue; }
+    }
+    v3.copy(v.mid).project(camera);
+    if (v3.z > 1 || Math.abs(v3.x) > 1.1 || Math.abs(v3.y) > 1.1) { v.el.style.display = 'none'; continue; }
+    v.el.style.display = '';
+    const w = v.el.offsetWidth || 70, h = v.el.offsetHeight || 34, px = (v3.x + 1) / 2 * innerWidth;
+    let py = (1 - v3.y) / 2 * innerHeight - h * 1.3;
+    for (let k = 0; k < 8; k++) { const o = placed.find(r => Math.abs(r.x - px) < (r.w + w) / 2 + 4 && Math.abs(r.y - py) < (r.h + h) / 2 + 3); if (!o) break; py = o.y + (o.h + h) / 2 + 4; }
+    placed.push({ x: px, y: py, w, h });
+    v.el.style.transform = `translate(${px - w / 2}px,${py - h / 2}px)`;
+  }
+}
+$('bTape').addEventListener('click', () => setTape(!tapeOn));
+$('tapeUndo').addEventListener('click', () => { if (tapeA) tapeA = null; else tapes.pop(); rebuildTape(); });
+$('tapeClear').addEventListener('click', () => { tapes = []; tapeA = null; rebuildTape(); });
+$('tapeDone').addEventListener('click', () => setTape(false));
+try { tapes = (store.get(TAPE_KEY, []) || []).filter(t => t && t.a && t.b && t.a.length === 3 && t.b.length === 3); } catch (e) { tapes = []; }
+if (Q.get('tape')) { // test hook: ?tape=x,y,z,x,y,z;… 
+  tapes = Q.get('tape').split(';').map(s => s.split(',').map(Number)).filter(n => n.length === 6 && n.every(isFinite)).map(n => ({ a: n.slice(0, 3), b: n.slice(3) }));
+}
+
 /* ================= labels ================= */
 const labelEls = roomLabels.map(l => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${l.name}<small>${l.area.toFixed(2).replace('.', ',')} м²</small>`; $('labels').appendChild(d); return d; });
 const v3 = new THREE.Vector3();
@@ -1001,7 +1123,7 @@ function resize() {
 addEventListener('resize', resize);
 
 /* ================= loop ================= */
-setMode(mode); applyLight(); applyFinish(); renderDiary();
+setMode(mode); applyLight(); applyFinish(); renderDiary(); rebuildTape(); if (Q.get('tapeon')) setTape(true);
 if (LAYOUT === 'closet') document.querySelector('.title p').textContent = '77,3 м² · дві кімнати · з гардеробною';
 if (Q.get('dist')) orbit.dist = +Q.get('dist');
 let last = performance.now(), streak = 0, ema = 16, tuneN = 0;
@@ -1055,7 +1177,7 @@ function loop(t) {
         if (Math.hypot(walker.x - ox, walker.z - oz) < sp * 0.2) { if (++g.stuck > 20) { walker.goal = null; hideMarker(); } } else g.stuck = 0;
       }
     }
-  } else if (mode === 'doll' && !ptrs.size && Q.get('still') == null && idle(t)) { orbit.yaw += dt * 0.04; moving = true; }
+  } else if (mode === 'doll' && !ptrs.size && !tapeOn && Q.get('still') == null && idle(t)) { orbit.yaw += dt * 0.04; moving = true; }
   if (animateOpenables(dt)) { moving = true; shadowDirty = true; }
   if (moving) lastActive = t;
   // moving → lighter resolution; a moment after everything stops → one sharp frame, then nothing is drawn until something changes
@@ -1067,11 +1189,11 @@ function loop(t) {
   updateCamera();
   if (shadowDirty) { renderer.shadowMap.needsUpdate = true; shadowDirty = false; }
   renderer.render(scene, camera); frames++;
-  drawLabels(); drawTags(!moving); drawMinimap();
+  drawLabels(); drawTags(!moving); drawTape(); drawMinimap();
 }
 let lastTouch = 0; cv.addEventListener('pointerdown', () => lastTouch = performance.now());
 const idle = t => t - lastTouch > 8000;
 setQuality(quality, true);
 requestAnimationFrame(loop);
 setInterval(() => store.set('yaw', orbit.yaw), 5000);
-window.__kv = { setMode, walker, orbit, solids, P, openables, stats: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, frames, free: (x, z) => !blocked(x, z), pr: curPR, movePR, quality, lite }), invalidate, renderer, scene, sun };
+window.__kv = { setTape, tapes: () => tapes, setMode, walker, orbit, solids, P, openables, stats: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, frames, free: (x, z) => !blocked(x, z), pr: curPR, movePR, quality, lite }), invalidate, renderer, scene, sun };
