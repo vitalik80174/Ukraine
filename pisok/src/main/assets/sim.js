@@ -5,8 +5,8 @@
 const E=0, SAND=1, WATER=2, STONE=3, FIRE=4, PLANT=5, LAVA=6, STEAM=7, SNOW=8, SMOKE=9, METAL=10, GLASS=11, OIL=12, ACID=13,
       POWDER=14, ICE=15, SALT=16, SALTWATER=17, ASH=18, SEED=19, WOOD=20, COAL=21, GAS=22, NITRO=23, CEMENT=24, CLONE=25,
       VOID=26, SPARK=27, ANT=28, FISH=29, FLOWER=30, HEATER=31, COOLER=32, CLOUD=33, BATTERY=34, LAMP=35, MERCURY=36,
-      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42, FIREFLY=43;
-const N=44;
+      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42, FIREFLY=43, MUSH=44, SPORE=45, MOTH=46;
+const N=47;
 // kind: p powder, l liquid, g gas, w wall (static, pressure-tight), s static (porous)
 const MAT=[];
 function def(id,name,kind,col,v,dens,cond,extra={}){ MAT[id]=Object.assign({id,name,kind,col,v,dens,cond,fill:.5,t0:null,ign:null},extra); }
@@ -54,6 +54,9 @@ def(WETSAND,"Мокрий пісок","p",[160,124,74],14,3.1,.3,{fill:.35});
 def(CLAY,"Глина","p",[176,140,118],12,2.4,.2,{fill:.5});
 def(BRICK,"Цегла","w",[172,80,58],14,9,.2,{fill:1});
 def(THERMITE,"Терміт","p",[150,72,60],20,2.6,.15,{fill:.4,ign:600});
+def(MUSH,"Світний гриб","s",[226,218,198],10,9,.1,{fill:1,ign:220});
+def(SPORE,"Світні гриби","p",[150,230,200],10,.6,.1,{fill:.05,ign:150});
+def(MOTH,"Метелик","p",[214,198,166],12,.4,.1,{fill:.025});
 
 const tbl=(f)=>{ const a=new Array(N); for(let i=0;i<N;i++) a[i]=f(MAT[i]); return a; };
 const DENS=tbl(m=>m.dens), COND=tbl(m=>m.cond), KIND=tbl(m=>m.kind), IGN=tbl(m=>m.ign);
@@ -64,7 +67,7 @@ const WALL=tbl(m=>m.kind==="w");
 const GASK=tbl(m=>m.kind==="g"&&m.id!==E);
 const MOVES=tbl(m=>(m.kind==="p"||m.kind==="l"||m.kind==="g")&&m.id!==E ? (m.id===LAVA||m.id===CEMENT?.3:1) : 0);
 const CONDUCT=tbl(m=>m.id===METAL||m.id===WATER||m.id===SALTWATER||m.id===MERCURY||m.id===LAMP||m.id===MOLTEN);
-const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[FIREFLY]:.4,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05})[m.id]||0);
+const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[FIREFLY]:.4,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05,[MUSH]:.2,[SPORE]:.3,[MOTH]:.4})[m.id]||0);
 const FLOWERS=[[232,72,96],[250,206,60],[246,150,200],[245,245,245],[160,110,230],[255,140,60]];
 
 /* ================= world state ================= */
@@ -77,7 +80,7 @@ function makeArrays(w,h){
 }
 function put(i,t){ // a fresh cell from the brush or a spawn: default temperature
   T[i]=t; S[i]=(rnd()*256)|0;
-  L[i]= t===FIRE?40+rnd()*50 : t===STEAM?500+rnd()*400 : t===SMOKE?40+rnd()*60 : t===GAS?1500+rnd()*800 : t===SPARK?3+rnd()*4 : t===ANT?(rnd()<.5?1:2) : t===CLOUD?12+rnd()*24 : t===BIRD?(rnd()*60|0) : t===FIREFLY?(rnd()*FLY_PER|0) : 0;
+  L[i]= t===FIRE?40+rnd()*50 : t===STEAM?500+rnd()*400 : t===SMOKE?40+rnd()*60 : t===GAS?1500+rnd()*800 : t===SPARK?3+rnd()*4 : t===ANT?(rnd()<.5?1:2) : t===CLOUD?12+rnd()*24 : t===BIRD?(rnd()*60|0) : t===FIREFLY?(rnd()*FLY_PER|0) : t===MUSH?(3<<4)|(400<<6) : 0;
   const t0=MAT[t].t0; H[i]= t0===null ? 20 : t0;
 }
 function conv(i,t){ // a cell turning into something else keeps its heat
@@ -190,6 +193,7 @@ function addP(i,v){ P[i]+=v; pActive=360; }
 let frame=0;
 function step(){
   M.fill(0); frame++;
+  if ((frame&7)===1) beacons();
   if (frame&1) heat();
   if (pActive>0){ if (--pActive===0) P.fill(0); else pressure(); }
   const ltr=frame&1;
@@ -250,6 +254,9 @@ function cell(x,y){
         case LAMP: if (L[i]){ electric(i,x,y); if (H[i]<60) H[i]+=.5; } break;
         case BIRD: bird(i,x,y); break;
         case FIREFLY: firefly(i,x,y); break;
+        case MUSH: mush(i,x,y); break;
+        case SPORE: spore(i,x,y); break;
+        case MOTH: moth(i,x,y); break;
       }
       if (pActive && MOVES[T[i]] && !M[i]) push(i,x,y,T[i]);
 }
@@ -352,11 +359,12 @@ function spark(i,x,y){
 }
 function zapTouch(j,u){ // what electricity does to its neighbour
   if (u===GAS||u===POWDER||u===NITRO||u===OIL||u===PLANT||u===WOOD||u===COAL||u===FLOWER||u===SEED) H[j]+=400;
-  else if (u===FISH||u===ANT||u===FIREFLY||u===BIRD) conv(j,ASH);
+  else if (u===FISH||u===ANT||u===FIREFLY||u===BIRD||u===MOTH) conv(j,ASH);
+  else if (u===MUSH||u===SPORE) H[j]+=200;
 }
 const HEAD=30;
 function electric(i,x,y){ // conductors carry pulses: head (30) → a long rest (29…1) so a wave never feeds on itself → ready (0)
-  if (L[i]===HEAD){ each4(x,y,(j)=>{ const u=T[j]; if (CONDUCT[u] && L[j]===0){ L[j]=HEAD; M[j]=1; } else if (u!==T[i]) zapTouch(j,u); }); H[i]+=T[i]===METAL?6:2; EV.zap++; }
+  if (L[i]===HEAD){ each4(x,y,(j)=>{ const u=T[j]; if (CONDUCT[u] && L[j]===0){ L[j]=HEAD; M[j]=1; } else if (u!==T[i] && u!==MOTH) zapTouch(j,u); }); H[i]+=T[i]===METAL?6:2; EV.zap++; }
   L[i]--;
 }
 function conductor(i,x,y){ if (L[i]) electric(i,x,y); }
@@ -443,7 +451,7 @@ function bird(i,x,y){ // flies about, keeps off the ground, pecks at seeds
   if (rnd()<.01) dir=-dir;
   const nx=x+dir, ny=y+dy, u=at(nx,ny);
   if (u===E){ swap(i,ny*GW+nx); S[ny*GW+nx]=(S[ny*GW+nx]&~1)|(dir>0?1:0); }
-  else { S[i]^=1; if (u===SEED && rnd()<.3){ T[ny*GW+nx]=E; } }
+  else { S[i]^=1; if ((u===SEED||u===MOTH) && rnd()<.3){ T[ny*GW+nx]=E; L[ny*GW+nx]=0; } }
 }
 // fireflies: each one has its own clock (L counts up to FLY_PER) and flashes when it runs out.
 // A flash nudges the clocks of fireflies nearby a little forward, so after a while whole swarms blink together.
@@ -477,6 +485,115 @@ function crack(i,x,y,limit,rate){
   M[i]=1; P[i]=p*.8; pActive=360;
 }
 
+/* ================= glowing mushrooms & moths ================= */
+// ui.js tells the world what time of day it is: 0 day, 1 dusk, 2 night. Mushrooms soak up daylight and give it back at night;
+// moths rest by day and at dusk fly to the brightest light they can see.
+let simSky=0;
+// a mushroom cell keeps three things in L: growth left (bits 0–3), its part (bits 4–5: 1 growing stem, 2 cap, 3 finished stem) and stored light (bits 6–15, 0…1023)
+const MBUD=15, MROLE=48, MLIGHT=1023;
+const mRole=i=>(L[i]>>4)&3, mLight=i=>L[i]>>6;
+function setMush(i,role,bud,light){ T[i]=MUSH; L[i]=(Math.min(MLIGHT,light|0)<<6)|(role<<4)|bud; M[i]=1; }
+const MUSHBED=tbl(m=>({[WOOD]:1,[ASH]:.8,[WETSAND]:.7,[CLAY]:.6,[COAL]:.6,[PLANT]:.4,[STONE]:.15,[BRICK]:.15,[MUSH]:0})[m.id]||0);
+// the beacon map: how bright each 6×6 block is, refreshed every 8 frames; moths read it to find light
+const BS=6; let BW=0, BH=0, BEAC=null, mushCount=0, mothCount=0;
+function lightOf(i,t){
+  switch(t){
+    case LAMP: return L[i]?8:0;
+    case FIRE: return 2.5;
+    case LAVA: case MOLTEN: return 1.2;
+    case WOOD: case COAL: return L[i]?2:0;
+    case FIREFLY: return L[i]<FLY_FLASH?1.5:0;
+    case MUSH: return mRole(i)===2 ? .04+.16*mLight(i)/MLIGHT : 0;     // faint: moths only go to them when nothing brighter is about
+    case SPARK: return 1;
+  }
+  return H[i]>600 && WALL[t] ? .6 : 0;
+}
+function beacons(){
+  BW=Math.ceil(GW/BS); BH=Math.ceil(GH/BS);
+  if (!BEAC || BEAC.length!==BW*BH) BEAC=new Float32Array(BW*BH); else BEAC.fill(0);
+  let mc=0, oc=0;
+  for(let y=0;y<GH;y++){ const row=y*GW, br=((y/BS)|0)*BW;
+    for(let x=0;x<GW;x++){ const i=row+x, t=T[i]; if (t===E) continue;
+      if (t===MUSH) mc++; else if (t===MOTH){ oc++; continue; }
+      const w=lightOf(i,t); if (w) BEAC[br+((x/BS)|0)]+=w; } }
+  mushCount=mc; mothCount=oc;
+}
+function mushAt(x,y,h,half,hue,light){ // a whole mushroom standing on (x,y): a stem h cells tall and a domed cap
+  const ux=-GX, uy=-GY; let cx=x, cy=y;
+  for(let k=0;k<h;k++){ if (outside(cx,cy)) return; const i=cy*GW+cx; if (T[i]!==E && T[i]!==SPORE) return; setMush(i,3,0,light); S[i]=hue; if (k<h-1){ cx+=ux; cy+=uy; } }
+  capAt(cx,cy,half,hue,light);
+}
+function capAt(x,y,half,hue,light){ // (x,y) is the top of the stem
+  const ux=-GX, uy=-GY;
+  for(let row=1;row<=2;row++){ const w=row===1?half:half-1; if (w<0) continue;
+    for(let s=-w;s<=w;s++){ const nx=x+ux*row+PX*s, ny=y+uy*row+PY*s; if (outside(nx,ny)) continue; const j=ny*GW+nx;
+      if (T[j]===E){ setMush(j,2,0,light); S[j]=hue|((rnd()*4|0)<<2); } } }
+  for(const s of [-half,half]) if (half>1){ const nx=x+PX*s, ny=y+PY*s; if (!outside(nx,ny) && T[ny*GW+nx]===E){ const j=ny*GW+nx; setMush(j,2,0,light); S[j]=hue; } }
+}
+function spore(i,x,y){
+  if (H[i]>70){ T[i]=E; L[i]=0; return; }
+  if (++L[i]>1400){ T[i]=E; L[i]=0; return; }                            // a spore that found nowhere to grow just fades
+  if (rnd()<.55){ if (rnd()<.15){ const sd=rnd()<.5?-1:1, nx=x+PX*sd, ny=y+PY*sd; if (!outside(nx,ny) && T[ny*GW+nx]===E){ swap(i,ny*GW+nx); return; } }
+    if (powder(i,x,y,SPORE,.6)) return; }
+  const bed=MUSHBED[at(x+GX,y+GY)]; if (!bed || at(x+GX,y+GY)===MUSH) return;
+  if (L[i]<30 || rnd()>.02*bed) return;
+  let near=0; for(let dy=-5;dy<=3;dy++) for(let dx=-3;dx<=3;dx++) if (at(x+dx,y+dy)===MUSH) near++;
+  if (near>1){ if (rnd()<.1){ T[i]=E; L[i]=0; } return; }               // too crowded
+  const hue=(S[i]%3); setMush(i,1,1+(rnd()*4|0),200); S[i]=hue;
+}
+function mush(i,x,y){
+  if (H[i]>75 && rnd()<.05){ conv(i,ASH); return; }
+  if (H[i]<-15 && rnd()<.001){ conv(i,ASH); return; }
+  let light=mLight(i);
+  if (simSky===0){ if (light<MLIGHT) light=Math.min(MLIGHT,light+3); }                 // daylight fills them up in about six seconds
+  else if ((frame+i)%(simSky===1?6:14)===0 && light>0) light--;                         // and they give it back slowly through the night
+  const role=(L[i]>>4)&3, bud=L[i]&MBUD;
+  L[i]=(light<<6)|(role<<4)|bud;
+  if ((frame+i)%23===0){                                                                // a mushroom whose ground is gone falls apart into spores
+    if (role===2){ let n=0; for(const [dx,dy] of NB8) if (at(x+dx,y+dy)===MUSH) n++; if (!n){ T[i]=SPORE; L[i]=0; return; } }
+    else { const b=at(x+GX,y+GY); if (b===E || (FLUID[b] && b!==E)){ T[i]=SPORE; L[i]=0; return; } } }
+  if (role===1 && rnd()<.012){                                                          // the stem grows up, then opens a cap
+    const nx=x-GX, ny=y-GY; if (outside(nx,ny)){ L[i]=(light<<6)|(3<<4); return; }
+    const j=ny*GW+nx;
+    if (bud>0 && T[j]===E){ setMush(j,1,bud-1,light); S[j]=S[i]; L[i]=(light<<6)|(3<<4); }
+    else { L[i]=(light<<6)|(3<<4); capAt(x,y,rnd()<.45?2:1,S[i]%3,light); }
+    return; }
+  if (role===2 && simSky>0 && mushCount<500 && rnd()<.00035){                          // at night caps puff out spores
+    const j=rnb(x,y); if (j>=0 && T[j]===E){ put(j,SPORE); S[j]=S[i]%3; M[j]=1; } }
+}
+function moth(i,x,y){
+  if (H[i]>90){ conv(i,FIRE); L[i]=8; EV.fire++; return; }                               // too close to the flame
+  if (H[i]<-10 || (count8(x,y,WATER)>4 && rnd()<.02)){ conv(i,ASH); return; }
+  const below=at(x+GX,y+GY), perched=below!==E && !GASK[below];
+  if (simSky===0){                                                                       // by day they rest, wings folded
+    if (perched){ if (rnd()<.002){ const j=rnb(x,y); if (j>=0 && T[j]===E) swap(i,j); } return; }
+    if (rnd()<.3){ const d=(rnd()*3|0)-1, nx=x+GX+PX*d, ny=y+GY+PY*d; if (!outside(nx,ny) && T[ny*GW+nx]===E) swap(i,ny*GW+nx); }
+    return; }
+  if (rnd()<.3) return;
+  // look for the brightest light nearby (it counts for less the further away it is)
+  let tx=-1, ty=-1, best=.12;
+  if (BEAC){ const bx=(x/BS)|0, by=(y/BS)|0, R=9;
+    for(let yy=Math.max(0,by-R);yy<=Math.min(BH-1,by+R);yy++) for(let xx=Math.max(0,bx-R);xx<=Math.min(BW-1,bx+R);xx++){
+      const w=BEAC[yy*BW+xx]; if (!w) continue; const dx=xx-bx, dy=yy-by, sc=w/(1+(dx*dx+dy*dy)*.12);
+      if (sc>best){ best=sc; tx=xx*BS+3; ty=yy*BS+3; } } }
+  let mx, my;
+  if (tx>=0 && rnd()<.8){
+    const dx=tx-x, dy=ty-y, d=Math.abs(dx)+Math.abs(dy), sx=Math.sign(dx), sy=Math.sign(dy);
+    if (d<7){ const o=(S[i]&1)?1:-1; mx=-sy*o; my=sx*o; if (rnd()<.3){ mx+=sx; my+=sy; } if (!mx&&!my){ mx=(rnd()*3|0)-1; my=(rnd()*3|0)-1; } if (rnd()<.02) S[i]^=1; }   // round and round the light
+    else if (rnd()<Math.abs(dx)/(d||1)){ mx=sx; my=rnd()<.3?(rnd()<.5?-1:1):0; } else { my=sy; mx=rnd()<.3?(rnd()<.5?-1:1):0; }
+  } else {                                                                               // nothing bright: a lazy zigzag above the ground
+    mx=(rnd()*3|0)-1; my=(rnd()*3|0)-1;
+    let gap=99; for(let k=1;k<=12;k++){ const u=at(x+GX*k,y+GY*k); if (u!==E && !GASK[u]){ gap=k; break; } }
+    if (gap<4){ mx-=GX; my-=GY; } else if (gap>11 && rnd()<.4){ mx+=GX; my+=GY; }
+  }
+  if (simSky===2 && mothCount<120 && rnd()<.0004 && count8(x,y,PLANT)+count8(x,y,FLOWER)){ const j=rnb(x,y); if (j>=0 && T[j]===E){ put(j,MOTH); M[j]=1; mothCount++; } }   // eggs on the leaves hatch new moths
+  mx=Math.max(-1,Math.min(1,mx)); my=Math.max(-1,Math.min(1,my)); if (!mx && !my) return;
+  const nx=x+mx, ny=y+my; if (outside(nx,ny)){ S[i]^=1; return; }
+  const j=ny*GW+nx, u=T[j];
+  if (u===E){ if (H[j]>80 && rnd()<.85){ S[i]^=1; return; } swap(i,j); }                          // they shy away from the heat… mostly
+  else if (u===FIRE && rnd()<.12){ conv(i,FIRE); L[i]=8; EV.fire++; }
+  else S[i]^=1;
+}
 /* ================= lightning ================= */
 function lightning(cx,cy){ // a jagged bolt from the sky that homes in on the touched point and strikes the first solid thing
   let x=Math.max(0,Math.min(GW-1,cx+((rnd()-.5)*GW*.25|0))), y=0;
@@ -614,3 +731,23 @@ SCENES.night=function(){ sceneSky=2;
 SCENE_LIST.push(["night","Літня ніч","Світлячки над лукою, вогнище й ліхтар; сусіди поступово починають блимати разом"]);
 let sceneSky=null;               // a scene can ask for a time of day; ui.js applies it
 function loadScene(name){ clearAll(); sceneSky=null; (SCENES[name]||SCENES.demo)(); }
+SCENES.forest=function(){ sceneSky=2;
+  const ground=x=>Math.round(GH*(.76-.04*Math.sin(x/GW*4.3+2)-.015*Math.sin(x/GW*31)));
+  for(let x=0;x<GW;x++){ const g=ground(x); for(let y=g;y<GH;y++) put(y*GW+x, y<g+3?WETSAND:y<g+9?CLAY:STONE); }
+  const tree=(cx,h)=>{ const g=ground(cx); for(let y=g-h;y<g;y++) for(let x=cx-1;x<=cx+1;x++) put(y*GW+x,WOOD);
+    for(let k=0;k<160;k++){ const a=rnd()*Math.PI*2, d=Math.sqrt(rnd())*h*.38, x=Math.round(cx+Math.cos(a)*d*1.3), y=Math.round(g-h+Math.sin(a)*d*.8);
+      if (!outside(x,y) && T[y*GW+x]===E) put(y*GW+x,PLANT); } };
+  const log=(x0,len)=>{ const g=Math.max(ground(x0),ground(x0+len)); for(let x=x0;x<x0+len;x++){ const e=Math.min(x-x0,x0+len-1-x), top=g-6+(e<1?2:e<2?1:0); for(let y=top;y<ground(x);y++) put(y*GW+x,WOOD); } return g-7; };
+  tree(Math.round(GW*.08),Math.round(GH*.42)); tree(Math.round(GW*.5),Math.round(GH*.36)); tree(Math.round(GW*.93),Math.round(GH*.46));
+  const logs=[[.16,.12],[.62,.14]];
+  for(const [fx,fl] of logs){ const x0=Math.round(GW*fx), len=Math.round(GW*fl), top=log(x0,len);
+    for(let x=x0+3;x<x0+len-3;x+=5+(rnd()*5|0)) mushAt(x,top,2+(rnd()*4|0),rnd()<.6?2:1,rnd()*3|0,700+rnd()*300); }
+  for(let k=0;k<14;k++){ const x=2+(rnd()*(GW-4)|0), g=ground(x)-1; if (T[g*GW+x]===E) mushAt(x,g,1+(rnd()*3|0),rnd()<.4?2:1,rnd()*3|0,500+rnd()*500); }
+  for(let x=2;x<GW-2;x+=2+(rnd()*4|0)){ const g=ground(x)-1; if (T[g*GW+x]!==E) continue; put(g*GW+x,PLANT); L[g*GW+x]=2+(rnd()*5|0); }
+  const lx=Math.round(GW*.36), lg=ground(lx);                                          // a lantern on a post, fed by a battery
+  rect(lx,lg-30,lx+2,lg,METAL); rect(lx,lg-32,lx+9,lg-30,METAL); rect(lx+6,lg-30,lx+10,lg-27,LAMP); rect(lx-3,lg-4,lx,lg,BATTERY);
+  const fx=Math.round(GW*.8), fg=ground(fx);                                           // a small campfire
+  rect(fx-5,fg-4,fx+5,fg,STONE); rect(fx-3,fg-4,fx+3,fg-1,E); for(let k=-2;k<=2;k++){ const i=(fg-2)*GW+fx+k; put(i,WOOD); H[i]=400; }
+  for(let k=0;k<40;k++){ const x=(rnd()*GW)|0, y=ground(x)-6-(rnd()*30|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,MOTH); }
+  for(let k=0;k<25;k++){ const x=(rnd()*GW)|0, y=ground(x)-3-(rnd()*12|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,FIREFLY); } };
+SCENE_LIST.push(["forest","Нічний ліс","Світні гриби на старих колодах, ліхтар і вогнище, до яких злітаються метелики"]);

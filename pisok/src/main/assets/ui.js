@@ -60,6 +60,7 @@ function tcol(h){ // temperature colour: icy blue below room temperature, dark a
   return ramp([[40,40,52],[250,200,40],[240,70,30],[255,255,255]],Math.pow(Math.min(1,(h-20)/1200),.6));
 }
 const SKY_AMB=[null,[150,108,132],[42,50,86]];
+const MHUE=[[90,235,205],[110,170,255],[170,255,120]];   // glowing mushrooms: sea-green, blue, lime
 function render(){
   const tick=frame, glow=settings.glow, sk=view?0:skyNow(), lit=sk>0, emit=glow||lit;
   bg=bgs[sk];
@@ -92,6 +93,14 @@ function render(){
               if (lit){ nbuf[i]=pack(190*q|0,240*q|0,70*q|0); const h=pack(70*q|0,95*q|0,25*q|0);       // a little cross-shaped sparkle
                 if (x>0) nbuf[i-1]=h; if (x<GW-1) nbuf[i+1]=h; if (y>0) nbuf[i-GW]=h; if (y<GH-1) nbuf[i+GW]=h;
                 const k=(y>>1)*LW+(x>>1); LA[0][k]+=300*q; LA[1][k]+=380*q; LA[2][k]+=90*q; } } break; }
+          case MUSH:{ const hc=MHUE[(S[i]&3)%3], role=(L[i]>>4)&3, q=lit?(.22+.78*(L[i]>>6)/1023)*(.85+.15*Math.sin(tick*.03+x*.37+y*.29)):0;
+            if (role===2){ const spot=((S[i]>>2)&3)===0; r=lerp(58,hc[0],.42)+(spot?46:s*6); g=lerp(74,hc[1],.42)+(spot?46:s*6); bl=lerp(92,hc[2],.42)+(spot?40:s*6);
+              if (q>0){ r=lerp(r,hc[0],q); g=lerp(g,hc[1],q); bl=lerp(bl,hc[2],q); er=hc[0]*q*.75; eg=hc[1]*q*.75; eb=hc[2]*q*.75;
+                nbuf[i]=pack(hc[0]*q*.8|0,hc[1]*q*.8|0,hc[2]*q*.8|0); const k=(y>>1)*LW+(x>>1); LA[0][k]+=hc[0]*q*.9; LA[1][k]+=hc[1]*q*.9; LA[2][k]+=hc[2]*q*.9; } }
+            else { r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v; if (q>0) nbuf[i]=pack(hc[0]*q*.22|0,hc[1]*q*.22|0,hc[2]*q*.22|0); }
+            break; }
+          case SPORE:{ const hc=MHUE[S[i]%3]; r=hc[0]*.85; g=hc[1]*.85; bl=hc[2]*.85; if (lit) nbuf[i]=pack(hc[0]*.4|0,hc[1]*.4|0,hc[2]*.4|0); break; }
+          case MOTH:{ const fly=simSky>0 && T[i+GW*GY+GX]===E, up=fly && (((tick>>1)+S[i])&1); r=up?236:c[0]+s*8; g=up?226:c[1]+s*8; bl=up?204:c[2]+s*8; if (lit) nbuf[i]=pack(up?70:44,up?64:40,up?54:34); break; }
           case BIRD:{ const up=((tick>>2)+S[i])&1; r=up?235:160; g=up?238:166; bl=up?245:180; break; }
           case HEATER:{ const f=.5+.5*Math.sin(tick*.05+x*.3); r=200+f*40; g=80+f*30; bl=40; er=120*f; eg=40*f; break; }
           case COOLER:{ r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v; break; }
@@ -155,7 +164,7 @@ const CATS=[
   {id:"gas",name:"Гази",items:[STEAM,SMOKE,GAS,CLOUD]},
   {id:"solid",name:"Тверде",items:[STONE,BRICK,METAL,GLASS,ICE,WOOD]},
   {id:"energy",name:"Енергія",items:[FIRE,SPARK,"bolt",BATTERY,LAMP,HEATER,COOLER,"hot","cold"]},
-  {id:"life",name:"Живе",items:[SEED,PLANT,FLOWER,ANT,FISH,BIRD,FIREFLY]},
+  {id:"life",name:"Живе",items:[SEED,PLANT,FLOWER,SPORE,ANT,FISH,BIRD,FIREFLY,MOTH]},
   {id:"special",name:"Особливе",items:[CLONE,VOID]},
   {id:"tools",name:"Інструменти",items:["erase","wind","probe"]}
 ];
@@ -171,7 +180,7 @@ let cat=store.get("cat","powder"), current=store.get("cur",SAND);
 const SIZES=[1,2,4,7,11]; let sizeIx=store.get("size",2);
 const SPEEDS=[.5,1,2]; let speedIx=1, paused=false;
 function itemName(it){ return typeof it==="number" ? MAT[it].name : TOOLS[it].name; }
-function swatch(it){ if (typeof it==="string") return TOOLS[it].sw; if (it===FLOWER) return "conic-gradient(#e84860,#facc3c,#f696c8,#a06ee6,#e84860)"; if (it===FIREFLY) return "radial-gradient(circle at 60% 60%,#efff8a 0 22%,#9fd04a 34%,#2a2c22 72%)"; return `rgb(${MAT[it].col})`; }
+function swatch(it){ if (typeof it==="string") return TOOLS[it].sw; if (it===FLOWER) return "conic-gradient(#e84860,#facc3c,#f696c8,#a06ee6,#e84860)"; if (it===SPORE) return "radial-gradient(ellipse 70% 45% at 50% 38%,#8ff0d4 0 55%,transparent 58%),linear-gradient(90deg,transparent 42%,#e2dac6 42% 58%,transparent 58%) bottom/100% 60% no-repeat,#1d2a30"; if (it===MOTH) return "radial-gradient(ellipse 30% 40% at 30% 50%,#e8dcc0 0 90%,transparent 95%),radial-gradient(ellipse 30% 40% at 70% 50%,#e8dcc0 0 90%,transparent 95%),#3a3428"; if (it===FIREFLY) return "radial-gradient(circle at 60% 60%,#efff8a 0 22%,#9fd04a 34%,#2a2c22 72%)"; return `rgb(${MAT[it].col})`; }
 function buildDock(){
   const tabs=$("tabs"); tabs.innerHTML="";
   for(const c of CATS){ const b=document.createElement("button"); b.className="tab"+(c.id===cat?" on":""); b.textContent=c.name; b.setAttribute("aria-pressed",c.id===cat);
@@ -189,7 +198,7 @@ function buildDock(){
 const HINTS={bolt:"Торкніться — з неба вдарить блискавка",wind:"Проведіть пальцем — вітер понесе пісок, воду й дим",probe:"Торкніться, щоб дізнатись матеріал, температуру й тиск",
   hot:"Тримайте палець — усе під ним нагрівається",cold:"Тримайте палець — усе під ним холоне",[CLONE]:"Клонер копіює перше, що його торкнеться, і створює це безкінечно",
   [VOID]:"Чорна діра поглинає все, що торкається",[SPARK]:"Іскра запускає струм по металу й воді",[SEED]:"Насіння проростає на мокрому піску чи попелі",
-  [CEMENT]:"Цемент тече, а за кілька секунд твердне в камінь",[NITRO]:"Нітро вибухає від тепла чи іскри — дуже сильно",[CLOUD]:"Хмара пливе й поливає дощем, а в мороз — снігом",[BATTERY]:"Батарейка двічі на секунду шле струм у дроти, що її торкаються",[LAMP]:"Лампа світиться, коли через неї йде струм",[MERCURY]:"Ртуть — важка рідина, що проводить струм",[THERMITE]:"Терміт горить при 2600°, плавить метал і лишає рідке залізо",[WETSAND]:"Мокрий пісок тримає форму — можна ліпити замки",[CLAY]:"Глина ліпиться, а в жарі понад 500° випікається в цеглу",[BIRD]:"Птахи літають, тримаються над землею й клюють насіння",[FIREFLY]:"Світлячки блимають, а сусіди поступово підлаштовуються — і зграя починає блимати разом. Найкраще видно вночі",[MOLTEN]:"Рідкий метал застигає нижче 1400° і підпалює все навколо",[SALT]:"Сіль розчиняється у воді й топить лід"};
+  [CEMENT]:"Цемент тече, а за кілька секунд твердне в камінь",[NITRO]:"Нітро вибухає від тепла чи іскри — дуже сильно",[CLOUD]:"Хмара пливе й поливає дощем, а в мороз — снігом",[BATTERY]:"Батарейка двічі на секунду шле струм у дроти, що її торкаються",[LAMP]:"Лампа світиться, коли через неї йде струм",[MERCURY]:"Ртуть — важка рідина, що проводить струм",[THERMITE]:"Терміт горить при 2600°, плавить метал і лишає рідке залізо",[WETSAND]:"Мокрий пісок тримає форму — можна ліпити замки",[CLAY]:"Глина ліпиться, а в жарі понад 500° випікається в цеглу",[BIRD]:"Птахи літають, тримаються над землею й клюють насіння",[FIREFLY]:"Світлячки блимають, а сусіди поступово підлаштовуються — і зграя починає блимати разом. Найкраще видно вночі",[MOLTEN]:"Рідкий метал застигає нижче 1400° і підпалює все навколо",[SALT]:"Сіль розчиняється у воді й топить лід",[SPORE]:"Спори проростають на дереві, попелі, мокрому піску чи глині. Удень гриби запасають світло, а вночі світяться",[MOTH]:"Метелики вдень сидять, а ввечері й уночі летять до найяскравішого світла — лампи, вогню чи грибів"};
 function hint(it){ if (HINTS[it]) toast(HINTS[it]); }
 
 /* ================= fingers ================= */
@@ -227,6 +236,7 @@ function probe(e){
   let txt=`<b>${MAT[t].name}</b> · ${Math.round(H[i])}°C`;
   if (!WALL[t]) txt+=` · тиск ${P[i].toFixed(2)}`;
   if ((t===WOOD||t===COAL)&&L[i]) txt+=" · горить"; if (CONDUCT[t]&&L[i]) txt+=" · під струмом";
+  if (t===MUSH) txt+=` · світла запасено ${Math.round((L[i]>>6)/10.23)}%`;
   if (t===CLONE&&L[i]) txt+=` · копіює: ${MAT[L[i]-1].name.toLowerCase()}`;
   tip.innerHTML=txt; tip.hidden=false;
   tip.style.left=Math.min(innerWidth-tip.offsetWidth-8, Math.max(8, e.clientX-tip.offsetWidth/2))+"px";
@@ -357,12 +367,12 @@ $("btnGen").onclick=()=>newWorld();
 function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); }
 function unb64(s){ const b=atob(s), u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
 function snapshot(){ // types + whatever per-cell state matters across a save (clone memory, plant growth)
-  const extra=new Uint8Array(GW*GH); for(let i=0;i<extra.length;i++){ const t=T[i]; if (t===CLONE||t===PLANT||t===ANT) extra[i]=Math.min(255,L[i]); }
+  const extra=new Uint8Array(GW*GH); for(let i=0;i<extra.length;i++){ const t=T[i]; if (t===CLONE||t===PLANT||t===ANT) extra[i]=Math.min(255,L[i]); else if (t===MUSH) extra[i]=L[i]&63; }
   return {w:GW,h:GH,t:b64(T),x:b64(extra)};
 }
 function restore(s){
   if (!s || s.w!==GW || s.h!==GH) return false;
-  try{ const t=unb64(s.t), x=s.x?unb64(s.x):null; clearAll(); for(let i=0;i<t.length;i++) if (t[i] && t[i]<N){ put(i,t[i]); if (x && x[i]) L[i]=x[i]; } return true; }catch(e){ return false; }
+  try{ const t=unb64(s.t), x=s.x?unb64(s.x):null; clearAll(); for(let i=0;i<t.length;i++) if (t[i] && t[i]<N){ put(i,t[i]); if (x && x[i]) L[i]= t[i]===MUSH ? (400<<6)|x[i] : x[i]; } return true; }catch(e){ return false; }
 }
 window.saveWorld=function(){ store.set("world",snapshot()); };
 function thumb(){ const c=document.createElement("canvas"), w=160, h=Math.round(160*GH/GW); c.width=w; c.height=h; const g=c.getContext("2d"); g.imageSmoothingEnabled=false; g.drawImage(cv,0,0,w,h); return c.toDataURL("image/png"); }
@@ -405,6 +415,7 @@ function loop(){
     if (current==="hot"||current==="cold"||(typeof current==="number")) stamp(st.p[0],st.p[1]);
     if (current==="probe" && st.e) probe(st.e);
   }
+  simSky=skyNow();
   if (!paused){ acc+=SPEEDS[speedIx]; while(acc>=1){ step(); acc-=1; } }
   render(); sounds();
 }
