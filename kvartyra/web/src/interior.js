@@ -37,6 +37,16 @@ export const STYLES = [
     accent: { living: 0x2f4a3f, bedroom: 0x6b3a3f, room: 0x2e3f5c },
     sofa: 0x2e3f5c, cushion: 0xc9a14a, wood: 0x6d4a2f, metal: 0xb8914a, rug: 0x8c3b34, rug2: 0xd9c49c,
     bed: 0x6b3a3f, duvet: 0xf2ede2, throw: 0xc9a14a, textile: 0xe7dcc8, plants: 3, shade: 0xf1e6cf, lamp: 0xffd08a, classic: true
+  },
+  {
+    id: 'avtor', short: 'Авторський', name: 'Авторський', sub: 'глина й чорнильна ялина, латунь, ялинка-паркет',
+    // стеля 2,62 → низькі меблі (low), верхні шафи в колір стін «розчиняються»; кухня в глибині — темний якір,
+    // світло тікає до вікон; тепла база під південно-східне сонце; латунь замість сталі
+    wall: 0xefe9df, door: 0xe3dccd, cabinet: 0x2a362e, counter: 0xd9cfbc, upper: 0xefe9df,
+    floors: { 'Кухня-вітальня': 'herring', 'Передпокій': 'herring', 'Кімната': 'herring', 'Спальня': 'herring', 'Ванна': 'tileSand', 'Туалет': 'tileSand', 'Балкон': 'stone' },
+    accent: { living: 0xa9643f, bedroom: 0x2f4147, room: 0xcbb795 },
+    sofa: 0xe5ded1, cushion: 0xb3572f, wood: 0x5f4530, metal: 0xb08d57, rug: 0xc9bca4, rug2: 0x9e8e72,
+    bed: 0x5f4530, duvet: 0xe9e2d4, throw: 0xc08a3e, textile: 0xe8e0d0, plants: 3, shade: 0xefe4cf, lamp: 0xffd9a0, low: true
   }
 ];
 
@@ -106,59 +116,172 @@ export function buildInterior(S, P, solids, hooks = {}) {
   paint(4.18, RB + 0.02, 4.19, D, S.accent.room);           // room: left wall
 
   // ---- kitchen: upper cabinets + pendant lamps over the table ----
-  const KX = 4.05, KM = (KX - 0.6) / 6; // the kitchen runs right up to the ventilation block: six equal modules
-  box(0.6, 0, KX, 0.36, 1.45, 2.25, mat(S.upper, 0.55));
-  box(0.62, 0.36, KX - 0.02, 0.365, 1.47, 2.23, mat(S.upper, 0.4)); // fronts
-  for (let x = 0.6 + KM; x < KX - 0.05; x += KM) box(x - 0.004, 0.362, x + 0.004, 0.37, 1.47, 2.23, mat(0x222222, 0.6));
+  const KX = 4.05, KS = 0.65, KM = (KX - KS) / 5; // uppers/counter run from the oven пенал to the vent block: five modules
+  const upM = hooks.addDepth ? hooks.addDepth(new THREE.MeshStandardMaterial({ color: S.upper, roughness: 0.55 })) : mat(S.upper, 0.55); upM.userData.own = true;
+  box(KS, 0, KX, 0.36, 1.45, 2.25, upM);
+  box(KS + 0.02, 0.36, KX - 0.02, 0.365, 1.47, 2.23, mat(S.upper, 0.4)); // fronts
+  for (let x = KS + KM; x < KX - 0.05; x += KM) box(x - 0.004, 0.362, x + 0.004, 0.37, 1.47, 2.23, mat(0x222222, 0.6));
   const steel = mat(0xb9bec4, 0.25, 0.9);
-  for (let x = 0.6 + KM / 2; x < KX; x += KM) { box(x - 0.09, 0.37, x + 0.09, 0.39, 1.5, 1.515, steel); box(x - 0.09, 0.6, x + 0.09, 0.625, 0.78, 0.795, steel); } // handles
-  for (let x = 0.6 + KM; x < KX - 0.05; x += KM) box(x - 0.003, 0.598, x + 0.003, 0.606, 0.12, 0.84, mat(0x333333, 0.6)); // gaps between base fronts
+  for (let x = KS + KM / 2; x < KX; x += KM) { box(x - 0.09, 0.37, x + 0.09, 0.39, 1.5, 1.515, steel); box(x - 0.09, 0.6, x + 0.09, 0.625, 0.78, 0.795, steel); } // handles
+  for (let x = KS + KM; x < KX - 0.05; x += KM) box(x - 0.003, 0.598, x + 0.003, 0.606, 0.12, 0.84, mat(0x333333, 0.6)); // gaps between base fronts
   cyl(1.6, 0.1, 0.022, 0.026, 0.9, 1.18, steel); { const sp = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.016, 8, 16, Math.PI), steel); sp.position.set(1.6, 1.18, 0.21); sp.rotation.y = Math.PI / 2; g.add(sp); } // faucet
   for (const [hx, hz, rr] of [[2.65, 0.18, 0.09], [2.95, 0.18, 0.07], [2.65, 0.42, 0.07], [2.95, 0.42, 0.09]]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.006, 6, 28), mat(0x555555, 0.5)); ring.rotation.x = Math.PI / 2; ring.position.set(hx, 0.908, hz); g.add(ring); } // hob rings
-  // dining table with four chairs
-  const tx = 2.0, tz = 2.15;
-  if (S.classic) { cyl(tx, tz, 0.55, 0.55, 0.72, 0.76, wood, 32); cyl(tx, tz, 0.06, 0.12, 0, 0.72, wood); }
-  else { box(tx - 0.7, tz - 0.42, tx + 0.7, tz + 0.42, 0.72, 0.76, wood, true); for (const [dx, dz] of [[-0.62, -0.34], [0.62, -0.34], [-0.62, 0.34], [0.62, 0.34]]) box(tx + dx - 0.025, tz + dz - 0.025, tx + dx + 0.025, tz + dz + 0.025, 0, 0.72, S.id === 'loft' ? metal : wood); }
-  if (S.classic) solids.push([tx - 0.55, tz - 0.55, tx + 0.55, tz + 0.55, 2]);
+  // ---- built-in appliances: Г-kitchen — integrated green fridge + oven/microwave пенал on the WEST wall (facing +X), hood over the hob ----
+  {
+    const dg = mat(0x121418, 0.1, 0.35), inner = mat(0x1b1d20, 0.3), ksteel = mat(0xc2c7cc, 0.22, 0.85), ctrl = mat(0x26282b, 0.35);
+    const fx2 = 0.6; // east face of the west columns, facing the room
+    // integrated fridge (z 0.6–1.2): long vertical handle + fridge/freezer split
+    box(fx2, 0.66, fx2 + 0.02, 0.69, 0.25, 2.05, ksteel);
+    box(fx2, 0.6, fx2 + 0.006, 1.2, 1.28, 1.31, mat(0x1f2a24, 0.5));
+    // oven пенал (z 1.2–1.8): oven + microwave above it
+    const oz1 = 1.26, oz2 = 1.74;
+    box(fx2, oz1, fx2 + 0.025, oz2, 0.82, 1.42, dg); box(fx2 + 0.012, oz1 + 0.03, fx2 + 0.02, oz2 - 0.03, 0.9, 1.3, inner);
+    box(fx2 + 0.025, oz1, fx2 + 0.035, oz2, 1.34, 1.4, ctrl); box(fx2 + 0.035, oz1 + 0.05, fx2 + 0.045, oz2 - 0.05, 1.355, 1.37, ksteel);
+    box(fx2, oz1, fx2 + 0.025, oz2, 1.47, 1.8, dg); box(fx2 + 0.012, oz1 + 0.03, fx2 + 0.02, oz2 - 0.22, 1.52, 1.74, inner);
+    box(fx2 + 0.012, oz2 - 0.2, fx2 + 0.02, oz2 - 0.04, 1.54, 1.76, ctrl); box(fx2 + 0.035, oz1 + 0.05, fx2 + 0.045, oz2 - 0.05, 1.78, 1.792, ksteel);
+    // hood — integrated glass visor under the cabinets over the hob (north wall)
+    box(2.42, 0, 3.18, 0.4, 1.36, 1.5, mat(S.upper, 0.5), false); box(2.47, 0.36, 3.13, 0.5, 1.28, 1.42, dg);
+    box(2.5, 0.05, 3.1, 0.38, 1.345, 1.36, ksteel); ball(2.8, 1.375, 0.3, 0.028, new THREE.MeshBasicMaterial({ color: 0xfff1d6 }));
+  }
+
+
+
+  // ===== dining + living: three arrangements (LAY 0/1/2). The kitchen never leaves the north wall / vent block. =====
+  const LAY = (((hooks.layout | 0) % 8) + 8) % 8;
   const chair = (x, z, face) => { // face: direction the sitter looks, ±1 along X
     const seat = S.id === 'scandi' ? mat(0xf2f0ea, 0.6) : S.id === 'loft' ? mat(0x8a4f2a, 0.8) : S.classic ? mat(S.sofa, 0.95) : wood;
     box(x - 0.21, z - 0.21, x + 0.21, z + 0.21, 0.44, 0.48, seat);
     for (const [dx, dz] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) box(x + dx - 0.015, z + dz - 0.015, x + dx + 0.015, z + dz + 0.015, 0, 0.44, S.id === 'loft' ? metal : wood);
     const bx = x - face * 0.2; box(bx - 0.02, z - 0.2, bx + 0.02, z + 0.2, 0.48, 0.9, seat);
   };
-  chair(tx - 0.95, tz - 0.2, 1); chair(tx - 0.95, tz + 0.25, 1); chair(tx + 0.95, tz - 0.2, -1); chair(tx + 0.95, tz + 0.25, -1);
-  for (const dx of S.classic ? [0] : [-0.4, 0.4]) {
-    box(tx + dx - 0.004, tz - 0.004, tx + dx + 0.004, tz + 0.004, 1.75, 2.7, metal);
-    const sh = new THREE.Mesh(new THREE.ConeGeometry(S.classic ? 0.32 : 0.17, 0.22, 24, 1, true), mat(S.shade, 0.6, S.id === 'loft' ? 0.5 : 0));
-    sh.material.side = THREE.DoubleSide; sh.position.set(tx + dx, 1.68, tz); g.add(sh);
-    ball(tx + dx, 1.6, tz, 0.05, new THREE.MeshBasicMaterial({ color: S.lamp }));
-  }
+  const buildDining = (tx, tz) => {
+    box(tx - 1.1, tz - 0.9, tx + 1.1, tz + 0.9, 0.001, 0.011, mat(S.rug2, 1)); // rug under the table
+    if (S.classic) { cyl(tx, tz, 0.55, 0.55, 0.72, 0.76, wood, 32); cyl(tx, tz, 0.06, 0.12, 0, 0.72, wood); solids.push([tx - 0.55, tz - 0.55, tx + 0.55, tz + 0.55, 2]); }
+    else { box(tx - 0.7, tz - 0.42, tx + 0.7, tz + 0.42, 0.72, 0.76, wood, true); for (const [dx, dz] of [[-0.62, -0.34], [0.62, -0.34], [-0.62, 0.34], [0.62, 0.34]]) box(tx + dx - 0.025, tz + dz - 0.025, tx + dx + 0.025, tz + dz + 0.025, 0, 0.72, S.id === 'loft' ? metal : wood); }
+    chair(tx - 0.95, tz - 0.2, 1); chair(tx - 0.95, tz + 0.25, 1); chair(tx + 0.95, tz - 0.2, -1); chair(tx + 0.95, tz + 0.25, -1);
+    cyl(tx, tz, 0.05, 0.07, 0.76, 0.97, mat(0x9aa08a, 0.5)); // ваза з гілкою
+    for (const [gx, gy, gz] of [[0.06, 1.06, 0.02], [-0.05, 1.12, -0.03], [0.01, 1.18, 0.05]]) ball(tx + gx, gy, tz + gz, 0.045, mat(0x5d7d5a, 0.9));
+    for (const dx of S.classic ? [0] : [-0.4, 0.4]) {
+      box(tx + dx - 0.004, tz - 0.004, tx + dx + 0.004, tz + 0.004, 1.75, 2.7, metal);
+      const sh = new THREE.Mesh(new THREE.ConeGeometry(S.classic ? 0.32 : 0.17, 0.22, 24, 1, true), mat(S.shade, 0.6, S.id === 'loft' ? 0.5 : 0));
+      sh.material.side = THREE.DoubleSide; sh.position.set(tx + dx, 1.68, tz); g.add(sh);
+      ball(tx + dx, 1.6, tz, 0.05, new THREE.MeshBasicMaterial({ color: S.lamp }));
+    }
+  };
+  // 3-seat sofa, backrest on the west wall (x = x1), seat facing +X; optional L-chaise returning toward the window
+  const buildSofa = (x1, z1, x2, z2, chaise) => {
+    box(x1, z1, x2, z2, legH, legH + 0.3, fabric, true);                 // base
+    box(x1, z1, x1 + 0.24, z2, legH + 0.3, legH + 0.78, fabric);         // back
+    box(x1, z1, x2, z1 + 0.18, legH + 0.3, legH + 0.55, fabric);         // arms
+    box(x1, z2 - 0.18, x2, z2, legH + 0.3, legH + 0.55, fabric);
+    const n = Math.max(2, Math.round((z2 - z1 - 0.3) / 0.8)), sp = (z2 - z1 - 0.3) / n;
+    for (let i = 0; i < n; i++) { const z = z1 + 0.15 + sp * (i + 0.5); box(x1 + 0.24, z - sp / 2 + 0.03, x2 - 0.04, z + sp / 2 - 0.03, legH + 0.3, legH + 0.42, fabric); }
+    box(x1 + 0.24, z1 + 0.3, x1 + 0.36, z1 + 0.75, legH + 0.42, legH + 0.82, cush); box(x1 + 0.24, z2 - 0.75, x1 + 0.36, z2 - 0.3, legH + 0.42, legH + 0.82, cush);
+    box(x1 + 0.26, z2 - 0.88, x2 - 0.05, z2 - 0.32, legH + 0.43, legH + 0.475, mat(S.throw, 0.95)); box(x2 - 0.05, z2 - 0.88, x2 + 0.04, z2 - 0.32, legH + 0.08, legH + 0.44, mat(S.throw, 0.95)); // плед
+    if (!S.low) for (const [x, z] of [[x1 + 0.06, z1 + 0.06], [x2 - 0.06, z1 + 0.06], [x1 + 0.06, z2 - 0.06], [x2 - 0.06, z2 - 0.06]]) box(x - 0.02, z - 0.02, x + 0.02, z + 0.02, 0, legH, metal);
+    if (chaise) { box(x1, z2 - 0.02, x2 + 0.78, z2 + 0.9, legH, legH + 0.3, fabric, true); box(x1, z2 + 0.72, x2 + 0.78, z2 + 0.9, legH + 0.3, legH + 0.55, fabric); } // chaise + its low back
+  };
+  const coffeeTable = (cx, cz) => {
+    if (S.low || S.classic) { cyl(cx, cz, 0.45, 0.45, 0.32, 0.36, wood, 32); cyl(cx, cz, 0.36, 0.36, 0.0, 0.32, wood, 32); solids.push([cx - 0.4, cz - 0.4, cx + 0.4, cz + 0.4, 2]); }
+    else { box(cx - 0.4, cz - 0.5, cx + 0.4, cz + 0.5, 0.36, 0.4, S.id === 'loft' ? mat(0x5a3b26, 0.5) : wood, true); for (const [x, z] of [[cx - 0.37, cz - 0.47], [cx + 0.37, cz - 0.47], [cx - 0.37, cz + 0.47], [cx + 0.37, cz + 0.47]]) box(x - 0.015, z - 0.015, x + 0.015, z + 0.015, 0, 0.36, metal); }
+    const ty = (S.low || S.classic) ? 0.365 : 0.405;
+    const b1 = box(cx - 0.3, cz - 0.32, cx - 0.02, cz - 0.1, ty, ty + 0.022, mat(0x2e3f5c, 0.7)); b1.rotation.y = 0.16;
+    const b2 = box(cx - 0.27, cz - 0.3, cx - 0.05, cz - 0.12, ty + 0.022, ty + 0.04, mat(0xc9a14a, 0.7)); b2.rotation.y = -0.09;
+    ball(cx, 0.45, cz, 0.07, mat(S.cushion, 0.5));
+  };
+  const tvWall = (z1, z2) => { // low console + TV on the partition (x ≈ 4.0, from z ≥ 2.83)
+    box(3.62, z1, 4.04, z2, S.low ? 0.0 : 0.2, 0.55, S.id === 'loft' ? metal : wood, true);
+    box(3.99, (z1 + z2) / 2 - 0.6, 4.04, (z1 + z2) / 2 + 0.6, 1.0, 1.68, mat(0x0c0d0f, 0.25, 0.3));
+  };
+  let _rugM = null; // woven rug texture, generated once per build
+  const rugMat = () => {
+    if (_rugM) return _rugM;
+    if (!hooks.canvasTex) return _rugM = mat(S.rug, 1);
+    const hx = v => '#' + v.toString(16).padStart(6, '0');
+    const tex = hooks.canvasTex(256, 256, (c, w, h) => {
+      c.fillStyle = hx(S.rug); c.fillRect(0, 0, w, h);
+      c.strokeStyle = hx(S.rug2); c.lineWidth = 2;
+      c.globalAlpha = 0.4; for (let y = 3; y < h; y += 7) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
+      c.globalAlpha = 0.14; for (let x = 3; x < w; x += 7) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke(); }
+    }, 1.6, 1.6);
+    _rugM = new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }); _rugM.userData.own = true; return _rugM;
+  };
+  const rugAt = (x1, z1, x2, z2) => { box(x1, z1, x2, z2, 0.002, 0.012, rugMat()); if (S.classic) box(x1 + 0.15, z1 + 0.15, x2 - 0.15, z2 - 0.15, 0.0125, 0.014, mat(S.rug2, 1)); };
+  const armchairAt = (ax, az) => {
+    box(ax - 0.4, az - 0.4, ax + 0.4, az + 0.4, legH, legH + 0.32, cush, true);
+    box(ax - 0.4, az + 0.22, ax + 0.4, az + 0.4, legH + 0.32, legH + 0.8, cush);
+  };
+  // kitchen island: turns the straight run into a П — sink, hob and risers stay on the north wall
+  const kitchenIsland = () => {
+    const cab = mat(S.cabinet, 0.5), top = mat(S.counter, 0.35);
+    box(1.2, 1.2, 2.8, 1.92, 0, 0.86, cab, true);          // body
+    box(1.12, 1.12, 2.88, 2.06, 0.86, 0.9, top);           // worktop with a south overhang for stools
+    for (const x of [1.5, 2.0, 2.5]) { cyl(x, 2.3, 0.18, 0.21, 0.58, 0.62, mat(S.id === 'loft' ? 0x8a4f2a : S.wood, 0.6), 20); cyl(x, 2.3, 0.02, 0.02, 0, 0.58, metal); }
+    solids.push([1.2, 1.2, 2.8, 2.5, 2]);
+  };
+  // sofa with the backrest on the NORTH side (z = z1), seat faces +Z (the windows)
+  const sofaN = (x1, z1, x2, z2) => {
+    box(x1, z1, x2, z2, legH, legH + 0.3, fabric, true);
+    box(x1, z1, x2, z1 + 0.24, legH + 0.3, legH + 0.78, fabric);
+    box(x1, z1, x1 + 0.18, z2, legH + 0.3, legH + 0.55, fabric);
+    box(x2 - 0.18, z1, x2, z2, legH + 0.3, legH + 0.55, fabric);
+    const n = Math.max(2, Math.round((x2 - x1 - 0.3) / 0.8)), sp = (x2 - x1 - 0.3) / n;
+    for (let i = 0; i < n; i++) { const x = x1 + 0.15 + sp * (i + 0.5); box(x - sp / 2 + 0.03, z1 + 0.24, x + sp / 2 - 0.03, z2 - 0.04, legH + 0.3, legH + 0.42, fabric); }
+    box(x1 + 0.3, z1 + 0.24, x1 + 0.75, z1 + 0.36, legH + 0.42, legH + 0.82, cush); box(x2 - 0.75, z1 + 0.24, x2 - 0.3, z1 + 0.36, legH + 0.42, legH + 0.82, cush);
+    box(x2 - 0.88, z1 + 0.26, x2 - 0.32, z2 - 0.05, legH + 0.43, legH + 0.475, mat(S.throw, 0.95)); box(x2 - 0.88, z2 - 0.05, x2 - 0.32, z2 + 0.04, legH + 0.08, legH + 0.44, mat(S.throw, 0.95)); // плед
+    if (!S.low) for (const [x, z] of [[x1 + 0.06, z1 + 0.06], [x2 - 0.06, z1 + 0.06], [x1 + 0.06, z2 - 0.06], [x2 - 0.06, z2 - 0.06]]) box(x - 0.02, z - 0.02, x + 0.02, z + 0.02, 0, legH, metal);
+  };
+  // sofa with the backrest on the EAST side (x = x2, the partition), seat faces -X
+  const sofaE = (x1, z1, x2, z2) => {
+    box(x1, z1, x2, z2, legH, legH + 0.3, fabric, true);
+    box(x2 - 0.24, z1, x2, z2, legH + 0.3, legH + 0.78, fabric);
+    box(x1, z1, x2, z1 + 0.18, legH + 0.3, legH + 0.55, fabric);
+    box(x1, z2 - 0.18, x2, z2, legH + 0.3, legH + 0.55, fabric);
+    const n = Math.max(2, Math.round((z2 - z1 - 0.3) / 0.8)), sp = (z2 - z1 - 0.3) / n;
+    for (let i = 0; i < n; i++) { const z = z1 + 0.15 + sp * (i + 0.5); box(x1 + 0.04, z - sp / 2 + 0.03, x2 - 0.24, z + sp / 2 - 0.03, legH + 0.3, legH + 0.42, fabric); }
+    box(x2 - 0.36, z1 + 0.3, x2 - 0.24, z1 + 0.75, legH + 0.42, legH + 0.82, cush); box(x2 - 0.36, z2 - 0.75, x2 - 0.24, z2 - 0.3, legH + 0.42, legH + 0.82, cush);
+    box(x1 + 0.05, z2 - 0.88, x2 - 0.26, z2 - 0.32, legH + 0.43, legH + 0.475, mat(S.throw, 0.95)); box(x1 - 0.04, z2 - 0.88, x1 + 0.05, z2 - 0.32, legH + 0.08, legH + 0.44, mat(S.throw, 0.95)); // плед
+    if (!S.low) for (const [x, z] of [[x1 + 0.06, z1 + 0.06], [x2 - 0.06, z1 + 0.06], [x1 + 0.06, z2 - 0.06], [x2 - 0.06, z2 - 0.06]]) box(x - 0.02, z - 0.02, x + 0.02, z + 0.02, 0, legH, metal);
+  };
+  // desk against the window (faces +Z), with a chair and a monitor
+  const deskAt = (dx, dz) => {
+    box(dx - 0.5, dz - 0.28, dx + 0.5, dz + 0.28, 0.72, 0.75, wood, true);
+    for (const [x, z] of [[dx - 0.46, dz - 0.24], [dx + 0.46, dz - 0.24], [dx - 0.46, dz + 0.24], [dx + 0.46, dz + 0.24]]) box(x - 0.02, z - 0.02, x + 0.02, z + 0.02, 0, 0.72, S.id === 'loft' ? metal : wood);
+    box(dx - 0.22, dz + 0.22, dx + 0.22, dz + 0.25, 0.75, 1.22, mat(0x0c0d0f, 0.3)); box(dx - 0.06, dz + 0.2, dx + 0.06, dz + 0.24, 0.75, 0.9, metal);
+    box(dx - 0.22, dz - 0.78, dx + 0.22, dz - 0.36, 0.44, 0.48, cush); box(dx - 0.22, dz - 0.78, dx + 0.22, dz - 0.74, 0.48, 0.86, cush);
+    solids.push([dx - 0.55, dz - 0.85, dx + 0.55, dz + 0.3, 2]);
+  };
+  // peninsula: the worktop returns down the WEST wall from the fridge column — a Г-shaped kitchen
+  const peninsulaG = () => {
+    const cab = mat(S.cabinet, 0.5), top = mat(S.counter, 0.35);
+    box(0, 1.82, 0.72, 3.5, 0, 0.86, cab, true);
+    box(0, 1.78, 0.8, 3.56, 0.86, 0.9, top);
+    for (const z of [2.35, 3.05]) { cyl(0.98, z, 0.18, 0.21, 0.58, 0.62, mat(S.id === 'loft' ? 0x8a4f2a : S.wood, 0.6), 20); cyl(0.98, z, 0.02, 0.02, 0, 0.58, metal); }
+    solids.push([0, 1.82, 1.2, 3.5, 2]);
+  };
 
-  // ---- living zone: sofa on the left wall, TV on the partition, coffee table, rug ----
-  const sx1 = 0.02, sz1 = 4.2, sx2 = 0.95, sz2 = 6.5;
-  box(sx1, sz1, sx2, sz2, legH, legH + 0.3, fabric, true);                 // base
-  box(sx1, sz1, sx1 + 0.24, sz2, legH + 0.3, legH + 0.78, fabric);         // back
-  box(sx1, sz1, sx2, sz1 + 0.18, legH + 0.3, legH + 0.55, fabric);         // arms
-  box(sx1, sz2 - 0.18, sx2, sz2, legH + 0.3, legH + 0.55, fabric);
-  for (const z of [4.55, 5.35, 6.15]) box(sx1 + 0.24, z - 0.36, sx2 - 0.04, z + 0.36, legH + 0.3, legH + 0.42, fabric); // seat cushions
-  box(sx1 + 0.24, 4.5, sx1 + 0.36, 4.95, legH + 0.42, legH + 0.82, cush); box(sx1 + 0.24, 5.85, sx1 + 0.36, 6.3, legH + 0.42, legH + 0.82, cush);
-  if (!S.low) for (const [x, z] of [[sx1 + 0.06, sz1 + 0.06], [sx2 - 0.06, sz1 + 0.06], [sx1 + 0.06, sz2 - 0.06], [sx2 - 0.06, sz2 - 0.06]]) box(x - 0.02, z - 0.02, x + 0.02, z + 0.02, 0, legH, metal);
-  // rug + coffee table
-  box(0.6, 4.0, 3.2, 6.7, 0.002, 0.012, mat(S.rug, 1));
-  if (S.classic) box(0.75, 4.15, 3.05, 6.55, 0.0125, 0.014, mat(S.rug2, 1));
-  if (S.low || S.classic) { cyl(1.8, 5.35, 0.45, 0.45, 0.32, 0.36, wood, 32); cyl(1.8, 5.35, 0.36, 0.36, 0.0, 0.32, wood, 32); solids.push([1.4, 4.95, 2.2, 5.75, 2]); }
-  else { box(1.4, 4.85, 2.2, 5.85, 0.36, 0.4, S.id === 'loft' ? mat(0x5a3b26, 0.5) : wood, true); for (const [x, z] of [[1.43, 4.88], [2.17, 4.88], [1.43, 5.82], [2.17, 5.82]]) box(x - 0.015, z - 0.015, x + 0.015, z + 0.015, 0, 0.36, metal); }
-  ball(1.8, 0.45, 5.35, 0.07, mat(S.cushion, 0.5)); // a vase / bowl
-  // TV wall: low console + TV on the partition
-  box(3.62, 4.4, 4.04, 6.3, S.low ? 0.0 : 0.2, 0.55, S.id === 'loft' ? metal : wood, true);
-  box(3.99, 4.75, 4.04, 5.95, 1.0, 1.68, mat(0x0c0d0f, 0.25, 0.3));
-  // armchair by the window
-  const ax = 3.15, az = 6.75;
-  box(ax - 0.4, az - 0.4, ax + 0.4, az + 0.4, legH, legH + 0.32, cush, true);
-  box(ax - 0.4, az + 0.22, ax + 0.4, az + 0.4, legH + 0.32, legH + 0.8, cush);
-  // floor lamp
-  cyl(0.45, 6.95, 0.14, 0.16, 0, 0.03, metal); cyl(0.45, 6.95, 0.012, 0.012, 0.03, 1.5, metal);
-  const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.28, 24, 1, true), mat(S.shade, 0.8)); fl.material.side = THREE.DoubleSide; fl.position.set(0.45, 1.6, 6.95); g.add(fl);
+  if (LAY === 0) {          // вздовж стіни
+    rugAt(0.6, 4.0, 3.2, 6.7); buildSofa(0.02, 4.2, 0.95, 6.5, false); coffeeTable(1.8, 5.35); tvWall(4.4, 6.3); armchairAt(3.15, 6.75); buildDining(2.0, 2.15);
+  } else if (LAY === 1) {   // їдальня біля вікна + острів (П-кухня)
+    buildDining(2.0, 6.5); rugAt(0.6, 2.55, 3.2, 5.05); buildSofa(0.02, 2.7, 0.95, 5.0, false); coffeeTable(1.8, 3.85); tvWall(2.95, 4.8); armchairAt(3.45, 6.95); kitchenIsland();
+  } else if (LAY === 2) {   // кутовий диван
+    rugAt(0.6, 3.9, 3.5, 6.9); buildSofa(0.02, 4.0, 0.95, 6.4, true); coffeeTable(2.15, 5.0); tvWall(4.4, 6.3); buildDining(2.0, 2.15);
+  } else if (LAY === 3) {   // диван до вікна: лаунж на краєвид + два крісла
+    rugAt(0.6, 4.4, 3.5, 7.0); sofaN(0.9, 4.65, 3.3, 5.6); coffeeTable(2.1, 6.15); armchairAt(0.6, 6.55); armchairAt(3.4, 6.55); tvWall(3.0, 4.4); buildDining(2.0, 2.15);
+  } else if (LAY === 4) {   // два дивани навпроти, вікно як фокус
+    rugAt(0.55, 3.6, 3.5, 6.2); buildSofa(0.02, 3.7, 0.9, 6.0, false); sofaE(3.15, 3.7, 4.03, 6.0); coffeeTable(2.0, 4.85); buildDining(2.0, 2.15);
+  } else if (LAY === 5) {   // робочий кут: стіл-офіс біля вікна
+    rugAt(0.6, 4.0, 3.2, 6.1); buildSofa(0.02, 4.2, 0.95, 6.5, false); coffeeTable(1.8, 5.35); tvWall(4.4, 6.3); deskAt(3.3, 7.05); buildDining(2.0, 2.15);
+  } else if (LAY === 6) {   // острів по центру: їмо за островом, лаунж до вікон
+    kitchenIsland(); rugAt(0.6, 4.1, 3.4, 6.7); sofaN(0.9, 4.3, 3.0, 5.2); coffeeTable(1.95, 5.7); tvWall(3.6, 5.2);
+  } else {                  // Г-кухня з півостровом, їдальня біля вікна
+    peninsulaG(); rugAt(0.7, 3.8, 3.4, 6.3); buildSofa(0.02, 3.75, 0.9, 6.0, false); coffeeTable(1.7, 4.85); tvWall(4.0, 5.6); buildDining(2.6, 6.4);
+  }
+  // floor lamp in a free window corner, per arrangement
+  const LAMP = [[0.45, 6.95], [0.45, 6.95], [3.5, 7.0], [2.05, 7.25], [2.0, 6.9], [0.45, 6.95], [2.0, 6.95], [3.6, 6.9]];
+  const [lx, lz] = LAMP[LAY] || [0.45, 6.95];
+  cyl(lx, lz, 0.14, 0.16, 0, 0.03, metal); cyl(lx, lz, 0.012, 0.012, 0.03, 1.5, metal);
+  const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.28, 24, 1, true), mat(S.shade, 0.8)); fl.material.side = THREE.DoubleSide; fl.position.set(lx, 1.6, lz); g.add(fl);
   // curtains by the living window and bedroom window
   // curtains: cloth gathered in folds, hanging from a thin rod
   const curtainMat = new THREE.MeshStandardMaterial({ color: S.textile, roughness: 1, side: THREE.DoubleSide });
@@ -174,7 +297,12 @@ export function buildInterior(S, P, solids, hooks = {}) {
   curtain(4.5, D - 0.26, 0.34); curtain(6.8, D - 0.26, 0.34); rod(4.28, 7.05);
   curtain(7.6, D - 0.26, 0.34); curtain(9.9, D - 0.26, 0.42); rod(7.4, 10.18);
   // tiled splash-back between the worktop and the upper cabinets
-  box(0.6, 0.001, KX, 0.012, 0.9, 1.45, mat(S.id === 'loft' ? 0x3a3c40 : S.id === 'lviv' ? 0xe9e4d6 : 0xf3f1ec, 0.18));
+  box(KS, 0.001, KX, 0.012, 0.9, 1.45, mat(S.id === 'loft' ? 0x3a3c40 : S.id === 'lviv' ? 0xe9e4d6 : 0xf3f1ec, 0.18));
+  // посуд на стільниці: дошка, чайник, миска з фруктами
+  const brd = box(3.22, 0.14, 3.68, 0.46, 0.905, 0.925, mat(0x8a6a48, 0.7)); brd.rotation.y = 0.12;
+  cyl(1.55, 0.3, 0.1, 0.12, 0.9, 1.08, mat(S.id === 'loft' ? 0x2b2d30 : 0xd8d2c6, 0.35, 0.4)); ball(1.55, 1.1, 0.3, 0.04, metal);
+  cyl(2.2, 0.3, 0.16, 0.1, 0.9, 0.99, mat(S.counter, 0.5));
+  for (const [fx, fz] of [[2.13, 0.26], [2.27, 0.31], [2.2, 0.37]]) ball(fx, 1.0, fz, 0.05, mat(0xd98f3c, 0.6));
   // pictures: an abstract print for each room in the colours of the style
   const hex = v => '#' + v.toString(16).padStart(6, '0');
   const art = (cx, cy, cz, w, h, face, seed) => { // face +1: hangs on a wall at x = cx and looks along +X; −1: looks along −X

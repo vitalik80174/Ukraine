@@ -44,13 +44,17 @@ const hemi = new THREE.HemisphereLight(0xf1f0ee, 0xa89e90, 1.2);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048); sun.shadow.radius = 3;
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.radius = 4;
 Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 100 });
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
 sun.shadow.camera.layers.enable(1); // the building across the street casts shadows even when hidden from view
 scene.add(sun, sun.target);
 const CX = PLAN.width / 2, CZ = PLAN.depth / 2;
 sun.target.position.set(CX, 0, CZ);
+// soft diffuse daylight coming FROM the windows into the room — the main indoor fill, so light reads as side-lit, not sky-lit
+const winFill = new THREE.DirectionalLight(0xf2f0ea, 0);
+winFill.position.set(CX, 2.2, PLAN.depth + 4); winFill.target.position.set(CX, 0.2, 0);
+scene.add(winFill, winFill.target);
 
 /* ================= procedural textures (no files, works offline) ================= */
 function canvasTex(w, h, draw, rx, ry) {
@@ -340,7 +344,7 @@ for (const f of P.fixtures) {
     if (f.hob) box(f.hob[0], z1 + 0.06, f.hob[1], z2 - 0.06, 0.9, 0.906, new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.2 }), fx, { cast: false });
     solids.push([x1, z1, x2, z2, 1]);
   } else if (f.type === 'tall' || f.type === 'fridge') {
-    box(x1, z1, x2, z2, 0, f.type === 'tall' ? 2.25 : 2.0, f.type === 'tall' ? M.cabinet : M.white, fx); solids.push([x1, z1, x2, z2, 1]);
+    box(x1, z1, x2, z2, 0, 2.25, M.cabinet, fx); solids.push([x1, z1, x2, z2, 1]); // fridge & oven column: full height, cabinet colour
   } else if (f.type === 'washer') {
     box(x1, z1, x2, z2, 0, 0.85, M.white, fx); solids.push([x1, z1, x2, z2, 1]);
   } else if (f.type === 'vent') {
@@ -422,7 +426,7 @@ for (const p of P.power) {
 // daylight through the windows: a soft wide spot just inside each glazed opening, pointing into the room
 const winLights = []; let roofShade = null;
 for (const w of P.walls) if (w.ext && w.axis === 'x' && w.t1 > 1) for (const h of (w.holes || [])) if (h.type !== 'door') {
-  const cx = (h.a + h.b) / 2, L = new THREE.SpotLight(0xf3f1ec, 0, 11, 1.25, 1, 1.6);
+  const cx = (h.a + h.b) / 2, L = new THREE.SpotLight(0xf3f1ec, 0, 5.5, 1.15, 1, 2.1); // short reach + fast decay: window light dies off across the room instead of painting the far wall
   L.position.set(cx, 1.5, w.t1 - 0.12); L.target.position.set(cx, 0.4, w.t1 - 4); house.add(L, L.target);
   winLights.push({ L, w: h.b - h.a });
 }
@@ -468,16 +472,30 @@ mergeStatic(baseG); mergeStatic(radG); mergeStatic(archG); archG.userData.keep =
 
 // walls get a little darker towards the floor and (under a ceiling) towards the ceiling — cheap ambient occlusion in the shader
 const wallAO = { value: 0 };
+const depthShade = { value: 0 };          // 0 in doll/plan, 1 while walking
+const DWIN = P.depth;                      // window wall is at z = DWIN; deeper into the room (smaller z) is darker
+const DEPTH_GLSL = `diffuseColor.rgb *= 1.0 - uDepth * 0.42 * clamp((${DWIN.toFixed(2)} - vKvZ) / ${DWIN.toFixed(2)}, 0.0, 1.0);`;
 function addWallAO(mat) {
   mat.onBeforeCompile = sh => {
-    sh.uniforms.uCeil = wallAO;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKvY;').replace('#include <project_vertex>', '#include <project_vertex>\nvKvY = (modelMatrix * vec4(transformed, 1.0)).y;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vKvY;\nuniform float uCeil;')
-      .replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.rgb *= 1.0 - 0.16 * exp(-max(vKvY, 0.0) * 6.0) - uCeil * 0.24 * exp(-max(${H.toFixed(2)} - vKvY, 0.0) * 5.0);`);
+    sh.uniforms.uCeil = wallAO; sh.uniforms.uDepth = depthShade;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKvY;\nvarying float vKvZ;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 _kvW = modelMatrix * vec4(transformed, 1.0);\nvKvY = _kvW.y;\nvKvZ = _kvW.z;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vKvY;\nvarying float vKvZ;\nuniform float uCeil;\nuniform float uDepth;')
+      .replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.rgb *= 1.0 - 0.16 * exp(-max(vKvY, 0.0) * 6.0) - uCeil * 0.24 * exp(-max(${H.toFixed(2)} - vKvY, 0.0) * 5.0);\n${DEPTH_GLSL}`);
   };
   return mat;
 }
 addWallAO(M.wall);
+// daylight falls off with distance from the windows — apply to the kitchen surfaces (and anything passed hooks.addDepth)
+function addDepthShade(mat) {
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uDepth = depthShade;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKvZ;').replace('#include <project_vertex>', '#include <project_vertex>\nvKvZ = (modelMatrix * vec4(transformed, 1.0)).z;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vKvZ;\nuniform float uDepth;')
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${DEPTH_GLSL}`);
+  };
+  return mat;
+}
+addDepthShade(M.cabinet); addDepthShade(M.counter); addDepthShade(M.white);
 
 // soft shadows painted once on a small canvas: along the walls and under the furniture (floor), along the walls (ceiling)
 const AOK = 48, aoBox = { x0: -0.3, z0: -0.3, x1: P.width + 0.3, z1: P.depth + 0.3 };
@@ -572,8 +590,11 @@ if (Q.get('wx')) { walker.x = +Q.get('wx'); walker.z = +Q.get('wz'); walker.yaw 
 
 function applyWalls() {
   const s = mode === 'walk' ? 1 : lowWalls ? 0.42 : 1;
-  wallsG.scale.y = s; ceiling.visible = aoCeil.m.visible = roofShade.visible = mode === 'walk'; wallAO.value = mode === 'walk' ? 1 : 0;
+  wallsG.scale.y = s; ceiling.visible = aoCeil.m.visible = mode === 'walk'; wallAO.value = depthShade.value = mode === 'walk' ? 1 : 0;
   const full = mode === 'walk' || !lowWalls;
+  // sunlight comes in through the windows only — never through the open top — whenever the walls stand full height
+  // (doll-house and walk). With the walls cut down (low) or in the flat plan there is no lid to block, so the roof shade is off.
+  roofShade.visible = mode !== 'plan' && full;
   if (interiorG) interiorG.traverse(o => { if (o.userData.wallLike) { o.scale.y = s; o.position.y = (o.userData.y1 + o.userData.h / 2) * s; } if (o.userData.hideLow) o.visible = full; });
   lampFin.visible = full && !raw; lampRaw.visible = full && raw; glowG.visible = full && lampsLit;
   invalidate(true);
@@ -581,6 +602,19 @@ function applyWalls() {
 // interior look: 'raw' (as it is now), 'base' (first finished version) or a designed style from interior.js
 let look = Q.get('look') || (Q.get('raw') === '0' ? 'base' : Q.get('raw') === '1' ? 'raw' : null) || store.get('look', store.get('raw', true) ? 'raw' : 'base');
 if (!STYLES.some(st => st.id === look)) look = 'raw';
+// furniture arrangement of the living-kitchen: 0 along the wall, 1 dining by the window, 2 corner sofa
+let arrange = Q.get('arr') != null ? +Q.get('arr') : +store.get('arr', 0);
+if (!(arrange >= 0 && arrange <= 7)) arrange = 0;
+const ARRANGES = [
+  ['Вздовж стіни', 'диван під стіною, ТВ навпроти'],
+  ['Їдальня біля вікна', 'обід у світлі + кухня-острів (П)'],
+  ['Кутовий диван', 'Г-подібний лаунж у кутку'],
+  ['Диван до вікна', 'лаунж на краєвид, два крісла'],
+  ['Два дивани', 'навпроти через столик, вікно як фокус'],
+  ['Робочий кут', 'диван під стіною + стіл-офіс біля вікна'],
+  ['Острів по центру', 'їмо за островом, лаунж до вікон'],
+  ['Г-кухня, півострів', 'стійка завертає вниз, обід біля вікна']
+];
 let raw = look === 'raw', interiorG = null, lampsLit = false;
 const DEF = { wall: M.wall.color.getHex(), door: M.door.color.getHex(), cabinet: M.cabinet.color.getHex(), counter: M.counter.color.getHex() };
 const styleFloorMats = new Map();
@@ -603,7 +637,7 @@ function applyFinish() {
   M.cabinet.color.set(styled ? S.cabinet : DEF.cabinet); M.counter.color.set(styled ? S.counter : DEF.counter);
   if (interiorG) { house.remove(interiorG); interiorG.traverse(o => { if (o.geometry && !o.geometry.userData.cached) o.geometry.dispose(); if (o.material && o.material.userData.own) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); interiorG = null; }
   for (let i = solids.length - 1; i >= 0; i--) if (solids[i][4] === 2) solids.splice(i, 1);
-  if (styled) { interiorG = buildInterior(S, P, solids, { canvasTex, addWallAO }); mergeStatic(interiorG); interiorG.visible = !elecMode; house.add(interiorG); }
+  if (styled) { interiorG = buildInterior(S, P, solids, { canvasTex, addWallAO, addDepth: addDepthShade, layout: arrange }); mergeStatic(interiorG); interiorG.visible = !elecMode; house.add(interiorG); }
   refreshAO();
   for (const l of lamps) l.l.color.set(styled ? S.lamp : 0xffd29a);
   $('vFinish').textContent = S.short; $('bFinish').classList.toggle('on', look !== 'raw');
@@ -614,9 +648,11 @@ function openStyles() {
   if (!p.hidden) { p.hidden = true; return; }
   const LAYOUTS = [['plan', 'Як у забудовника', 'відкритий передпокій'], ['closet', 'З гардеробною', 'гардеробна біля кухні, прохід 114 см']];
   p.innerHTML = '<div class="sec">Планування</div>' + LAYOUTS.map(([id, n, sub]) => `<button class="chip${id === LAYOUT ? ' on' : ''}" data-layout="${id}"><b>${n}</b><span>${sub}</span></button>`).join('') +
-    '<div class="sec">Інтер\'єр</div>' + STYLES.map(st => `<button class="chip${st.id === look ? ' on' : ''}" data-id="${st.id}"><b>${st.name}</b><span>${st.sub}</span></button>`).join('');
+    '<div class="sec">Інтер\'єр</div>' + STYLES.map(st => `<button class="chip${st.id === look ? ' on' : ''}" data-id="${st.id}"><b>${st.name}</b><span>${st.sub}</span></button>`).join('') +
+    '<div class="sec">Розстановка меблів</div>' + ARRANGES.map(([n, sub], i) => `<button class="chip${i === arrange ? ' on' : ''}" data-arr="${i}"><b>${n}</b><span>${sub}</span></button>`).join('');
   p.querySelectorAll('[data-layout]').forEach(c => c.addEventListener('click', () => { if (c.dataset.layout === LAYOUT) { p.hidden = true; return; } store.set('layout', c.dataset.layout); location.reload(); }));
   p.querySelectorAll('.chip[data-id]').forEach(c => c.addEventListener('click', () => { look = c.dataset.id; store.set('look', look); applyFinish(); p.hidden = true; }));
+  p.querySelectorAll('[data-arr]').forEach(c => c.addEventListener('click', () => { arrange = +c.dataset.arr; store.set('arr', arrange); if (look === 'raw' || look === 'base') { look = 'scandi'; store.set('look', look); } applyFinish(); p.hidden = true; }));
   p.hidden = false;
 }
 const SKY_DAY = new THREE.Color(0xcfe0ee), SKY_DUSK = new THREE.Color(0xe8b48a), SKY_NIGHT = new THREE.Color(0x0e1222);
@@ -633,11 +669,12 @@ function applyLight() {
   const walkM = mode === 'walk';
   const useEnv = envOK && !lite; // 'lite' shading: no reflections and no window lamps, the sky fill makes up for them
   if (scene.environment !== (useEnv ? envTex : null)) scene.environment = useEnv ? envTex : null;
-  hemi.intensity = walkM ? 0.04 + 0.2 * day : 0.1 + 0.5 * day;
-  scene.environmentIntensity = walkM ? 0.08 + 0.44 * day : 0.08 + 0.3 * day;
-  if (!useEnv) hemi.intensity = walkM ? 0.12 + 0.85 * day : 0.2 + 0.8 * day;
+  hemi.intensity = walkM ? 0.05 + 0.08 * day : 0.1 + 0.5 * day;
+  scene.environmentIntensity = walkM ? 0.05 + 0.12 * day : 0.08 + 0.3 * day;
+  winFill.intensity = evening ? 0 : (walkM ? 1.35 : 0.45) * day; // window-direction fill is the main indoor light while walking
+  if (!useEnv) hemi.intensity = walkM ? 0.1 + 0.6 * day : 0.2 + 0.8 * day;
   hemi.groundColor.set(useEnv ? 0xa89e90 : 0xd6d0c6);
-  for (const { L, w } of winLights) { L.intensity = evening ? 0 : (walkM ? 5 : 3) * w * day; L.visible = !lite && L.intensity > 0.02; }
+  for (const { L, w } of winLights) { L.intensity = evening ? 0 : (walkM ? 4 : 3) * w * day; L.visible = !lite && L.intensity > 0.02; }
   outdoorGlow(walkM ? 0.22 * day : 0.04 * day);
   const night = evening || el < -4;
   document.body.classList.toggle('night', night);

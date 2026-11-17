@@ -37,9 +37,9 @@ export const PLAN = {
   ],
   balcony: [[7.69, D + 0.3, 7.79, D + 1.27], [9.89, D + 0.3, 9.99, D + 1.27], [7.69, D + 1.17, 9.99, D + 1.27]],
   fixtures: [
-    { type: 'tall', r: [0, 0, 0.6, 1.18] },
-    { type: 'fridge', r: [0, 1.18, 0.65, 1.82] },
-    { type: 'counter', r: [0.6, 0, 4.05, 0.6], sink: [1.32, 1.88], hob: [2.52, 3.08] },
+    { type: 'counter', r: [0, 0, 4.05, 0.6], sink: [1.32, 1.88], hob: [2.52, 3.08] }, // Г-кухня: north leg (full wall)
+    { type: 'fridge', r: [0, 0.6, 0.6, 1.2] },    // west leg: integrated fridge, turned to face the room (+X)
+    { type: 'tall', r: [0, 1.2, 0.6, 1.8] },      // west leg: oven + microwave пенал
     { type: 'vent', r: [4.05, 0, 4.3, 0.66] }, // вентиляційний блок до стелі (між кухнею-вітальнею й передпокоєм)
     { type: 'panel', r: [7.4, 0, 7.75, 0.08] },
     { type: 'bath', r: [9.52, 1.15, W, 2.8] },
