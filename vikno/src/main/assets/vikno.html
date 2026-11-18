@@ -360,6 +360,7 @@ function build(){
       items.push(r()<treeChance ? {tree:true,x,w:w*1.3,h:(.03+r()*.03)*sc,p:r()}
         : {x,w,fh:(.035+r()*.035)*sc,rd:(.02+r()*.03)*sc,face:FACADES[r()*FACADES.length|0],roof:ROOFS[r()<.55?(r()*3|0):3+(r()*3|0)],
            hip:r()<.6, chim:r()<.6?[.15+r()*.3,.55+r()*.3]:[.3+r()*.4], wins:Math.max(2,Math.round(w*W/H/(.016*sc))), floors:2+(r()*3|0), lit:Array.from({length:24},()=>r())});
+      if (gap) items[items.length-1].gap=gap;
       x+=w+gap; }
     rows.push({y,sc,haze:Math.pow(1-f,1.6)*.6,items});
   }
@@ -439,14 +440,32 @@ function paintTerrain(S, season, W_){
         for(let a=0;a<rowsN;a++) for(let b=0;b<n;b++){ const on=night>.5 && it.lit[(a*n+b)%24]<share;
           g.fillStyle=rgb(on?mix(winNight,[255,236,190],it.lit[(b*5+a)%24]*.5):lit([96,98,108],S,hz,W_)); g.fillRect(x0+w/n*(b+.29),top+fh/rowsN*(a+.28),ww,wh);
           if (sc>.45) world.wins.push({x:x0+w/n*(b+.29),y:top+fh/rowsN*(a+.28),w:ww,h:wh,on,sc}); } }
+      // wall lanterns on the facades and lamps down in the streets: they switch on in a slow wave at dusk
+      if (sc>.28 && it.lit[7]<.42 && night>.42+it.x*.12+it.lit[3]*.06) lantern(g,x0+w*(.15+it.lit[5]*.7),top+fh*(.55+it.lit[9]*.25),u*sc,hz);
     }
   };
   world.rows.forEach((row,k)=>{
     drawRow(row);
+    if (night>.42 && row.sc>.25) for(const it of row.items) if (it.gap && night>.44+it.x*.12) lantern(g,X(it.x+it.w+it.gap*.5),Y(row.y)-u*.012*row.sc,u*row.sc*1.3,row.haze,true);
     if (k===3) dominican(g,S,W_,u,X,Y,snow);      // the Dominican dome rises from the middle distance
     if (k===2) smallTower(g,S,W_,u,X(.235),Y(.61),.55);
   });
   cityHall(g,S,W_,u,X,Y,snow,night);
+}
+/* evening lights: a warm wall lantern (or a street lamp on a post) with its halo */
+function lantern(g,x,y,s,hz,post){
+  const a=1-hz*.7, r=s*.022;
+  const gl=g.createRadialGradient(x,y,0,x,y,r*3); gl.addColorStop(0,`rgba(255,196,110,${.55*a})`); gl.addColorStop(.35,`rgba(255,170,80,${.18*a})`); gl.addColorStop(1,"rgba(255,170,80,0)");
+  g.fillStyle=gl; g.fillRect(x-r*3,y-r*3,r*6,r*6);
+  if (post){ g.fillStyle=`rgba(20,18,24,${.8*a})`; g.fillRect(x-.5,y,Math.max(1,s*.0015),s*.03); }
+  else { g.fillStyle=`rgba(30,26,30,${.7*a})`; g.fillRect(x-Math.max(.6,s*.002),y-s*.004,Math.max(1.2,s*.004),s*.004); }
+  g.fillStyle=`rgba(255,236,190,${a})`; const k=Math.max(1.2,s*.0045); g.fillRect(x-k/2,y,k,k*1.3);
+}
+/* architectural floodlights: the City Hall and the Dominican church glow from dusk until one at night */
+function floodOn(night){ const d=now(), hh=d.getHours()+d.getMinutes()/60; return (Q.get("flood")==="off"||(hh>=1&&hh<6)) ? 0 : clamp((night-.45)/.3); }
+function floodlight(g,x,y,w,h,k,up=1){   // a wash of light rising from (x, y+h) upwards
+  const gr=g.createLinearGradient(0,y+h,0,y); gr.addColorStop(0,`rgba(255,200,120,${.5*k*up})`); gr.addColorStop(.45,`rgba(255,190,120,${.18*k})`); gr.addColorStop(1,"rgba(255,190,120,0)");
+  g.save(); g.globalCompositeOperation="lighter"; g.fillStyle=gr; g.fillRect(x,y,w,h); g.restore();
 }
 function smallTower(g,S,W_,u,cx,base,hz){
   const st=lit([226,214,190],S,hz,W_,.3), cu=lit([110,150,130],S,hz,W_,.2);
@@ -468,6 +487,12 @@ function dominican(g,S,W_,u,X,Y,snow){
   const tx=cx-u*.105; g.fillStyle=rgb(stone); g.fillRect(tx-u*.015,b-u*.13,u*.03,u*.13);
   g.fillStyle=rgb(mix(stone,[0,0,0],.3)); g.fillRect(tx-u*.005,b-u*.11,u*.01,u*.018);
   g.fillStyle=rgb(cu); g.beginPath(); g.ellipse(tx,b-u*.13,u*.017,u*.02,0,Math.PI,0); g.fill(); g.fillRect(tx-.6,b-u*.165,1.2,u*.018);
+  const k=floodOn(1-S.day)*(1-W_.fog*.6); if (k>0){
+    floodlight(g,cx-u*.075,b-u*.07,u*.15,u*.07,k*.8); floodlight(g,cx-u*.05,b-u*.125,u*.1,u*.06,k*.7);
+    g.save(); g.beginPath(); g.ellipse(cx,b-u*.12,u*.055,u*.065,0,Math.PI,0); g.clip(); floodlight(g,cx-u*.055,b-u*.185,u*.11,u*.065,k*.9); g.restore();
+    floodlight(g,tx-u*.015,b-u*.13,u*.03,u*.13,k*.7);
+    const halo=g.createRadialGradient(cx,b-u*.1,0,cx,b-u*.1,u*.16); halo.addColorStop(0,`rgba(255,190,120,${.16*k})`); halo.addColorStop(1,"rgba(255,190,120,0)"); g.fillStyle=halo; g.fillRect(cx-u*.16,b-u*.26,u*.32,u*.32);
+  }
 }
 function cityHall(g,S,W_,u,X,Y,snow,night){
   const cx=X(.37), tw=u*.125, side=u*.032, topY=Y(.39);
@@ -504,6 +529,13 @@ function cityHall(g,S,W_,u,X,Y,snow,night){
   poly(g,[[cx-u*.058,topY-u*.024],[cx-u*.03,topY-u*.04],[cx+u*.03,topY-u*.04],[cx+u*.058,topY-u*.024]],lit([92,96,104],S,.02,W_));
   g.fillStyle=rgb(dark); g.fillRect(cx-1,topY-u*.2,2,u*.16);
   world.flag={x:cx+1, y:topY-u*.198, w:u*.055, h:u*.033};
+  const fk=floodOn(night)*(1-W_.fog*.5); if (fk>0){
+    floodlight(g,cx-tw/2,topY+u*.04,tw,H-topY,fk*.9); floodlight(g,cx+tw/2,topY+u*.04,side,H-topY,fk*.45);   // the shaft, washed from the square below
+    floodlight(g,cx-tw/2-u*.006,topY-u*.01,tw+u*.012,u*.05,fk*.8);                                            // the gallery has its own lamps
+    g.save(); g.globalCompositeOperation="lighter"; g.fillStyle=`rgba(255,240,200,${.35*fk})`; g.beginPath(); g.arc(cx,Y(.535),u*.025,0,7); g.fill(); g.restore();   // the clock face glows
+    const pl=g.createLinearGradient(cx,topY-u*.2,cx,topY-u*.03); pl.addColorStop(0,"rgba(255,220,160,0)"); pl.addColorStop(1,`rgba(255,220,160,${.25*fk})`);
+    g.fillStyle=pl; g.fillRect(cx-u*.004,topY-u*.2,u*.008,u*.17);                                              // a beam lights the flag from below
+  }
   if (night>.4){ const gl=g.createRadialGradient(cx,Y(.6),0,cx,Y(.6),u*.3); gl.addColorStop(0,`rgba(255,200,130,${.12*night})`); gl.addColorStop(1,"rgba(255,200,130,0)"); g.fillStyle=gl; g.fillRect(cx-u*.3,Y(.3),u*.6,u*.6); }
 }
 
@@ -545,6 +577,10 @@ function frame(ms){
 
   // clouds
   drawClouds(W_, S, dt);
+
+  // the city's own light glows on low clouds and mist at night
+  if (night>.5 && (W_.cloud>.4 || W_.fog)){ const a=(night-.5)*2*Math.max(W_.cloud-.3,W_.fog?.6:0)*.32, cg=ctx.createLinearGradient(0,H*.25,0,H*.55);
+    cg.addColorStop(0,"rgba(255,150,80,0)"); cg.addColorStop(1,`rgba(255,150,80,${a})`); ctx.fillStyle=cg; ctx.fillRect(0,H*.25,W,H*.3); }
 
   // terrain + house
   paintTerrain(S, season, W_);
