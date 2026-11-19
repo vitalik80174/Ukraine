@@ -129,7 +129,7 @@ function warmCache() {
 /* ================= world ================= */
 const cv = $("cv"), cx = cv.getContext("2d");
 let W = 0, H = 0, DPR = 1, bg = null;
-let strings = [], sources = [], balls = [], rings = [], sparks = [], motes = [];
+let strings = [], sources = [], wells = [], balls = [], rings = [], sparks = [], motes = [];
 let tool = "string", paused = false, uid = 1;
 let beatT0 = performance.now(), beatN = -1;
 
@@ -152,6 +152,7 @@ function resize() {
     const sx = W / ow, sy = H / oh;
     for (const s of strings) { s.x1 *= sx; s.x2 *= sx; s.y1 *= sy; s.y2 *= sy; s.semi = noteForLength(len(s)); }
     for (const e of sources) { e.x *= sx; e.y *= sy; }
+    for (const w of wells) { w.x *= sx; w.y *= sy; }
     balls.length = 0;
   }
 }
@@ -163,6 +164,10 @@ function addString(x1, y1, x2, y2) {
 function addSource(x, y, vx, vy, period) {
   const e = { id: uid++, x, y, vx: vx || 0, vy: vy || 0, period: period || 2, flash: 0, born: now() };
   sources.push(e); save(); return e;
+}
+function addWell(x, y, dir) {
+  const w = { id: uid++, x, y, dir: dir || 1, rot: Math.random() * 6, pulse: 0, born: now() };
+  wells.push(w); save(); return w;
 }
 function now() { return performance.now() / 1000; }
 
@@ -184,7 +189,23 @@ function stepBalls(dt) {
   for (let i = balls.length - 1; i >= 0; i--) {
     const b = balls[i]; b.age += dt;
     for (let k = 0; k < SUB; k++) {
-      b.vy += G * h; b.x += b.vx * h; b.y += b.vy * h;
+      b.vy += G * h;
+      for (const w of wells) { // whirlpool: catches the ball, swings it round in a spiral, then swallows it
+        const dx = w.x - b.x, dy = w.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 > WELL_REACH * WELL_REACH) continue;
+        const d = Math.sqrt(d2) || 1, fall = Math.min(1, (WELL_REACH - d) / 80);
+        const a = fall * WELL_PULL / (d2 + 900), ux = dx / d, uy = dy / d, tx = -uy * w.dir, ty = ux * w.dir;
+        b.vy -= G * h * fall * 0.9; // near a whirl the ball floats, so it can circle
+        // steer toward a slightly-too-slow circular orbit → the ball spirals inward
+        let vt = b.vx * tx + b.vy * ty, vr = b.vx * ux + b.vy * uy;
+        const k = Math.min(1, 4 * fall * h), vorb = Math.sqrt(a * d) * 0.8;
+        vt += (vorb - vt) * k; vr -= vr * k * 0.6;
+        b.vx = tx * vt + ux * vr + ux * a * h; b.vy = ty * vt + uy * vr + uy * a * h;
+        if (d < 15 && !b.gone) b.gone = w;
+        if (d < 160) b.inWell = 1;
+      }
+      const sp2 = b.vx * b.vx + b.vy * b.vy; if (sp2 > 1600 * 1600) { const k = 1600 / Math.sqrt(sp2); b.vx *= k; b.vy *= k; }
+      b.x += b.vx * h; b.y += b.vy * h;
       for (const s of strings) {
         const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L2 = dx * dx + dy * dy || 1;
         let t = ((b.x - s.x1) * dx + (b.y - s.y1) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
@@ -204,13 +225,23 @@ function stepBalls(dt) {
         }
       }
     }
-    b.trail.push(b.x, b.y); if (b.trail.length > 16) b.trail.splice(0, 2);
+    if (b.gone) { swallow(b.gone, b); balls.splice(i, 1); continue; }
+    b.trail.push(b.x, b.y); if (b.trail.length > (b.inWell ? 30 : 16)) b.trail.splice(0, 2);
     b.glow *= 0.94;
     if (b.y > H + 40 || b.x < -60 || b.x > W + 60 || b.age > 30) {
       if (b.y > H + 40) rings.push({ x: b.x, y: H - 2, r: 6, a: 0.25, semi: b.hue == null ? 24 : b.hue, flat: 1 });
       balls.splice(i, 1);
     }
   }
+}
+const WELL_REACH = 270, WELL_PULL = 8e6;
+/* a ball that falls into the whirl's core sounds the whirl's deep note — the lowest of the scale */
+function swallow(w, b) {
+  HITS++; w.pulse = 1;
+  const semi = NOTES[Math.min(NOTES.length - 1, (w.id % 3))] ;
+  pluckSound(semi, 0.55, w.x);
+  rings.push({ x: w.x, y: w.y, r: 10, a: 0.6, semi: b.hue == null ? semi : b.hue });
+  for (let i = 0; i < 10; i++) { const a = Math.random() * 7, v = 60 + Math.random() * 90; sparks.push({ x: w.x, y: w.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.4, semi: b.hue == null ? semi : b.hue }); }
 }
 function fireSources(t) {
   const spb = 60 / TEMPOS[tempoIx], n = Math.floor((t - beatT0) / spb);
@@ -288,6 +319,32 @@ function drawSource(e, t) {
     cx.beginPath(); cx.moveTo(e.x + ux * 18, e.y + uy * 18); cx.lineTo(e.x + ux * 30, e.y + uy * 30); cx.stroke();
   }
 }
+function drawWell(w, t, dt) {
+  w.rot += dt * (1.1 + 1.2 * w.pulse) * w.dir; w.pulse *= 0.93;
+  const grow = Math.min(1, (t - w.born) / 0.5), Rr = 95 * grow;
+  cx.globalCompositeOperation = "lighter";
+  const g = cx.createRadialGradient(w.x, w.y, 0, w.x, w.y, Rr * 1.5);
+  g.addColorStop(0, `rgba(150,120,255,${0.10 + 0.25 * w.pulse})`); g.addColorStop(0.5, "rgba(90,110,255,.06)"); g.addColorStop(1, "rgba(90,110,255,0)");
+  cx.fillStyle = g; cx.beginPath(); cx.arc(w.x, w.y, Rr * 1.5, 0, 7); cx.fill();
+  // spiral arms of glowing dust
+  for (let arm = 0; arm < 3; arm++) {
+    for (let k = 0; k < 34; k++) {
+      const f = k / 34, r = 15 + f * Rr, a = w.rot + arm * 2.094 + w.dir * f * 4.2;
+      const al = (1 - f * 0.85) * 0.8 * grow + 0.3 * w.pulse * (1 - f);
+      cx.fillStyle = `hsla(${255 - f * 70 + arm * 20},90%,${74 - f * 12}%,${al})`;
+      const sz = 3.4 - f * 1.8; cx.fillRect(w.x + Math.cos(a) * r - sz / 2, w.y + Math.sin(a) * r - sz / 2, sz, sz);
+    }
+  }
+  cx.globalCompositeOperation = "source-over";
+  // dark core with a bright rim
+  cx.fillStyle = "#05040c"; cx.beginPath(); cx.arc(w.x, w.y, 11 * grow, 0, 7); cx.fill();
+  cx.strokeStyle = `rgba(200,180,255,${0.7 + 0.3 * w.pulse})`; cx.lineWidth = 2 + 2 * w.pulse;
+  cx.beginPath(); cx.arc(w.x, w.y, 12 * grow + 3 * w.pulse, 0, 7); cx.stroke();
+  if (tool === "move" || tool === "well" || w.lift) {
+    cx.strokeStyle = `rgba(190,170,255,${w.lift ? 0.95 : 0.35 + 0.2 * Math.sin(t * 3 + w.id)})`; cx.lineWidth = 1.6; cx.setLineDash([3, 6]);
+    cx.beginPath(); cx.arc(w.x, w.y, 26, 0, 7); cx.stroke(); cx.setLineDash([]);
+  }
+}
 function drawBall(b) {
   const col = b.hue == null ? "255,244,220" : null;
   cx.globalCompositeOperation = "lighter";
@@ -325,6 +382,7 @@ function render(t, dt) {
     if (r.flat) cx.ellipse(r.x, r.y, r.r * 1.8, r.r * 0.35, 0, 0, 7); else cx.arc(r.x, r.y, r.r, 0, 7);
     cx.stroke();
   }
+  for (const w of wells) drawWell(w, t, dt);
   for (const s of strings) drawString(s, t);
   for (const e of sources) drawSource(e, t);
   // sparks
@@ -374,6 +432,7 @@ function distSeg(px, py, s) {
 }
 function nearString(x, y, r) { let best = null, bd = r; for (const s of strings) { const [d] = distSeg(x, y, s); if (d < bd) { bd = d; best = s; } } return best; }
 function nearSource(x, y, r) { return sources.find(e => Math.hypot(e.x - x, e.y - y) < r) || null; }
+function nearWell(x, y, r) { return wells.find(w => Math.hypot(w.x - x, w.y - y) < r) || null; }
 /* ---- rearranging: grab a peg (retune), a whole string, or a source ---- */
 function nearPeg(x, y, r) {
   let best = null, bd = r;
@@ -382,6 +441,7 @@ function nearPeg(x, y, r) {
 }
 function grabAt(x, y) {
   const e = nearSource(x, y, 30); if (e) return { kind: "src", e, dx: e.x - x, dy: e.y - y };
+  const w = nearWell(x, y, 30); if (w) return { kind: "src", e: w, dx: w.x - x, dy: w.y - y };
   const p = nearPeg(x, y, 24); if (p) return { kind: "peg", s: p.s, end: p.end };
   const s = nearString(x, y, 18); if (s) return { kind: "body", s, ax: s.x1 - x, ay: s.y1 - y, bx: s.x2 - x, by: s.y2 - y };
   return null;
@@ -412,6 +472,7 @@ function eraseAt(x, y) {
   let changed = false;
   for (let i = strings.length - 1; i >= 0; i--) if (distSeg(x, y, strings[i])[0] < 16) { sparkBurst(strings[i]); strings.splice(i, 1); changed = true; }
   for (let i = sources.length - 1; i >= 0; i--) if (Math.hypot(sources[i].x - x, sources[i].y - y) < 26) { sources.splice(i, 1); changed = true; }
+  for (let i = wells.length - 1; i >= 0; i--) if (Math.hypot(wells[i].x - x, wells[i].y - y) < 26) { wells.splice(i, 1); changed = true; }
   if (changed) save();
 }
 function sparkBurst(s) {
@@ -434,6 +495,11 @@ cv.addEventListener("pointerdown", ev => {
     const e = nearSource(x, y, 28);
     st.mode = "aim"; st.src = e; const ox = e ? e.x : x, oy = e ? e.y : y;
     st.ox = ox; st.oy = oy; preview = { kind: "aim", x1: ox, y1: oy, x2: ox, y2: oy }; st.prev = preview;
+  } else if (tool === "well") {
+    st.mode = "none"; const w = nearWell(x, y, 30);
+    if (w) { w.dir = -w.dir; w.pulse = 1; save(); toast(w.dir > 0 ? "Вир крутиться за годинниковою" : "Вир крутиться проти годинникової"); }
+    else if (wells.length >= 4) toast("Вирів може бути щонайбільше чотири");
+    else { addWell(x, y, 1); toast("Вир: кульки кружляють і пірнають у нього"); }
   } else if (tool === "play") {
     st.mode = "play"; const s = nearString(x, y, 12); if (s) { const [, px, py] = distSeg(x, y, s); pluck(s, 0.5, px, py); st.skip = s.id; }
   } else { st.mode = "erase"; eraseTrail = [x, y]; eraseAt(x, y); }
@@ -522,7 +588,7 @@ $("bPause").addEventListener("click", () => {
 $("bScenes").addEventListener("click", () => {
   firstTouch();
   const items = SCENES.map(s => ({ name: s.name, sub: s.sub })).concat([{ name: "Чисте полотно", sub: "прибрати все" }]);
-  openPop("scenes", items, -1, i => { if (i < SCENES.length) loadScene(i); else { strings = []; sources = []; balls = []; save(); toast("Полотно чисте — малюй струни"); } });
+  openPop("scenes", items, -1, i => { if (i < SCENES.length) loadScene(i); else { strings = []; sources = []; wells = []; balls = []; save(); toast("Полотно чисте — малюй струни"); } });
 });
 $("bMore").addEventListener("click", () => { closePop(); $("panel").classList.add("open"); });
 $("close").addEventListener("click", () => $("panel").classList.remove("open"));
@@ -553,22 +619,28 @@ const SCENES = [
     sources: [[0.16, 0.08, 0, 0, 3], [0.36, 0.06, 0, 0, 4], [0.56, 0.08, 0, 0, 6], [0.78, 0.06, 0, 0, 2]] },
   { name: "Маятник", sub: "кулька літає між стінками",
     strings: [[0.12, 0.25, 0.20, 0.75], [0.88, 0.25, 0.80, 0.75], [0.30, 0.86, 0.70, 0.86], [0.42, 0.50, 0.58, 0.50]],
-    sources: [[0.30, 0.20, 260, -80, 4], [0.70, 0.20, -260, -80, 6]] }
+    sources: [[0.30, 0.20, 260, -80, 4], [0.70, 0.20, -260, -80, 6]] },
+  { name: "Галактика", sub: "кульки кружляють навколо вирів",
+    strings: [[0.10, 0.30, 0.22, 0.20], [0.90, 0.30, 0.78, 0.20], [0.40, 0.18, 0.60, 0.18], [0.14, 0.70, 0.26, 0.82], [0.86, 0.70, 0.74, 0.82], [0.44, 0.88, 0.56, 0.88], [0.46, 0.50, 0.54, 0.50]],
+    sources: [[0.20, 0.08, 120, 0, 3], [0.80, 0.08, -120, 0, 4], [0.50, 0.06, 0, 0, 6]],
+    wells: [[0.30, 0.50, 1], [0.70, 0.50, -1]] }
 ];
 function loadScene(i) {
-  const sc = SCENES[i]; strings = []; sources = []; balls = []; rings = [];
+  const sc = SCENES[i]; strings = []; sources = []; wells = []; balls = []; rings = [];
+  for (const [x, y, d] of sc.wells || []) wells.push({ id: uid++, x: x * W, y: y * H, dir: d, rot: Math.random() * 6, pulse: 0, born: now() });
   for (const [a, b, c, d] of sc.strings) { const s = { id: uid++, x1: a * W, y1: b * H, x2: c * W, y2: d * H, semi: 0, amp: 0, ph: 0, t: 9, born: now() + Math.random() * 0.3 }; s.semi = noteForLength(len(s)); strings.push(s); }
   const k = Math.min(W, H) / 800;
   for (const [x, y, vx, vy, p] of sc.sources) sources.push({ id: uid++, x: x * W, y: y * H, vx: vx * k * 1.4, vy: vy * k * 1.4, period: p, flash: 0, born: now() });
   beatT0 = now(); beatN = -1; warmCache(); save(); toast(sc.name);
 }
 function save() {
-  store.set("world", { w: W, h: H, s: strings.map(s => [s.x1 / W, s.y1 / H, s.x2 / W, s.y2 / H]), e: sources.map(e => [e.x / W, e.y / H, e.vx, e.vy, e.period]) });
+  store.set("world", { w: W, h: H, s: strings.map(s => [s.x1 / W, s.y1 / H, s.x2 / W, s.y2 / H]), e: sources.map(e => [e.x / W, e.y / H, e.vx, e.vy, e.period]), v: wells.map(w => [w.x / W, w.y / H, w.dir]) });
 }
 function restore() {
   const w = store.get("world", null); if (!w || (!w.s.length && !w.e.length)) return false;
   for (const [a, b, c, d] of w.s) { const s = { id: uid++, x1: a * W, y1: b * H, x2: c * W, y2: d * H, semi: 0, amp: 0, ph: 0, t: 9, born: now() }; s.semi = noteForLength(len(s)); strings.push(s); }
   for (const [x, y, vx, vy, p] of w.e) sources.push({ id: uid++, x: x * W, y: y * H, vx, vy, period: p, flash: 0, born: now() });
+  for (const [x, y, d] of w.v || []) wells.push({ id: uid++, x: x * W, y: y * H, dir: d, rot: Math.random() * 6, pulse: 0, born: now() });
   return true;
 }
 
@@ -591,4 +663,4 @@ function loop() {
   render(t, dt);
 }
 requestAnimationFrame(loop);
-window.__struny = { get hits() { return HITS; }, get strings() { return strings; }, get balls() { return balls; }, loadScene, strum, setScale, grabAt, dragTo, get sources() { return sources; } };
+window.__struny = { get hits() { return HITS; }, get strings() { return strings; }, get balls() { return balls; }, loadScene, strum, setScale, grabAt, dragTo, get sources() { return sources; }, get wells() { return wells; }, addWell };
