@@ -23,14 +23,12 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xcfd9e6, 70, 220);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
 
-{ // sky dome: warm horizon, deep blue top
-  const g = new THREE.SphereGeometry(400, 32, 16), c = [], top = new THREE.Color(0x3d6fb3), mid = new THREE.Color(0xa9c6e6), hor = new THREE.Color(0xf3d9b8);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) { const y = p.getY(i) / 400, col = y > 0.15 ? mid.clone().lerp(top, Math.min(1, (y - 0.15) / 0.6)) : hor.clone().lerp(mid, Math.max(0, (y + 0.05) / 0.2)); c.push(col.r, col.g, col.b); }
-  g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
-  scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false })));
-}
-scene.add(new THREE.HemisphereLight(0xdbe8ff, 0x6a5a45, 1.1));
+/* sky dome + light rig; levels pick an environment (day, dusk) */
+const skyGeo = new THREE.SphereGeometry(400, 32, 16);
+skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(skyGeo.attributes.position.count * 3), 3));
+scene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false })));
+const hemi = new THREE.HemisphereLight(0xdbe8ff, 0x6a5a45, 1.1);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dd, 2.6);
 sun.position.set(30, 45, 20);
 sun.castShadow = true;
@@ -39,6 +37,28 @@ Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, n
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.02;
 scene.add(sun);
+const ENVS = {
+  day:  { top: 0x3d6fb3, mid: 0xa9c6e6, hor: 0xf3d9b8, glow: 0xfff4dc, sun: 0xfff1dd, si: 2.6, pos: [30, 45, 20], sky: 0xdbe8ff, gnd: 0x6a5a45, hi: 1.1, fog: 0xcfd9e6, far: 220, exp: 1.05 },
+  dusk: { top: 0x141d45, mid: 0x5d4f86, hor: 0xf28a4e, glow: 0xffc27a, sun: 0xff9455, si: 1.7, pos: [44, 11, -8], sky: 0x9a9fd4, gnd: 0x4a3a46, hi: 0.95, fog: 0x8d6f86, far: 170, exp: 1.12 }
+};
+let envName = '';
+function setEnv(name) {
+  if (name === envName) return; envName = name;
+  const E = ENVS[name], top = new THREE.Color(E.top), mid = new THREE.Color(E.mid), hor = new THREE.Color(E.hor), glow = new THREE.Color(E.glow), col = new THREE.Color();
+  const sd = new THREE.Vector3(...E.pos).setY(0).normalize(), p = skyGeo.attributes.position, c = skyGeo.attributes.color, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).divideScalar(400); const y = v.y;
+    if (y > 0.15) col.copy(mid).lerp(top, Math.min(1, (y - 0.15) / 0.6)); else col.copy(hor).lerp(mid, Math.max(0, (y + 0.05) / 0.2));
+    if (name !== 'day') { const k = Math.max(0, v.x * sd.x + v.z * sd.z) ** 6 * Math.max(0, 1 - Math.abs(y - 0.03) * 2.2); col.lerp(glow, Math.min(1, k * 1.3)); }
+    c.setXYZ(i, col.r, col.g, col.b);
+  }
+  c.needsUpdate = true;
+  sun.color.set(E.sun); sun.intensity = E.si; sun.position.set(...E.pos);
+  hemi.color.set(E.sky); hemi.groundColor.set(E.gnd); hemi.intensity = E.hi;
+  scene.fog.color.set(E.fog); scene.fog.far = E.far;
+  renderer.toneMappingExposure = E.exp;
+}
+setEnv('day');
 const flash = new THREE.PointLight(0xffb060, 0, 40, 1.6);
 scene.add(flash);
 
@@ -57,7 +77,10 @@ const TYPES = {
   steel:    { color: 0x5b6574, dens: 40, v: 0.04, metal: true },
   glass:    { color: 0xa9dcf2, dens: 10, v: 0.02, glass: true },
   stone:    { color: 0xcdb68b, dens: 20, v: 0.08 },
-  car:      { color: 0xd8463a, dens: 6,  v: 0.25 }
+  car:      { color: 0xd8463a, dens: 6,  v: 0.25 },
+  white:    { color: 0xeee9df, dens: 18, v: 0.04 },
+  red:      { color: 0xc4372c, dens: 18, v: 0.06 },
+  lamp:     { color: 0xfff0b8, dens: 6,  v: 0,    glow: true }
 };
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 let meshes = {}, blocks = [], groundBody = null, groundGroup = null, extras = [];
@@ -65,6 +88,7 @@ let meshes = {}, blocks = [], groundBody = null, groundGroup = null, extras = []
 function makeMaterial(t) {
   const T = TYPES[t];
   if (T.glass) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.38, depthWrite: false });
+  if (T.glow) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, emissive: 0xffc86a, emissiveIntensity: 2.2 });
   return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: T.metal ? 0.45 : 0.85, metalness: T.metal ? 0.6 : 0.0 });
 }
 
@@ -115,7 +139,9 @@ function syncBlock(b) {
 /* ================= ground ================= */
 const grassMat = new THREE.MeshStandardMaterial({ color: 0x7c9a57, roughness: 1 });
 const dirtMat = new THREE.MeshStandardMaterial({ color: 0x6b5a45, roughness: 1 });
-function makeGround(river) {
+const rockMat = new THREE.MeshStandardMaterial({ color: 0x77706a, roughness: 0.95, flatShading: true });
+const seaMat = new THREE.MeshStandardMaterial({ color: 0x4a6590, emissive: 0x2a2c55, roughness: 0.22, metalness: 0.3, transparent: true, opacity: 0.92 });
+function makeGround(river, sea) {
   groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, mass: 0 });   // becomes kinematic only while the earth shakes
   groundGroup = new THREE.Group(); scene.add(groundGroup);
   const add = (hx, hy, hz, x, y, z, mat) => {
@@ -127,6 +153,18 @@ function makeGround(river) {
     add(9, 2, 100, 0, -8, 0, dirtMat);
     const water = new THREE.Mesh(new THREE.PlaneGeometry(18, 200), new THREE.MeshStandardMaterial({ color: 0x3f86b8, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.78 }));
     water.rotation.x = -Math.PI / 2; water.position.y = -3.2; groundGroup.add(water);
+  } else if (sea) {                                                                          // a rocky islet in the sea
+    add(11, 5, 9, 0, -5, 0, grassMat);
+    add(150, 2, 150, 0, -7, 0, dirtMat);
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), seaMat);
+    water.rotation.x = -Math.PI / 2; water.position.y = -1.4; groundGroup.add(water); groundGroup.userData.water = water;
+    const rg = new THREE.DodecahedronGeometry(1, 0);
+    for (let i = 0; i < 34; i++) {                                                            // boulders hide the box edges of the islet
+      const a = i / 34 * Math.PI * 2, rx = Math.cos(a), rz = Math.sin(a), k = 1 / Math.max(Math.abs(rx) / 11, Math.abs(rz) / 9);
+      const m = new THREE.Mesh(rg, rockMat), sz = rr(1.1, 2.1);
+      m.position.set(rx * k * rr(0.97, 1.08), rr(-1.6, -0.75) - sz * 0.25, rz * k * rr(0.97, 1.08)); m.scale.set(sz * rr(0.9, 1.4), sz * rr(0.6, 0.9), sz * rr(0.9, 1.4));
+      m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3); m.castShadow = m.receiveShadow = true; groundGroup.add(m);
+    }
   } else add(150, 5, 150, 0, -5, 0, grassMat);
   world.addBody(groundBody);
 }
@@ -138,7 +176,8 @@ const LEVELS = [
   { id: 'tower', name: 'Вежа', desc: 'Кругла цегляна вежа з зубцями', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 1, crane: 1, rocket: 1 }, goal: 0.7, cam: [26, 10, 4.5], build: tower },
   { id: 'bridge', name: 'Міст', desc: 'Сталеві балки над річкою', ammo: { ball: 4, bomb: 3, meteor: 1, quake: 0, crane: 1, rocket: 2 }, goal: 0.65, cam: [26, 9, -1], build: bridge, river: true },
   { id: 'sky', name: 'Хмарочос', desc: 'Тонкі колони, важкі поверхи', ammo: { ball: 3, bomb: 2, meteor: 1, quake: 1, crane: 1, rocket: 2 }, goal: 0.7, cam: [30, 14, 9], build: skyscraper },
-  { id: 'castle', name: 'Замок', desc: 'Мури, вежі й бійниці', ammo: { ball: 6, bomb: 3, meteor: 2, quake: 1, crane: 2, rocket: 2 }, goal: 0.7, cam: [34, 16, 3], build: castle }
+  { id: 'castle', name: 'Замок', desc: 'Мури, вежі й бійниці', ammo: { ball: 6, bomb: 3, meteor: 2, quake: 1, crane: 2, rocket: 2 }, goal: 0.7, cam: [34, 16, 3], build: castle },
+  { id: 'lighthouse', name: 'Маяк', desc: 'Смугаста вежа на скелі в сутінках — погасіть вогонь', ammo: { ball: 5, bomb: 2, meteor: 1, quake: 1, crane: 1, rocket: 2 }, goal: 0.65, cam: [27, 11, 5], build: lighthouse, sea: true, env: 'dusk' }
 ];
 
 function pyramid() {
@@ -236,6 +275,79 @@ function castle() {
   for (let l = 0; l < 3; l++) box('wood', 0, l * 1.2 + 0.6, 0, 1.2 - l * 0.3, 1.18, 1.2 - l * 0.3);   // a little keep in the yard
 }
 
+function lighthouse() {
+  const n = 14, rings = 18, H = 0.55, r0 = 2.7, taper = 0.045;
+  for (let r = 0; r < rings; r++) {
+    const R = r0 - r * taper, len = 2 * Math.PI * (R - 0.3) / n * 0.98, type = Math.floor(r / 3) % 2 ? 'red' : 'white';
+    for (let i = 0; i < n; i++) {
+      if (r <= 3 && i === 2) continue;                                                        // door, facing the camera
+      if ((r === 8 || r === 13) && (i === 5 || i === 12)) continue;                           // small windows
+      const a = (i + (r % 2) * 0.5) / n * Math.PI * 2;
+      box(type, Math.cos(a) * R, r * H + H / 2, Math.sin(a) * R, len, H * 0.98, 0.55, -a + Math.PI / 2);
+    }
+  }
+  let y = rings * H;
+  for (const x of [-1.4, 0, 1.4]) box('steel', x, y + 0.125, 0, 1.38, 0.25, 4.3);                    // gallery floor
+  y += 0.25;
+  box('steel', 0, y + 0.2, 0, 0.5, 0.4, 0.5);                                                    // lamp pedestal
+  box('lamp', 0, y + 0.4 + 0.33, 0, 0.5, 0.66, 0.5);                                              // the light itself
+  const gh = 1.3, gr = 1.05;
+  for (let i = 0; i < 8; i++) { const a = (i + 0.5) / 8 * Math.PI * 2; box('glass', Math.cos(a) * gr, y + gh / 2, Math.sin(a) * gr, 2 * Math.PI * gr / 8 * 0.95, gh, 0.06, -a + Math.PI / 2); }
+  y += gh;
+  box('steel', 0, y + 0.07, 0, 2.5, 0.14, 2.5);                                                  // roof, stepping up
+  box('red', 0, y + 0.14 + 0.15, 0, 1.6, 0.3, 1.6);
+  box('red', 0, y + 0.44 + 0.13, 0, 0.9, 0.26, 0.9);
+  box('steel', 0, y + 0.7 + 0.3, 0, 0.12, 0.6, 0.12);
+  for (const [x, z] of [[-6.5, 3.5], [-7.4, 2.6], [-6.9, 4.6]]) box('wood', x, 0.45, z, 0.8, 0.9, 0.8, rnd());   // barrels of oil by the door
+}
+
+/* ================= lighthouse beam =================
+   Two soft cones sweep from the lamp block while it stays where it was built; knock the lamp
+   off its pedestal (or out of the world) and the light flickers and dies. Reads the lamp pose
+   from its instance matrix, so it also works during the replay. */
+let beam = null;
+function beamMat() {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+    uniforms: { k: { value: 1 }, len: { value: 70 } },
+    vertexShader: 'uniform float len; varying float vT; varying vec3 vN; varying vec3 vV; void main(){ vT = position.x / len; vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform float k; varying float vT; varying vec3 vN; varying vec3 vV; void main(){ float e = pow(abs(dot(vN, vV)), 1.5); float a = pow(1.0 - vT, 1.8) * e * 0.42 * k; gl_FragColor = vec4(1.0, 0.86, 0.55, a); }'
+  });
+}
+function glowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(0.25, 'rgba(255,200,110,0.55)'); gr.addColorStop(1, 'rgba(255,160,60,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); return t;
+}
+function startBeam() {
+  const lamp = blocks.find(b => b.type === 'lamp'); if (!lamp) return;
+  const g = new THREE.Group(), L = 70, geo = new THREE.ConeGeometry(7, L, 24, 1, true);
+  geo.translate(0, -L / 2, 0); geo.rotateZ(Math.PI / 2);                                         // apex at the lamp, opening along +x
+  const mat = beamMat(); const rot = new THREE.Group(); g.add(rot);
+  for (const s of [0, Math.PI]) { const m = new THREE.Mesh(geo, mat); m.rotation.y = s; m.rotation.z = -0.06; m.renderOrder = 5; rot.add(m); }
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+  sprite.scale.setScalar(4.5); g.add(sprite);
+  const light = new THREE.PointLight(0xffc070, 30, 16, 1.4); g.add(light);
+  g.position.copy(lamp.start); scene.add(g);
+  beam = { g, rot, mat, sprite, light, geo, lamp, k: 1, out: false, ang: 0 };
+}
+function removeBeam() { if (!beam) return; scene.remove(beam.g); beam.geo.dispose(); beam.mat.dispose(); beam.sprite.material.map.dispose(); beam.sprite.material.dispose(); beam = null; }
+const _lm = new THREE.Matrix4(), _lp = new THREE.Vector3(), _lq = new THREE.Quaternion(), _ls = new THREE.Vector3();
+function updateBeam(dt, live) {
+  if (!beam) return;
+  const b = beam.lamp; b.mesh.getMatrixAt(b.idx, _lm); _lm.decompose(_lp, _lq, _ls);
+  const lit = _lp.y > -500 && _lp.distanceTo(b.start) < 0.45;
+  if (lit) beam.k = Math.min(1, beam.k + dt * 3);
+  else beam.k = Math.max(0, beam.k - dt * 0.9) * (rnd() < 0.25 ? 0.3 : 1);                    // a dying flicker
+  if (live && !lit && !beam.out) { beam.out = true; toast('Маяк згас!'); sfx.glass(); haptic(30); }
+  if (live && lit) beam.out = false;
+  beam.ang += dt * 0.75; beam.rot.rotation.y = beam.ang;
+  if (_lp.y > -500) beam.g.position.copy(_lp);
+  beam.mat.uniforms.k.value = beam.k; beam.rot.visible = beam.k > 0.01;
+  beam.sprite.material.opacity = beam.k; beam.light.intensity = 30 * beam.k;
+  b.mesh.material.emissiveIntensity = 0.15 + 2.05 * beam.k;
+}
+
 /* ================= game state ================= */
 let level = null, free = false, ammo = {}, weapon = 'ball', state = 'menu', lastShot = 0, shots = 0, ended = false;
 let projectiles = [], bombs = [], quake = null, shake = 0, simTime = 0;
@@ -247,7 +359,7 @@ function clearWorld() {
   for (const p of projectiles) { world.removeBody(p.body); scene.remove(p.mesh); }
   for (const b of bombs) scene.remove(b.mesh);
   for (const m of Object.values(meshes)) { scene.remove(m); m.material.dispose(); m.dispose(); }
-  removeCrane(); removeRocket();
+  removeCrane(); removeRocket(); removeBeam();
   if (groundBody) world.removeBody(groundBody);
   if (groundGroup) scene.remove(groundGroup);
   blocks = []; meshes = {}; projectiles = []; bombs = []; quake = null;
@@ -259,8 +371,8 @@ function startLevel(lv, isFree) {
   level = lv; free = !!isFree; ended = false; shots = 0; lastShot = 0; simTime = 0;
   ammo = { ...lv.ammo };
   if (free) ammo = { ball: Infinity, bomb: Infinity, meteor: Infinity, quake: Infinity, crane: Infinity, rocket: Infinity };
-  makeGround(!!lv.river);
-  lv.build(); materialize(); recReset();
+  makeGround(!!lv.river, !!lv.sea); setEnv(lv.env || 'day');
+  lv.build(); materialize(); recReset(); startBeam();
   orbit.r = lv.cam[0]; orbit.target.set(0, lv.cam[2], 0); orbit.theta = 0.55; orbit.phi = Math.atan2(lv.cam[0], lv.cam[1] * 1.3);
   weapon = 'ball'; if (!ammo.ball) weapon = Object.keys(ammo).find(k => ammo[k] > 0) || 'ball';
   state = 'play';
@@ -497,7 +609,7 @@ function buildCraneVisual(hookY, R = 1.1) {
   const g = new THREE.Group(); scene.add(g);
   const mastH = hookY + 0.7;
   const mast = new THREE.Mesh(boxGeo, latticeMat(1, mastH / 1.2)); mast.scale.set(1.2, mastH, 1.2); mast.position.set(MAST.x, mastH / 2, MAST.z); mast.castShadow = true; g.add(mast);
-  const foot = new THREE.Mesh(boxGeo, dirtMat); foot.scale.set(3, 0.5, 3); foot.position.set(MAST.x, 0.25, MAST.z); foot.receiveShadow = true; g.add(foot);
+  const foot = new THREE.Mesh(boxGeo, dirtMat); const fh = level && level.sea ? 2.6 : 0.5; foot.scale.set(3, fh, 3); foot.position.set(MAST.x, 0.5 - fh / 2, MAST.z);   // on the sea it stands on a pontoon foot.receiveShadow = true; g.add(foot);
   const cab = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.5 })); cab.scale.set(1.6, 1.3, 1.6); cab.position.set(MAST.x, mastH - 0.1, MAST.z); cab.castShadow = true; g.add(cab);
   const jib = new THREE.Mesh(boxGeo, latticeMat(10, 1)); jib.castShadow = true; g.add(jib);
   const counter = new THREE.Mesh(boxGeo, latticeMat(5, 1)); counter.castShadow = true; g.add(counter);
@@ -963,7 +1075,7 @@ function loop(now) {
   if (state === 'menu') orbit.theta += dt * 0.08;
   if (state === 'replay') {
     const sdt = updateReplay(dt);
-    if (rp) { particles.update(sdt); flash.intensity *= Math.pow(0.02, sdt); shake *= Math.pow(0.05, dt); placeCamera(); renderer.render(scene, camera); return; }
+    if (rp) { updateBeam(sdt, false); particles.update(sdt); flash.intensity *= Math.pow(0.02, sdt); shake *= Math.pow(0.05, dt); placeCamera(); renderer.render(scene, camera); return; }
   }
 
   // earthquake: the whole ground slides back and forth
@@ -1007,6 +1119,7 @@ function loop(now) {
   for (const t in dirty) meshes[t].instanceMatrix.needsUpdate = true;
   if (state === 'play') recFrame();
 
+  updateBeam(dt, state === 'play');
   particles.update(dt);
   flash.intensity *= Math.pow(0.02, dt);
   shake *= Math.pow(0.05, dt);
@@ -1023,7 +1136,7 @@ function loop(now) {
     }
   }
 }
-window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, callCrane, steerCrane, get crane() { return crane; }, get blocks() { return blocks.length; }, startReplay, endReplay, get replay() { return rp; }, launchRocket, steerRocket, get rocket() { return rocket; }, finish: () => finish(destruction()) };
+window.__ruina = { startLevel, LEVELS, fire, get state() { return state; }, destruction, explode: (x, y, z, R, p) => explode(new THREE.Vector3(x, y, z), R, p), setWeapon: w => { weapon = w; buildWeapons(); }, callCrane, steerCrane, get crane() { return crane; }, get blocks() { return blocks.length; }, startReplay, endReplay, get replay() { return rp; }, launchRocket, steerRocket, get rocket() { return rocket; }, get beam() { return beam; }, finish: () => finish(destruction()) };
 
 renderDiary();
 showMenu();
