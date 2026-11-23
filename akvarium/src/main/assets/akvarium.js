@@ -34,7 +34,7 @@ function resize() {
   W = innerWidth; H = innerHeight;
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   K = clamp(Math.min(H, W * 0.75) / 760, 0.6, 1.7);
-  build();
+  build(); buildGlass();
   for (const f of fish) keepInside(f, true);
 }
 
@@ -616,10 +616,15 @@ function render(dt) {
   for (; i < sorted.length && sorted[i].z < 0.5; i++) drawFish(sorted[i]);
   for (const p of plants) if (p.layer === "back" && p.z >= 0.5) drawPlant(p);
   drawFood();
+  for (const s of shrimps) drawShrimp(s);
   for (; i < sorted.length; i++) drawFish(sorted[i]);
   for (const p of plants) if (p.layer === "front") drawPlant(p);
   drawBubbles();
   drawSurface();
+  // the front glass: algae film and the snails grazing on it
+  ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
+  ctx.drawImage(aCan, 0, 0, gw, gh, -CELL / 2, -CELL / 2, gw * CELL, gh * CELL);
+  for (const s of snails) drawSnail(s);
 
   // night: dim to moonlight
   if (light < 0.999) {
@@ -630,6 +635,7 @@ function render(dt) {
     ctx.fillStyle = mg; ctx.fillRect(0, 0, W, H); ctx.restore();
   }
   ctx.globalAlpha = 1; ctx.drawImage(vign, 0, 0, W, H);
+  drawScraper();
 }
 
 function drawRays(l) {
@@ -691,6 +697,284 @@ function drawSurface() {
 }
 let knockFx = 0;
 
+/* ================= front glass: algae film, snails, shrimps ================= */
+// The front glass slowly grows a soft green film (faster near the lamp, never at night);
+// nerite snails crawl over it and rasp clean trails, the scraper wipes it by hand.
+const CELL = 10;
+let gw = 0, gh = 0, algae = null, arate = null, atex = null, aCan = null, aCtx = null, aImg = null, aDirty = true, aRebuild = 0;
+let snails = [], shrimps = [], wipeMode = false, scraper = null, wipedCells = 0;
+const GROW = 1 / (2.5 * 14 * 3600);              // clean → full film in ~2.5 days of lamp-on time
+
+function buildGlass() {
+  const ow = gw, oh = gh, old = algae;
+  gw = Math.ceil(W / CELL) + 1; gh = Math.ceil(H / CELL) + 1;
+  algae = new Float32Array(gw * gh); arate = new Float32Array(gw * gh); atex = new Float32Array(gw * gh);
+  const R = mulberry(seed ^ 0x51a5), p = [R() * 6.3, R() * 6.3, R() * 6.3, R() * 6.3];
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const x = i * CELL / W, y = j * CELL / H, k = j * gw + i;
+    const n = 0.5 + 0.22 * Math.sin(x * 7.1 + p[0]) * Math.cos(y * 5.3 + p[1]) + 0.16 * Math.sin(x * 17 + y * 11 + p[2]) + 0.12 * Math.sin(x * 31 - y * 23 + p[3]);
+    const edge = Math.max(0, 1 - Math.min(x, 1 - x, y * 1.3, 1 - y) * 9) * 0.35;
+    arate[k] = clamp(n * (1.25 - 0.6 * y) + edge, 0.08, 1.4);
+    atex[k] = R();
+  }
+  if (old && ow) { // resample what was there
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) algae[j * gw + i] = old[Math.min(oh - 1, j * oh / gh | 0) * ow + Math.min(ow - 1, i * ow / gw | 0)];
+  }
+  aCan = document.createElement("canvas"); aCan.width = gw; aCan.height = gh; aCtx = aCan.getContext("2d"); aImg = aCtx.createImageData(gw, gh);
+  aDirty = true;
+}
+function loadGlass() {
+  const s = store.get("glass", null), q = Q.get("algae");
+  if (q != null) { for (let k = 0; k < algae.length; k++) algae[k] = clamp(+q * arate[k], 0, 1); return; }
+  if (!s || !s.d) { for (let k = 0; k < algae.length; k++) algae[k] = clamp(0.4 * arate[k], 0, 1); return; } // the snails arrive to a tank that needs them
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const c = s.d.charCodeAt(Math.min(s.h - 1, j * s.h / gh | 0) * s.w + Math.min(s.w - 1, i * s.w / gw | 0)) - 48;
+    algae[j * gw + i] = clamp(c / 63, 0, 1);
+  }
+  // while the app was closed the film kept growing (by day), the snails kept grazing half of it
+  const away = clamp((Date.now() - (s.t || Date.now())) / 1000, 0, 30 * 86400);
+  const g = away * (14 / 24) * GROW * 0.5;
+  for (let k = 0; k < algae.length; k++) algae[k] = Math.min(1, algae[k] + g * arate[k]);
+}
+function saveGlass() {
+  if (!algae) return;
+  let s = ""; for (let k = 0; k < algae.length; k++) s += String.fromCharCode(48 + Math.round(algae[k] * 63));
+  store.set("glass", { w: gw, h: gh, t: Date.now(), d: s });
+}
+function cleanAt(x, y, r, keep) {
+  const i0 = Math.max(0, (x - r) / CELL | 0), i1 = Math.min(gw - 1, (x + r) / CELL | 0);
+  const j0 = Math.max(0, (y - r) / CELL | 0), j1 = Math.min(gh - 1, (y + r) / CELL | 0);
+  let got = 0;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const dx = i * CELL - x, dy = j * CELL - y; if (dx * dx + dy * dy > r * r) continue;
+    const k = j * gw + i, a = algae[k]; if (a < 0.003) continue;
+    const b = a * keep; algae[k] = b; got += a - b;
+  }
+  if (got) aDirty = true;
+  return got;
+}
+function glassDirt() { let s = 0; for (let k = 0; k < algae.length; k++) s += algae[k]; return s / algae.length; }
+function updateGlass(dt) {
+  if (light > 0.3) { const g = GROW * dt * light; for (let k = 0; k < algae.length; k++) if (algae[k] < 1) algae[k] = Math.min(1, algae[k] + g * arate[k]); aDirty = true; }
+  aRebuild -= dt;
+  if (aDirty && aRebuild <= 0) {
+    aRebuild = 0.2; aDirty = false;
+    const d = aImg.data;
+    for (let k = 0, o = 0; k < algae.length; k++, o += 4) {
+      const a = algae[k], t = atex[k];
+      d[o] = 62 + t * 34; d[o + 1] = 104 + t * 30; d[o + 2] = 38 + t * 14;
+      d[o + 3] = 255 * 0.62 * Math.pow(a, 0.85) * (0.7 + 0.3 * t);
+    }
+    aCtx.putImageData(aImg, 0, 0);
+  }
+}
+
+/* --- nerite snails on the inside of the front glass: we see the foot, the rim of the shell and the feelers --- */
+const SNAILS = [
+  { name: "Павлик", kind: "zebra", about: "смугастий неритин" },
+  { name: "Зося", kind: "olive", about: "оливкова неритина" },
+  { name: "Тигрик", kind: "tiger", about: "тигровий неритин" }
+];
+function makeSnails() {
+  const R = mulberry(seed ^ 0x2b), n = Q.get("snails") != null ? +Q.get("snails") : 3;
+  snails = [];
+  for (let i = 0; i < n && i < SNAILS.length; i++) {
+    const S = SNAILS[i], sv = store.get("snail." + i, null);
+    snails.push({ ...S, x: sv ? sv.x * W : W * (0.2 + 0.3 * i + R() * 0.1), y: sv ? sv.y * H : H * (0.25 + R() * 0.45), a: sv ? sv.a : R() * 6.28, va: 0, size: (38 + R() * 8) * K, ph: R() * 6, rest: 0, think: 0, want: R() * 6.28, ate: sv ? sv.ate || 0 : 0, scared: 0 });
+  }
+}
+function saveSnails() { snails.forEach((s, i) => store.set("snail." + i, { x: +(s.x / W).toFixed(3), y: +(s.y / H).toFixed(3), a: +s.a.toFixed(2), ate: Math.round(s.ate) })); }
+function dirtAt(x, y) { const i = clamp(x / CELL | 0, 0, gw - 1), j = clamp(y / CELL | 0, 0, gh - 1); return algae[j * gw + i]; }
+function updateSnails(dt) {
+  const top = surfY + 18 * K, bot = H - 26 * K;
+  for (const s of snails) {
+    const slow = light < 0.4 ? 0.55 : 1;
+    s.ph += dt * slow;
+    if (s.scared > 0) { s.scared -= dt; continue; }             // clamped tight to the glass
+    if (s.rest > 0) { s.rest -= dt; s.ate += cleanAt(s.x + Math.cos(s.a) * s.size * 0.35, s.y + Math.sin(s.a) * s.size * 0.35, s.size * 0.32, Math.pow(0.6, dt)) * 0.02; continue; }
+    s.think -= dt;
+    if (s.think <= 0) {  // look around: crawl towards the greenest patch nearby
+      s.think = 2 + Math.random() * 3;
+      let best = -1;
+      for (let k = 0; k < 9; k++) {
+        const a = s.a + (k - 4) * 0.45, d = 70 * K;
+        const x = s.x + Math.cos(a) * d, y = s.y + Math.sin(a) * d;
+        if (x < 20 || x > W - 20 || y < top || y > bot) continue;
+        const v = dirtAt(x, y) + Math.random() * 0.12 - Math.abs(k - 4) * 0.02;
+        if (v > best) { best = v; s.want = a; }
+      }
+      if (best < 0) s.want = Math.atan2(H / 2 - s.y, W / 2 - s.x);
+      if (Math.random() < 0.15) s.rest = 2 + Math.random() * 5;
+    }
+    let da = ((s.want - s.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    s.va += (clamp(da, -0.5, 0.5) - s.va) * Math.min(1, dt * 1.5);
+    s.a += s.va * dt;
+    const sp = 7 * K * slow * (0.8 + 0.2 * Math.sin(s.ph * 2.2));
+    s.x += Math.cos(s.a) * sp * dt; s.y += Math.sin(s.a) * sp * dt;
+    if (s.x < 18 || s.x > W - 18 || s.y < top || s.y > bot) { s.x = clamp(s.x, 18, W - 18); s.y = clamp(s.y, top, bot); s.want = Math.atan2(H / 2 - s.y, W / 2 - s.x); s.think = 3; }
+    s.ate += cleanAt(s.x + Math.cos(s.a) * s.size * 0.3, s.y + Math.sin(s.a) * s.size * 0.3, s.size * 0.34, Math.pow(0.25, dt)) * 0.02;
+  }
+}
+const SHELL = {
+  zebra: { a: "#e0bf4a", b: "#7a5a14", line: "rgba(25,18,8,.85)", w: 0.075, n: 7 },
+  olive: { a: "#8a8a3c", b: "#3b3a16", line: "rgba(20,24,8,.55)", w: 0.03, n: 12 },
+  tiger: { a: "#e08a2c", b: "#7a3a10", line: "rgba(40,16,6,.8)", w: 0.05, n: 9 }
+};
+function drawSnail(s) {
+  const S = s.size, C = SHELL[s.kind], wob = Math.sin(s.ph * 1.3) * 0.04;
+  ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a);
+  // soft shadow of the shell on the glass
+  ctx.fillStyle = "rgba(0,15,20,.25)"; ctx.beginPath(); ctx.ellipse(-S * 0.04, S * 0.05, S * 0.6, S * 0.52, 0, 0, 7); ctx.fill();
+  // shell rim behind the foot
+  ctx.save(); ctx.rotate(wob);
+  const sg = ctx.createRadialGradient(-S * 0.2, -S * 0.15, S * 0.05, -S * 0.08, 0, S * 0.6);
+  sg.addColorStop(0, C.a); sg.addColorStop(1, C.b);
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.ellipse(-S * 0.08, 0, S * 0.56, S * 0.48, 0, 0, 7); ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = C.line; ctx.lineWidth = S * C.w;
+  if (s.kind === "tiger") {
+    for (let i = 0; i < C.n; i++) { const r = S * (0.25 + i * 0.08); ctx.beginPath(); for (let k = 0; k <= 14; k++) { const a = -1.3 + k / 14 * 2.6, rr = r + (k % 2 ? S * 0.05 : -S * 0.03); const x = -S * 0.75 + Math.cos(a) * rr, y = Math.sin(a) * rr; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); }
+  } else {
+    for (let i = 0; i < C.n; i++) { ctx.beginPath(); ctx.arc(-S * 0.75, 0, S * (0.22 + i * (0.9 / C.n)), -1.3, 1.3); ctx.stroke(); }
+  }
+  ctx.fillStyle = "rgba(255,250,220,.22)"; ctx.beginPath(); ctx.ellipse(-S * 0.25, -S * 0.28, S * 0.22, S * 0.08, -0.3, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = "rgba(20,14,6,.45)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(-S * 0.08, 0, S * 0.56, S * 0.48, 0, 0, 7); ctx.stroke();
+  ctx.restore();
+  // feelers
+  const fe = s.scared > 0 ? 0.25 : 1, tw = Math.sin(s.ph * 1.7) * 0.12;
+  ctx.strokeStyle = "rgba(205,190,160,.95)"; ctx.lineWidth = Math.max(1.4, S * 0.07); ctx.lineCap = "round";
+  for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(S * 0.36, sd * S * 0.1); ctx.quadraticCurveTo(S * (0.36 + 0.2 * fe), sd * S * (0.16 + 0.05 * fe), S * (0.36 + 0.38 * fe), sd * S * (0.24 + tw * sd) * fe + sd * S * 0.1); ctx.stroke(); }
+  ctx.lineCap = "butt";
+  // muscular foot pressed against the glass, with pedal waves rolling backwards
+  const fl = s.scared > 0 ? 0.8 : 1;
+  const fg = ctx.createRadialGradient(S * 0.05, 0, S * 0.05, 0, 0, S * 0.45);
+  fg.addColorStop(0, "rgba(236,228,206,.95)"); fg.addColorStop(1, "rgba(196,182,152,.92)");
+  ctx.fillStyle = fg; ctx.beginPath(); ctx.ellipse(S * 0.02, 0, S * 0.44 * fl, S * 0.29 * fl, 0, 0, 7); ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = "rgba(140,120,90,.3)"; ctx.lineWidth = S * 0.045;
+  const moving = s.rest <= 0 && s.scared <= 0;
+  for (let i = 0; i < 6; i++) { const x = S * 0.44 - ((i / 6 + (moving ? s.ph * 0.35 : 0)) % 1) * S * 0.9; ctx.beginPath(); ctx.moveTo(x + S * 0.04, -S * 0.3); ctx.quadraticCurveTo(x - S * 0.04, 0, x + S * 0.04, S * 0.3); ctx.stroke(); }
+  ctx.restore();
+  // head and the little rasping mouth
+  ctx.fillStyle = "rgba(214,200,170,.97)"; ctx.beginPath(); ctx.ellipse(S * 0.36, 0, S * 0.12, S * 0.15, 0, 0, 7); ctx.fill();
+  const m = (s.rest > 0 || moving) ? 0.5 + 0.5 * Math.sin(s.ph * 9) : 0.2;
+  ctx.fillStyle = "rgba(90,60,40,.75)"; ctx.beginPath(); ctx.ellipse(S * 0.4, 0, S * 0.03 + S * 0.03 * m, S * 0.05, 0, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+/* --- cherry shrimps picking at the sand --- */
+const SHRIMPC = ["#d8282b", "#c71f2a", "#e2452d", "#d8282b", "#e6b422", "#b81e3a", "#d63a2a", "#cf2430"];
+function makeShrimps() {
+  const n = Q.get("shrimp") != null ? +Q.get("shrimp") : 6;
+  shrimps = [];
+  for (let i = 0; i < n; i++) {
+    const x = W * (0.08 + Math.random() * 0.75);
+    shrimps.push({ x, h: 0, vh: 0, vx: 0, face: Math.random() < 0.5 ? -1 : 1, st: "pick", t: Math.random() * 3, tx: x, ph: Math.random() * 6, size: (22 + Math.random() * 6) * K, c: SHRIMPC[i % SHRIMPC.length], ate: 0 });
+  }
+}
+function updateShrimps(dt) {
+  for (const s of shrimps) {
+    s.ph += dt;
+    if (s.st === "dart") {
+      s.x += s.vx * dt; s.vx *= Math.pow(0.08, dt);
+      s.h += s.vh * dt; s.vh -= 70 * K * dt; if (s.vh < -22 * K) s.vh = -22 * K;   // sink slowly back down
+      s.x = clamp(s.x, W * 0.03, W * 0.87);
+      if (s.h <= 0 && s.vh < 0) { s.h = 0; s.st = "pick"; s.t = 1 + Math.random() * 2; }
+      continue;
+    }
+    // landed food nearby?
+    let tgt = null, bd = 220 * K;
+    for (const f of food) if (f.landed) { const d = Math.abs(f.x - s.x); if (d < bd) { bd = d; tgt = f; } }
+    if (tgt) { s.tx = tgt.x; if (s.st === "pick" && bd > s.size * 0.5) s.st = "walk"; }
+    if (s.st === "walk") {
+      const d = s.tx - s.x;
+      if (Math.abs(d) > 2) s.face = Math.sign(d);
+      const sp = (tgt ? 22 : 11) * K;
+      s.x += clamp(d, -sp * dt, sp * dt);
+      if (Math.abs(d) < s.size * 0.45) { s.st = "pick"; s.t = 2 + Math.random() * 4; }
+    } else {
+      s.t -= dt;
+      if (tgt && Math.abs(tgt.x - (s.x + s.face * s.size * 0.4)) < s.size * 0.6 && Math.random() < dt * 1.5) {
+        food.splice(food.indexOf(tgt), 1); s.ate++;
+        for (let i = 0; i < 3; i++) parts.push({ x: tgt.x, y: tgt.y, vx: (Math.random() - 0.5) * 20 * K, vy: -Math.random() * 15 * K, life: 0.5, max: 0.5, r: 1 * K, c: tgt.c });
+      }
+      if (s.t <= 0 && !tgt) { s.st = "walk"; s.tx = clamp(s.x + (Math.random() - 0.5) * W * 0.25, W * 0.04, W * 0.86); }
+    }
+    // a big fish swimming right past makes it flick backwards
+    for (const f of fish) if (f.size > 45 * K && Math.abs(f.x - s.x) < f.size * 0.6 && Math.abs(f.y - (sandY(s.x) - s.size * 0.3)) < f.size * 0.5 && Math.random() < dt * 0.8) { dart(s); break; }
+  }
+}
+function dart(s) { s.st = "dart"; s.vx = -s.face * (110 + Math.random() * 60) * K; s.vh = (50 + Math.random() * 40) * K; }
+function drawShrimp(s) {
+  const L = s.size, y0 = sandY(s.x) + 1, walk = s.st === "walk", pick = s.st === "pick", flick = s.st === "dart" ? Math.sin(s.ph * 30) * 0.25 : 0;
+  ctx.save(); ctx.translate(s.x, y0 - s.h); ctx.scale(s.face, 1);
+  if (s.h < 2) { ctx.fillStyle = "rgba(20,30,25,.22)"; ctx.beginPath(); ctx.ellipse(0, 0, L * 0.5, L * 0.08, 0, 0, 7); ctx.fill(); }
+  const by = -L * 0.34;
+  // walking legs
+  ctx.strokeStyle = "rgba(200,60,50,.7)"; ctx.lineWidth = Math.max(0.8, L * 0.035);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const lx = L * (0.3 - i * 0.07), st = walk ? Math.sin(s.ph * 14 + i * 1.3) * L * 0.05 : 0, foot = s.h > 2 ? by + L * 0.3 : 0;
+    ctx.moveTo(lx, by + L * 0.08); ctx.lineTo(lx + L * 0.06 + st, by + L * 0.2); ctx.lineTo(lx + L * 0.02 + st * 1.4, foot);
+  }
+  ctx.stroke();
+  // picking arms (chelipeds) flicking to the mouth
+  const pk = pick ? Math.max(0, Math.sin(s.ph * 7)) : 0.3;
+  ctx.beginPath(); ctx.moveTo(L * 0.34, by + L * 0.08); ctx.lineTo(L * 0.44, by + L * 0.2 - pk * L * 0.1); ctx.lineTo(L * 0.5 - pk * L * 0.1, by + L * 0.32 - pk * L * 0.22); ctx.stroke();
+  // abdomen: segments curling down to the tail fan
+  ctx.globalAlpha = 0.93;
+  const seg = [];
+  for (let i = 0; i <= 5; i++) { const t = i / 5; seg.push([L * (0.02 - t * 0.48), by + L * (0.0 + t * t * (0.2 + flick)), L * (0.15 - t * 0.075)]); }
+  ctx.fillStyle = s.c;
+  for (const [x, y, r] of seg) { ctx.beginPath(); ctx.ellipse(x, y, r * 1.05, r, 0, 0, 7); ctx.fill(); }
+  // tail fan
+  const [tx, ty] = seg[5];
+  ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - L * 0.14, ty + L * 0.02); ctx.lineTo(tx - L * 0.1, ty + L * 0.13); ctx.closePath(); ctx.fill();
+  // pleopods paddling
+  ctx.strokeStyle = "rgba(230,90,70,.6)"; ctx.lineWidth = 0.8; ctx.beginPath();
+  for (let i = 1; i < 5; i++) { const [x, y, r] = seg[i], w = Math.sin(s.ph * 12 + i) * L * 0.03; ctx.moveTo(x, y + r * 0.8); ctx.lineTo(x + w, y + r + L * 0.07); } ctx.stroke();
+  // carapace + rostrum
+  ctx.fillStyle = s.c; ctx.beginPath(); ctx.ellipse(L * 0.2, by - L * 0.01, L * 0.23, L * 0.14, -0.05, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(L * 0.38, by - L * 0.08); ctx.lineTo(L * 0.56, by - L * 0.11); ctx.lineTo(L * 0.4, by - L * 0.02); ctx.fill();
+  // translucent highlight along the back, dorsal stripe
+  ctx.strokeStyle = "rgba(255,190,170,.45)"; ctx.lineWidth = Math.max(1, L * 0.035);
+  ctx.beginPath(); ctx.moveTo(L * 0.36, by - L * 0.1); ctx.quadraticCurveTo(L * 0.05, by - L * 0.2, -L * 0.36, by + L * 0.06); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // eye
+  ctx.fillStyle = "#120808"; ctx.beginPath(); ctx.arc(L * 0.37, by - L * 0.05, Math.max(1.2, L * 0.045), 0, 7); ctx.fill();
+  // antennae
+  const aw = Math.sin(s.ph * 2.3) * L * 0.08;
+  ctx.strokeStyle = "rgba(220,90,80,.65)"; ctx.lineWidth = 0.8; ctx.beginPath();
+  ctx.moveTo(L * 0.42, by - L * 0.06); ctx.quadraticCurveTo(L * 0.75, by - L * 0.45, L * 1.15 + aw, by - L * 0.5 + aw);
+  ctx.moveTo(L * 0.42, by - L * 0.04); ctx.quadraticCurveTo(L * 0.8, by - L * 0.1, L * 1.05 - aw, by + L * 0.06);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawScraper() {
+  if (!scraper) return;
+  const r = 30 * K;
+  ctx.save(); ctx.translate(scraper.x, scraper.y);
+  ctx.fillStyle = "rgba(20,30,34,.55)"; ctx.strokeStyle = "rgba(240,255,250,.75)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-r, -r * 0.55, r * 2, r * 1.1, r * 0.3) : ctx.rect(-r, -r * 0.55, r * 2, r * 1.1); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "rgba(255,179,71,.9)"; ctx.fillRect(-r * 0.8, -r * 0.12, r * 1.6, r * 0.24);
+  ctx.restore();
+}
+function wipeLine(x0, y0, x1, y1) {
+  const n = Math.max(1, Math.hypot(x1 - x0, y1 - y0) / 6 | 0);
+  let got = 0;
+  for (let k = 1; k <= n; k++) got += cleanAt(lerp(x0, x1, k / n), lerp(y0, y1, k / n), 30 * K, 0.2);
+  wipedCells += got;
+  if (got > 0.05 && parts.length < 160) for (let i = 0; i < Math.min(4, got * 2); i++)
+    parts.push({ x: x1 + (Math.random() - 0.5) * 50 * K, y: y1 + (Math.random() - 0.5) * 20 * K, vx: (Math.random() - 0.5) * 10 * K, vy: (10 + Math.random() * 25) * K, life: 1.6, max: 1.6, r: (1 + Math.random() * 1.5) * K, c: "rgba(90,130,50,.7)" });
+}
+function critterAt(x, y) {
+  for (const s of snails) if (Math.hypot(s.x - x, s.y - y) < s.size * 0.65) return { snail: s };
+  for (const s of shrimps) if (Math.hypot(s.x - x, sandY(s.x) - s.h - s.size * 0.3 - y) < Math.max(s.size * 0.7, 20)) return { shrimp: s };
+  return null;
+}
+
 /* ================= sound (optional, synthesized) ================= */
 let ac = null, soundOn = store.get("sound", false), hum = null;
 function audioInit() {
@@ -729,19 +1013,22 @@ cv.addEventListener("pointerdown", e => {
   wake(); closePop();
   if (soundOn && ac && ac.state !== "running") ac.resume();
   downAt = { x: e.clientX, y: e.clientY, t: now(), id: e.pointerId, moved: false };
-  finger = { x: e.clientX, y: e.clientY, held: false };
+  if (wipeMode) { finger = null; scraper = { x: e.clientX, y: e.clientY }; wipeLine(e.clientX, e.clientY, e.clientX, e.clientY); }
+  else finger = { x: e.clientX, y: e.clientY, held: false };
   cv.setPointerCapture(e.pointerId);
 });
 cv.addEventListener("pointermove", e => {
   if (!downAt || e.pointerId !== downAt.id) return;
-  finger.x = e.clientX; finger.y = e.clientY;
+  if (scraper) { wipeLine(scraper.x, scraper.y, e.clientX, e.clientY); scraper.x = e.clientX; scraper.y = e.clientY; }
+  if (finger) { finger.x = e.clientX; finger.y = e.clientY; }
   if (Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 14) downAt.moved = true;
-  if (downAt.moved || now() - downAt.t > 0.35) finger.held = true;
+  if (finger && (downAt.moved || now() - downAt.t > 0.35)) finger.held = true;
 });
 const up = e => {
   if (!downAt || e.pointerId !== downAt.id) return;
   if (!downAt.moved && now() - downAt.t < 0.45) tap(downAt.x, downAt.y);
   downAt = null; finger = null;
+  if (scraper) { scraper = null; if (wipedCells > 3) { const c = Math.round(100 - glassDirt() * 100); toast(c >= 97 ? "Скло блищить!" : `Скло чисте на ${c}%`); } wipedCells = 0; }
 };
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 
@@ -751,6 +1038,10 @@ function fishAt(x, y) {
   return best;
 }
 function tap(x, y) {
+  const c = critterAt(x, y);
+  if (c && c.snail) { const s = c.snail; toast(`Равлик ${s.name} · ${s.about} · ${s.ate >= 1 ? `начистив ${Math.round(s.ate)} ${plural(Math.round(s.ate), "клаптик", "клаптики", "клаптиків")} скла` : "тільки взявся до роботи"}`); return; }
+  if (c && c.shrimp) { const s = c.shrimp; dart(s); toast(`${s.c === "#e6b422" ? "Жовта" : "Вишнева"} креветка · ${s.ate ? `знайшла ${s.ate} ${plural(s.ate, "крихту", "крихти", "крихт")}` : "шукає крихти в піску"}`); return; }
+  if (wipeMode) return;
   const f = fishAt(x, y);
   if (f) {
     f.rest = 0; f.vx += (f.x - x) * 2; f.vy += (f.y - y) * 2;
@@ -765,6 +1056,8 @@ function plural(n, a, b, c) { const m = n % 10, h = n % 100; return m === 1 && h
 function knock() {
   fear = { x: W * (0.3 + Math.random() * 0.4), y: H * (0.35 + Math.random() * 0.3) };
   for (const f of fish) { f.scared = 0.9 + Math.random() * 0.8; f.rest = 0; }
+  for (const s of snails) s.scared = 2 + Math.random() * 2;
+  for (const s of shrimps) if (s.st !== "dart") { s.face = Math.random() < 0.5 ? -1 : 1; dart(s); }
   knockFx = 1; sfx("knock");
 }
 
@@ -812,6 +1105,11 @@ function removeFish(sp) {
 }
 
 $("bFish").addEventListener("click", () => { if ($("pop").hidden) openFishPop(); else closePop(); });
+$("bWipe").addEventListener("click", () => {
+  closePop(); wipeMode = !wipeMode; $("bWipe").classList.toggle("on", wipeMode);
+  const c = Math.round(100 - glassDirt() * 100);
+  toast(wipeMode ? `Скребок у руці · скло чисте на ${c}% · веди пальцем по зелені` : `Скребок відкладено · скло чисте на ${c}%`);
+});
 $("bKnock").addEventListener("click", () => { closePop(); knock(); });
 $("bLamp").addEventListener("click", () => {
   closePop();
@@ -835,13 +1133,14 @@ function renderDiary() {
 
 /* ================= lifecycle ================= */
 let running = true;
-window.pauseAll = () => { running = false; if (ac && ac.state === "running") ac.suspend(); saveFish(); };
+window.pauseAll = () => { running = false; if (ac && ac.state === "running") ac.suspend(); saveFish(); saveGlass(); saveSnails(); };
 window.resumeAll = () => { running = true; last = now(); if (ac && soundOn) ac.resume(); };
 document.addEventListener("visibilitychange", () => { if (document.hidden) window.pauseAll(); else window.resumeAll(); });
 let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 200); });
 
 resize();
 light = lampTarget();
+loadGlass(); makeSnails(); makeShrimps();
 const saved = store.get("fish", null);
 const nFish = Q.get("n");
 if (saved && saved.length && !nFish) for (const r of saved) { if (SPECIES[r.sp]) fish.push(newFish(r.sp, r)); }
@@ -859,13 +1158,15 @@ function loop() {
   const dt = Math.min(0.06, acc); acc = 0;
   T += dt;
   if (knockFx > 0) knockFx = Math.max(0, knockFx - dt * 1.2);
-  updateFish(dt); updateFood(dt); updateBubbles(dt);
+  updateFish(dt); updateFood(dt); updateBubbles(dt); updateShrimps(dt); updateSnails(dt); updateGlass(dt);
   render(dt);
+  if (Math.floor(T) % 60 === 0 && Math.floor(T - dt) % 60 !== 0) { saveGlass(); saveSnails(); }
   if (Math.floor(T) % 30 === 0 && Math.floor(T - dt) % 30 !== 0) showLamp();
 }
 // warm up: let the fish settle into their places before the first frame
-for (let k = 0; k < 60; k++) { T += 0.05; updateFish(0.05); updateBubbles(0.05); }
+for (let k = 0; k < 60; k++) { T += 0.05; updateFish(0.05); updateBubbles(0.05); updateShrimps(0.05); }
+updateGlass(0.05);
 render(0.05);
 requestAnimationFrame(loop);
 
-window.__akv = { get fish() { return fish; }, get food() { return food; }, get light() { return light; }, feed, knock, tap, addFish, step(n) { for (let k = 0; k < n; k++) { T += 0.033; updateFish(0.033); updateFood(0.033); updateBubbles(0.033); } render(0.033); } };
+window.__akv = { get snails() { return snails; }, get shrimps() { return shrimps; }, dirt: glassDirt, wipeLine, setWipe(v) { wipeMode = v; }, get fish() { return fish; }, get food() { return food; }, get light() { return light; }, feed, knock, tap, addFish, step(n) { for (let k = 0; k < n; k++) { T += 0.033; updateFish(0.033); updateFood(0.033); updateBubbles(0.033); updateShrimps(0.033); updateSnails(0.033); updateGlass(0.033); } render(0.033); } };
