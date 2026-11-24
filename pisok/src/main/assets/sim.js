@@ -5,8 +5,8 @@
 const E=0, SAND=1, WATER=2, STONE=3, FIRE=4, PLANT=5, LAVA=6, STEAM=7, SNOW=8, SMOKE=9, METAL=10, GLASS=11, OIL=12, ACID=13,
       POWDER=14, ICE=15, SALT=16, SALTWATER=17, ASH=18, SEED=19, WOOD=20, COAL=21, GAS=22, NITRO=23, CEMENT=24, CLONE=25,
       VOID=26, SPARK=27, ANT=28, FISH=29, FLOWER=30, HEATER=31, COOLER=32, CLOUD=33, BATTERY=34, LAMP=35, MERCURY=36,
-      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42, FIREFLY=43, MUSH=44, SPORE=45, MOTH=46;
-const N=47;
+      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42, FIREFLY=43, MUSH=44, SPORE=45, MOTH=46, BAT=47;
+const N=48;
 // kind: p powder, l liquid, g gas, w wall (static, pressure-tight), s static (porous)
 const MAT=[];
 function def(id,name,kind,col,v,dens,cond,extra={}){ MAT[id]=Object.assign({id,name,kind,col,v,dens,cond,fill:.5,t0:null,ign:null},extra); }
@@ -57,6 +57,7 @@ def(THERMITE,"Терміт","p",[150,72,60],20,2.6,.15,{fill:.4,ign:600});
 def(MUSH,"Світний гриб","s",[226,218,198],10,9,.1,{fill:1,ign:220});
 def(SPORE,"Світні гриби","p",[150,230,200],10,.6,.1,{fill:.05,ign:150});
 def(MOTH,"Метелик","p",[214,198,166],12,.4,.1,{fill:.025});
+def(BAT,"Кажан","p",[58,48,56],8,.5,.1,{fill:.015});
 
 const tbl=(f)=>{ const a=new Array(N); for(let i=0;i<N;i++) a[i]=f(MAT[i]); return a; };
 const DENS=tbl(m=>m.dens), COND=tbl(m=>m.cond), KIND=tbl(m=>m.kind), IGN=tbl(m=>m.ign);
@@ -67,7 +68,7 @@ const WALL=tbl(m=>m.kind==="w");
 const GASK=tbl(m=>m.kind==="g"&&m.id!==E);
 const MOVES=tbl(m=>(m.kind==="p"||m.kind==="l"||m.kind==="g")&&m.id!==E ? (m.id===LAVA||m.id===CEMENT?.3:1) : 0);
 const CONDUCT=tbl(m=>m.id===METAL||m.id===WATER||m.id===SALTWATER||m.id===MERCURY||m.id===LAMP||m.id===MOLTEN);
-const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[FIREFLY]:.4,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05,[MUSH]:.2,[SPORE]:.3,[MOTH]:.4})[m.id]||0);
+const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[FIREFLY]:.4,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05,[MUSH]:.2,[SPORE]:.3,[MOTH]:.4,[BAT]:.3})[m.id]||0);
 const FLOWERS=[[232,72,96],[250,206,60],[246,150,200],[245,245,245],[160,110,230],[255,140,60]];
 
 /* ================= world state ================= */
@@ -104,7 +105,7 @@ function rnb(x,y){ const [dx,dy]=NB4[rnd()*4|0]; const nx=x+dx, ny=y+dy; return 
 function count8(x,y,t){ let c=0; for(const [dx,dy] of NB8) if (at(x+dx,y+dy)===t) c++; return c; }
 
 /* ================= events for sound & haptics (ui.js listens) ================= */
-const EV={boom:0,crack:0,glass:0,sizzle:0,fire:0,zap:0};
+const EV={boom:0,crack:0,glass:0,sizzle:0,fire:0,zap:0,chirp:0};
 
 /* ================= heat ================= */
 function heat(){
@@ -210,7 +211,7 @@ function cell(x,y){
         if (t===NITRO){ conv(i,FIRE); L[i]=40; explode(x,y,1.5); return; }
         if (t===GAS){ conv(i,FIRE); L[i]=20; explode(x,y,.25); return; }
         if (t===SEED){ conv(i,ASH); return; }
-        if (t===BIRD||t===FIREFLY){ conv(i,ASH); return; }
+        if (t===BIRD||t===FIREFLY||t===BAT){ conv(i,ASH); return; }
         conv(i,FIRE); if (t===OIL) L[i]=110+rnd()*80; return;
       }
       switch(t){
@@ -257,6 +258,7 @@ function cell(x,y){
         case MUSH: mush(i,x,y); break;
         case SPORE: spore(i,x,y); break;
         case MOTH: moth(i,x,y); break;
+        case BAT: bat(i,x,y); break;
       }
       if (pActive && MOVES[T[i]] && !M[i]) push(i,x,y,T[i]);
 }
@@ -359,12 +361,12 @@ function spark(i,x,y){
 }
 function zapTouch(j,u){ // what electricity does to its neighbour
   if (u===GAS||u===POWDER||u===NITRO||u===OIL||u===PLANT||u===WOOD||u===COAL||u===FLOWER||u===SEED) H[j]+=400;
-  else if (u===FISH||u===ANT||u===FIREFLY||u===BIRD||u===MOTH) conv(j,ASH);
+  else if (u===FISH||u===ANT||u===FIREFLY||u===BIRD||u===MOTH||u===BAT) conv(j,ASH);
   else if (u===MUSH||u===SPORE) H[j]+=200;
 }
 const HEAD=30;
 function electric(i,x,y){ // conductors carry pulses: head (30) → a long rest (29…1) so a wave never feeds on itself → ready (0)
-  if (L[i]===HEAD){ each4(x,y,(j)=>{ const u=T[j]; if (CONDUCT[u] && L[j]===0){ L[j]=HEAD; M[j]=1; } else if (u!==T[i] && u!==MOTH) zapTouch(j,u); }); H[i]+=T[i]===METAL?6:2; EV.zap++; }
+  if (L[i]===HEAD){ each4(x,y,(j)=>{ const u=T[j]; if (CONDUCT[u] && L[j]===0){ L[j]=HEAD; M[j]=1; } else if (u!==T[i] && u!==MOTH && u!==BAT) zapTouch(j,u); }); H[i]+=T[i]===METAL?6:2; EV.zap++; }
   L[i]--;
 }
 function conductor(i,x,y){ if (L[i]) electric(i,x,y); }
@@ -495,7 +497,7 @@ const mRole=i=>(L[i]>>4)&3, mLight=i=>L[i]>>6;
 function setMush(i,role,bud,light){ T[i]=MUSH; L[i]=(Math.min(MLIGHT,light|0)<<6)|(role<<4)|bud; M[i]=1; }
 const MUSHBED=tbl(m=>({[WOOD]:1,[ASH]:.8,[WETSAND]:.7,[CLAY]:.6,[COAL]:.6,[PLANT]:.4,[STONE]:.15,[BRICK]:.15,[MUSH]:0})[m.id]||0);
 // the beacon map: how bright each 6×6 block is, refreshed every 8 frames; moths read it to find light
-const BS=6; let BW=0, BH=0, BEAC=null, mushCount=0, mothCount=0;
+const BS=6; let BW=0, BH=0, BEAC=null, MOTHB=null, BATB=null, ROOSTB=null, mushCount=0, mothCount=0, batCount=0;
 function lightOf(i,t){
   switch(t){
     case LAMP: return L[i]?8:0;
@@ -510,13 +512,13 @@ function lightOf(i,t){
 }
 function beacons(){
   BW=Math.ceil(GW/BS); BH=Math.ceil(GH/BS);
-  if (!BEAC || BEAC.length!==BW*BH) BEAC=new Float32Array(BW*BH); else BEAC.fill(0);
-  let mc=0, oc=0;
+  if (!BEAC || BEAC.length!==BW*BH){ BEAC=new Float32Array(BW*BH); MOTHB=new Uint16Array(BW*BH); BATB=new Uint8Array(BW*BH); ROOSTB=new Uint8Array(BW*BH); } else { BEAC.fill(0); MOTHB.fill(0); BATB.fill(0); }
+  let mc=0, oc=0, bc=0;
   for(let y=0;y<GH;y++){ const row=y*GW, br=((y/BS)|0)*BW;
     for(let x=0;x<GW;x++){ const i=row+x, t=T[i]; if (t===E) continue;
-      if (t===MUSH) mc++; else if (t===MOTH){ oc++; continue; }
+      if (t===MUSH) mc++; else if (t===MOTH){ oc++; MOTHB[br+((x/BS)|0)]++; continue; } else if (t===BAT){ bc++; const k=br+((x/BS)|0); if (BATB[k]<255) BATB[k]++; if (!(S[i]&4) && !outside(x-GX,y-GY) && ROOF[T[i-GX-GW*GY]]) ROOSTB[k]=1; continue; }   // a sleeping bat marks its roost
       const w=lightOf(i,t); if (w) BEAC[br+((x/BS)|0)]+=w; } }
-  mushCount=mc; mothCount=oc;
+  mushCount=mc; mothCount=oc; batCount=bc;
 }
 function mushAt(x,y,h,half,hue,light){ // a whole mushroom standing on (x,y): a stem h cells tall and a domed cap
   const ux=-GX, uy=-GY; let cx=x, cy=y;
@@ -570,6 +572,8 @@ function moth(i,x,y){
     if (rnd()<.3){ const d=(rnd()*3|0)-1, nx=x+GX+PX*d, ny=y+GY+PY*d; if (!outside(nx,ny) && T[ny*GW+nx]===E) swap(i,ny*GW+nx); }
     return; }
   if (rnd()<.3) return;
+  if (BATB && BATB[((y/BS)|0)*BW+((x/BS)|0)] && rnd()<.6){                               // a bat close by: fold the wings and drop like a stone
+    const nx=x+GX, ny=y+GY; if (!outside(nx,ny) && T[ny*GW+nx]===E){ swap(i,ny*GW+nx); return; } }
   // look for the brightest light nearby (it counts for less the further away it is)
   let tx=-1, ty=-1, best=.12;
   if (BEAC){ const bx=(x/BS)|0, by=(y/BS)|0, R=9;
@@ -594,6 +598,60 @@ function moth(i,x,y){
   else if (u===FIRE && rnd()<.12){ conv(i,FIRE); L[i]=8; EV.fire++; }
   else S[i]^=1;
 }
+
+/* ================= bats ================= */
+// by day a bat hangs upside down from a ceiling (a cave roof, a branch, a ledge); at dusk it flies out fast and hunts moths
+// by "ear": it finds the nearest cloud of moths on the moth map. Moths that hear a bat close by drop down to escape.
+// Fireflies taste bad, so bats leave them alone. S bit 0 — which way it flies, bit 1 — heading up or down. L — how full it is.
+const ROOF=tbl(m=>m.kind==="w"||m.id===PLANT||m.id===MUSH||m.id===CLAY||m.id===WETSAND||m.id===FLOWER);
+function bat(i,x,y){
+  if (H[i]>70 || H[i]<-25){ conv(i,ASH); return; }
+  if (count8(x,y,WATER)+count8(x,y,SALTWATER)>4 && rnd()<.03){ conv(i,ASH); return; }
+  if (L[i]>0 && rnd()<.25) L[i]--;
+  const hung=ROOF[at(x-GX,y-GY)];
+  if (simSky===0){                                                                       // daytime: find a ceiling and sleep
+    S[i]&=~4;
+    if (hung){ if (rnd()<.001){ const sd=rnd()<.5?-1:1, nx=x+PX*sd, ny=y+PY*sd; if (!outside(nx,ny) && T[ny*GW+nx]===E && ROOF[at(nx-GX,ny-GY)]) swap(i,ny*GW+nx); } return; }
+    if (rnd()<.25) return;
+    if (ROOSTB){ const bx=(x/BS)|0, by=(y/BS)|0, R=30; let best=1e9, tx=-1, ty=-1;      // home to the nearest roost it knows
+      for(let yy=Math.max(0,by-R);yy<=Math.min(BH-1,by+R);yy++) for(let xx=Math.max(0,bx-R);xx<=Math.min(BW-1,bx+R);xx++){
+        if (!ROOSTB[yy*BW+xx]) continue; const d=(xx-bx)**2+(yy-by)**2; if (d<best){ best=d; tx=xx*BS+3; ty=yy*BS+3; } }
+      if (tx>=0 && best>0){ let mx=Math.sign(tx-x), my=Math.sign(ty-y); if (rnd()<.2) mx=(rnd()*3|0)-1; if (rnd()<.2) my=(rnd()*3|0)-1;
+        if (mx||my){ batMove(i,x,y,mx,my); return; } } }
+    let side=(S[i]&1)?1:-1; if (rnd()<.06){ side=-side; S[i]^=1; }
+    const r=rnd(), up=r<.65?1:r<.8?0:-1;
+    batMove(i,x,y,PX*side-GX*up,PY*side-GY*up); return; }
+  if (!(S[i]&4)){ if (hung && rnd()<.992) return; S[i]|=4; }                             // at dusk they wake and leave the roost one by one
+  if (rnd()<.12) return;
+  for(const [dx,dy] of NB8){ const nx=x+dx, ny=y+dy; if (outside(nx,ny)) continue; const j=ny*GW+nx;   // snap!
+    if (T[j]===MOTH && rnd()<(L[i]>150?.06:.4)){ T[j]=E; L[j]=0; M[j]=1; L[i]=Math.min(600,L[i]+160); EV.chirp++;
+      if (batCount<36 && rnd()<.05){ const k=rnb(x,y); if (k>=0 && T[k]===E){ put(k,BAT); M[k]=1; batCount++; } }
+      return; } }
+  // listen for moths: the nearest block that has some
+  let tx=-1, ty=-1;
+  if (MOTHB && L[i]<150){ const bx=(x/BS)|0, by=(y/BS)|0, R=8; let best=1e9;
+    for(let yy=Math.max(0,by-R);yy<=Math.min(BH-1,by+R);yy++) for(let xx=Math.max(0,bx-R);xx<=Math.min(BW-1,bx+R);xx++){
+      const n=MOTHB[yy*BW+xx]; if (!n) continue; const dx=xx-bx, dy=yy-by, d=dx*dx+dy*dy-n*.5; if (d<best){ best=d; tx=xx*BS+3; ty=yy*BS+3; } } }
+  let mx, my;
+  if (tx>=0){ const dx=tx-x, dy=ty-y; mx=Math.sign(dx); my=Math.sign(dy); if (rnd()<.25) mx=(rnd()*3|0)-1; if (rnd()<.25) my=(rnd()*3|0)-1;
+    S[i]=(S[i]&~1)|(mx>0?1:mx<0?0:S[i]&1); EV.chirp+=.02; }
+  else {                                                                                 // nothing heard: swoop about in long zigzags
+    let side=(S[i]&1)?1:-1; if (rnd()<.015){ side=-side; S[i]^=1; }
+    if (rnd()<.06) S[i]^=2; let vert=(S[i]&2)?1:-1;                                      // vert>0: towards the ground
+    let gap=99; for(let k=1;k<=14;k++){ const u=at(x+GX*k,y+GY*k); if (u!==E && !GASK[u]){ gap=k; break; } }
+    if (gap<5){ vert=-1; S[i]&=~2; } else if (gap>13 && rnd()<.5){ vert=1; S[i]|=2; }
+    if (rnd()<.35) vert=0;
+    mx=PX*side+GX*vert; my=PY*side+GY*vert; }
+  if (!mx && !my) return;
+  batMove(i,x,y,mx,my);
+}
+function batMove(i,x,y,mx,my){
+  const nx=x+mx, ny=y+my; if (outside(nx,ny)){ S[i]^=1; return; }
+  const j=ny*GW+nx, u=T[j];
+  if (u===E && H[j]<55) swap(i,j);
+  else if (u===E || GASK[u]){ S[i]^=1; }                                                  // hot air or smoke: turn away
+  else { S[i]^=1; const sx=x+mx, sy=y; if (mx && my && !outside(sx,sy) && T[sy*GW+sx]===E) swap(i,sy*GW+sx); }   // slide along walls
+}
 /* ================= lightning ================= */
 function lightning(cx,cy){ // a jagged bolt from the sky that homes in on the touched point and strikes the first solid thing
   let x=Math.max(0,Math.min(GW-1,cx+((rnd()-.5)*GW*.25|0))), y=0;
@@ -612,7 +670,7 @@ function lightning(cx,cy){ // a jagged bolt from the sky that homes in on the to
 function rect(x0,y0,x1,y1,t,fill=1){ for(let y=Math.max(0,y0|0);y<Math.min(GH,y1|0);y++) for(let x=Math.max(0,x0|0);x<Math.min(GW,x1|0);x++) if (rnd()<fill) put(y*GW+x,t); }
 function clouds(x0,y0,x1,y1,fill,drops){ for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++) if (rnd()<fill){ const i=y*GW+x; put(i,CLOUD); L[i]=1+(rnd()*drops*2|0); } }
 function floor(h){ rect(0,GH-h,GW,GH,STONE); }
-function clearAll(){ T.fill(0); P.fill(0); L.fill(0); H.fill(20); }
+function clearAll(){ T.fill(0); P.fill(0); L.fill(0); H.fill(20); if (ROOSTB) ROOSTB.fill(0); }
 const SCENES={
   demo(){
     const ground=x=>Math.round(GH*(.63 - .07*Math.sin(x/GW*Math.PI*2.2+.6) - .03*Math.sin(x/GW*17)));
@@ -751,3 +809,22 @@ SCENES.forest=function(){ sceneSky=2;
   for(let k=0;k<40;k++){ const x=(rnd()*GW)|0, y=ground(x)-6-(rnd()*30|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,MOTH); }
   for(let k=0;k<25;k++){ const x=(rnd()*GW)|0, y=ground(x)-3-(rnd()*12|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,FIREFLY); } };
 SCENE_LIST.push(["forest","Нічний ліс","Світні гриби на старих колодах, ліхтар і вогнище, до яких злітаються метелики"]);
+SCENES.bats=function(){ sceneSky=1;
+  const ground=x=>Math.round(GH*(.78-.03*Math.sin(x/GW*6+1)-.012*Math.sin(x/GW*29)));
+  const hill=x=>{ const d=(x-GW*.22)/(GW*.3); return d*d<1 ? Math.round(GH*(.78-.62*(1-d*d)**.8)) : GH; };   // a rocky hill on the left
+  for(let x=0;x<GW;x++){ const g=Math.min(ground(x),hill(x)); for(let y=g;y<GH;y++) put(y*GW+x, y<ground(x)+3&&y>=ground(x)?WETSAND:STONE); }
+  const cx=GW*.2, cy=GH*.52, rx=GW*.14, ry=GH*.13;                                    // the cave inside it, open to the right
+  for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){ const dx=(x-cx)/rx, dy=(y-cy)/ry, n=.06*Math.sin(x*.7)+.05*Math.sin(y*.9+x*.3);
+    if (dx*dx+dy*dy<1+n && y<ground(x)) T[y*GW+x]=E; }
+  for(let y=Math.round(cy-ry*.15);y<Math.round(cy+ry*.75);y++) for(let x=Math.round(cx);x<Math.round(GW*.5);x++) if (y<ground(x)-(x>GW*.42?0:1) && T[y*GW+x]===STONE) T[y*GW+x]=E;
+  for(let x=0;x<GW;x++) for(let y=1;y<GH;y++){ const i=y*GW+x; if (T[i]===E && T[i-GW]===STONE && x<GW*.4 && rnd()<.5){ put(i,BAT); S[i]&=~4; } }   // the colony asleep on the roof
+  for(let x=Math.round(cx-rx);x<cx+rx;x++){ const y0=Math.round(cy+ry*.4); for(let y=y0;y<GH;y++){ const i=y*GW+x; if (T[i]!==E){ if (rnd()<.2 && T[i-GW]===E) mushAt(x,y-1,1+(rnd()*2|0),1,rnd()*3|0,800); break; } } }
+  for(let x=Math.round(GW*.45);x<GW-2;x+=2+(rnd()*3|0)){ const g=ground(x)-1; if (T[g*GW+x]!==E) continue; if (rnd()<.15) put(g*GW+x,FLOWER); else { put(g*GW+x,PLANT); L[g*GW+x]=3+(rnd()*8|0); } }
+  const tree=(tx,h)=>{ const g=ground(tx); for(let y=g-h;y<g;y++) for(let x=tx-1;x<=tx;x++) put(y*GW+x,WOOD);
+    for(let k=0;k<170;k++){ const a=rnd()*Math.PI*2, d=Math.sqrt(rnd())*h*.4, x=Math.round(tx+Math.cos(a)*d*1.3), y=Math.round(g-h+Math.sin(a)*d*.75); if (!outside(x,y) && T[y*GW+x]===E) put(y*GW+x,PLANT); } };
+  tree(Math.round(GW*.88),Math.round(GH*.4));
+  const lx=Math.round(GW*.66), lg=ground(lx);                                          // a street lamp the moths dance around
+  rect(lx,lg-36,lx+2,lg,METAL); rect(lx,lg-38,lx+10,lg-36,METAL); rect(lx+7,lg-36,lx+11,lg-33,LAMP); rect(lx-3,lg-4,lx,lg,BATTERY);
+  for(let k=0;k<70;k++){ const x=Math.round(GW*(.45+rnd()*.53)), y=ground(x)-4-(rnd()*34|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,MOTH); }
+  for(let k=0;k<18;k++){ const x=Math.round(GW*(.5+rnd()*.45)), y=ground(x)-3-(rnd()*10|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,FIREFLY); } };
+SCENE_LIST.push(["bats","Печера кажанів","Удень кажани сплять під склепінням печери, а в сутінках вилітають полювати на метеликів біля ліхтаря"]);

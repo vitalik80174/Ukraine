@@ -20,12 +20,12 @@ function makeNoise(R){
 
 // each landscape: where the ground lies, how much is under water, what grows and lives there
 const BIOMES={
-  hills:   {name:"Зелені пагорби", desc:"Луки, гаї й озера з рибками", base:.60, amp:.24, freq:2.2, sea:.66, top:WETSAND, sub:CLAY, caves:.028, trees:.7, grass:.45, life:["fish","birds","ants","moths"], clouds:2},
-  mountains:{name:"Гори", desc:"Засніжені вершини тануть і стікають струмками, у печерах — підземне озеро й лава", base:.50, amp:.62, freq:1.6, sea:.80, top:WETSAND, sub:STONE, snow:.36, caves:.04, lava:.82, trees:.45, grass:.3, life:["fish","birds"], clouds:2, coldClouds:true},
+  hills:   {name:"Зелені пагорби", desc:"Луки, гаї й озера з рибками", base:.60, amp:.24, freq:2.2, sea:.66, top:WETSAND, sub:CLAY, caves:.028, trees:.7, grass:.45, life:["fish","birds","ants","moths","bats"], clouds:2},
+  mountains:{name:"Гори", desc:"Засніжені вершини тануть і стікають струмками, у печерах — підземне озеро й лава", base:.50, amp:.62, freq:1.6, sea:.80, top:WETSAND, sub:STONE, snow:.36, caves:.04, lava:.82, trees:.45, grass:.3, life:["fish","birds","bats"], clouds:2, coldClouds:true},
   islands: {name:"Архіпелаг", desc:"Піщані острови з пальмами посеред моря", base:.80, amp:.06, freq:2.6, sea:.62, top:SAND, sub:WETSAND, caves:.0, trees:.8, palms:true, grass:.1, life:["fish","fish","birds"], clouds:1},
   desert:  {name:"Пустеля", desc:"Дюни, оаза, кактуси, а під піском — нафта", base:.62, amp:.12, freq:3.2, sea:.0, top:SAND, sub:SAND, caves:.03, oil:true, cacti:true, oasis:true, life:["ants"], clouds:0},
   volcano: {name:"Вулканічний острів", desc:"Вулкан ллє лаву в море, вона шипить і застигає", base:.74, amp:.10, freq:2, sea:.70, top:ASH, sub:STONE, caves:.02, volcano:true, trees:.25, grass:.15, life:["fish","birds"], clouds:1},
-  caves:   {name:"Підземелля", desc:"Печери з вугіллям і рудою, підземні озера, лава, світлячки й світні гриби", base:.30, amp:.08, freq:2, sea:.0, top:WETSAND, sub:CLAY, caves:.045, chambers:true, lava:.9, ore:2, trees:.3, grass:.4, life:["fireflies","fish","moths"], clouds:0}
+  caves:   {name:"Підземелля", desc:"Печери з вугіллям і рудою, підземні озера, лава, світлячки й світні гриби", base:.30, amp:.08, freq:2, sea:.0, top:WETSAND, sub:CLAY, caves:.045, chambers:true, lava:.9, ore:2, trees:.3, grass:.4, life:["fireflies","fish","moths","bats"], clouds:0}
 };
 const BIOME_IDS=Object.keys(BIOMES);
 let lastWorld=null;
@@ -128,6 +128,8 @@ function genWorld(seed, biomeId){
     if (who==="fish" && water.length){ for(let k=0;k<Math.min(16,4+water.length/250);k++){ const i=water[R()*water.length|0]; if (T[i]===WATER) put(i,FISH); } }
     if (who==="birds"){ const f=x=>Math.round(GH*(.12+R()*.2)); f.t=BIRD; air(ri(5,10),f); }
     if (who==="ants"){ const f=x=>G[x]-ri(1,5); f.t=ANT; air(ri(5,9),f); const s=x=>G[x]-ri(2,9); s.t=SEED; air(ri(8,16),s); }
+    if (who==="bats"){ let n=0; const want=ri(6,14); for(let k=0;k<8000&&n<want;k++){ const x=ri(2,GW-3), y=ri(G[x]+4,GH-4), i=y*GW+x;   // a few colonies under cave roofs
+        if (T[i]===E && T[i-GW]===STONE||T[i]===E && T[i-GW]===CLAY){ for(let dx=-4;dx<=4&&n<want;dx++){ const j=i+dx; if (x+dx>0&&x+dx<GW&&T[j]===E&&ROOF[T[j-GW]]&&R()<.6){ put(j,BAT); S[j]&=~4; n++; } } } } }
     if (who==="moths"){ const f=x=>G[x]-ri(2,10); f.t=MOTH; air(ri(8,14),f); }
     if (who==="fireflies"){ let n=0; for(let k=0;k<6000&&n<70;k++){ const x=ri(2,GW-3), y=ri(G[x]+8,GH-4), i=y*GW+x; if (T[i]===E && y<GH*.85){ put(i,FIREFLY); n++; } }
       const f=x=>G[x]-ri(3,14); f.t=FIREFLY; air(20,f); }
