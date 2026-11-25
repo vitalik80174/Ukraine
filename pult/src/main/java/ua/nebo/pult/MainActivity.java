@@ -21,6 +21,9 @@ import org.json.JSONObject;
 /** «Пульт»: the screen shows whether the tablet is listening, what to switch on, and the journal. */
 public class MainActivity extends Activity {
     static volatile String pendingMessage;
+    /** «Знайди планшет» in progress: "text\nseconds"; findOver tells the page to close the screen. */
+    static volatile String pendingFind;
+    static volatile boolean findOver;
     private WebView web;
 
     @Override
@@ -136,6 +139,15 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String takeMessage() { String m = pendingMessage; pendingMessage = null; return m == null ? "" : m; }
+
+        @JavascriptInterface
+        public String takeFind() { String f = pendingFind; pendingFind = null; return f == null ? "" : f; }
+
+        @JavascriptInterface
+        public boolean findOver() { boolean o = findOver; findOver = false; return o; }
+
+        @JavascriptInterface
+        public void stopFind() { Runner.stopFind = true; }
 
         @JavascriptInterface
         public String version() {

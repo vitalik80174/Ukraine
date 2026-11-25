@@ -88,6 +88,22 @@ h2{margin:0 0 12px;font:700 13px var(--f);letter-spacing:.12em;text-transform:up
 .msg p{margin:0;font:800 clamp(34px,7vw,84px)/1.1 var(--f);letter-spacing:-.01em}
 .msg small{display:block;margin-top:26px;color:var(--dim);font-size:15px}
 
+/* «Знайди планшет»: a warm beacon the whole screen wide */
+.find{position:fixed;inset:0;z-index:7;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:30px;text-align:center;
+  background:radial-gradient(circle at 50% 42%,#ff7a45 0,#c2352b 38%,#3a0d16 78%,#14060a 100%);overflow:hidden;animation:fade .3s}
+.find::before{content:"";position:absolute;inset:0;background:#fff;opacity:0;animation:strobe .6s steps(1) infinite;pointer-events:none}
+@keyframes strobe{0%{opacity:.13}42%{opacity:0}}
+.find .rings{position:absolute;left:50%;top:42%;width:0;height:0}
+.find .rings i{position:absolute;left:-46vmin;top:-46vmin;width:92vmin;height:92vmin;border-radius:50%;border:3px solid rgba(255,236,210,.7);opacity:0;animation:ring 2.4s cubic-bezier(.2,.6,.3,1) infinite}
+.find .rings i:nth-child(2){animation-delay:.8s}.find .rings i:nth-child(3){animation-delay:1.6s}
+.find .bell{position:relative;font-size:clamp(70px,14vmin,130px);line-height:1;animation:shake .5s ease-in-out infinite;filter:drop-shadow(0 8px 30px rgba(0,0,0,.35))}
+@keyframes shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-14deg)}75%{transform:rotate(14deg)}}
+.find p{position:relative;margin:0;font:800 clamp(48px,11vw,120px)/1 var(--f);letter-spacing:-.02em;color:#fff6ec;text-shadow:0 6px 40px rgba(0,0,0,.35)}
+.find .left-s{position:relative;color:rgba(255,240,225,.85);font-size:17px;font-variant-numeric:tabular-nums}
+.find button{position:relative;margin-top:8px;border:0;border-radius:999px;padding:18px 40px;font:800 22px var(--f);background:#fff6ec;color:#8a1f1a;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.find button:active{transform:scale(.96)}
+@media (prefers-reduced-motion:reduce){.find::before,.find .bell{animation:none}}
+
 /* diary */
 .diary{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);padding:max(20px,env(safe-area-inset-top)) 20px 20px;background:#101725;border-left:1px solid var(--line);transform:translateX(100%);transition:transform .3s;display:flex;flex-direction:column;z-index:6}
 .diary.open{transform:none}
@@ -137,11 +153,20 @@ h2{margin:0 0 12px;font:700 13px var(--f);letter-spacing:.12em;text-transform:up
       <div class="can">
         <span>Розбудити й зняти свайп</span><span>Відкрити застосунок <em>· будь-який</em></span><span>Відкрити посилання</span>
         <span>Сказати вголос</span><span>Показати великий напис</span><span>Гучність</span><span>Не гасити екран</span><span>На головний екран</span>
-        <span class="new">Яскравість <em>· або авто</em></span><span class="new">Ліхтарик <em>· увімкнути чи блимнути</em></span>
+        <span>Яскравість <em>· або авто</em></span><span>Ліхтарик <em>· увімкнути чи блимнути</em></span>
+        <span class="new">Знайти планшет <em>· дзвін, світло й «Я тут!»</em></span>
       </div>
     </section>
     <div class="foot"><button class="chip" id="btnTest">Перевірити голосом</button><span class="ver" id="ver">Лабораторія Claude</span></div>
   </div>
+</div>
+
+<div class="find" id="find" hidden role="alertdialog" aria-label="Знайди планшет">
+  <div class="rings"><i></i><i></i><i></i></div>
+  <div class="bell" aria-hidden="true">🔔</div>
+  <p id="findText">Я тут!</p>
+  <div class="left-s" id="findLeft"></div>
+  <button id="findStop">Знайшов!</button>
 </div>
 
 <div class="msg" id="msg" hidden><div><p id="msgText"></p><small>Напис від Claude · торкніться, щоб закрити</small></div></div>
@@ -162,7 +187,7 @@ const fake = {
   st: { on: true, running: true, online: true, status: "На зв'язку", lastCheck: now - 2000, overlay: true, battery: true, notif: true, settings: true, secure: false },
   log: [
     { t: now - 4 * 60e3, title: 'Розбуди планшет і відкрий Вікно', ok: true, lines: ['✓ розбудив і розблокував', '✓ відкрив «Вікно»'] },
-    { t: now - 9 * 60e3, title: 'Де планшет? Блимни ліхтариком', ok: true, lines: ['✓ яскравість 100%', '✓ блимнув ліхтариком 5 р.'] },
+    { t: now - 9 * 60e3, title: 'Де мій планшет?', ok: true, lines: ['✓ розбудив і розблокував', '✓ планшет знайшли — дзвонив будильником, блимав ліхтариком до натискання «Знайшов!»'] },
     { t: now - 52 * 60e3, title: 'Скажи доброго ранку', ok: true, lines: ['✓ гучність 40%', '✓ сказав: «Доброго ранку!»'] },
     { t: now - 26 * 3600e3, title: 'Відкрий YouTube', ok: false, lines: ['✓ розбудив і розблокував', '✗ не знайшов застосунок «YouTube Kids»'] }
   ]
@@ -175,7 +200,9 @@ const P = window.Pult || {
   setOn: v => { fake.st.on = fake.st.running = fake.st.online = v; fake.st.lastCheck = Date.now(); },
   openOverlay: () => fake.st.overlay = true, openBattery: () => fake.st.battery = true, openWriteSettings: () => fake.st.settings = true, askNotif: () => fake.st.notif = true,
   test: () => { fake.log.unshift({ t: Date.now(), title: 'Перевірка з планшета', ok: true, lines: ["✓ сказав: «Пульт на зв'язку»"] }); },
-  takeMessage: () => { const m = qs.get('msg') || ''; qs.delete('msg'); return m; }, version: () => ''
+  takeMessage: () => { const m = qs.get('msg') || ''; qs.delete('msg'); return m; }, version: () => '',
+  takeFind: () => { const f = qs.get('find'); qs.delete('find'); return f ? (f === '1' ? 'Я тут!' : f) + '\n30' : ''; },
+  findOver: () => false, stopFind: () => {}
 };
 
 function ago(t) {
@@ -217,7 +244,26 @@ function render() {
     if (fresh) { orb.classList.remove('flash'); void orb.offsetWidth; orb.classList.add('flash'); }
   }
   const m = P.takeMessage(); if (m) { $('msgText').textContent = m; $('msg').hidden = false; }
+  const f = P.takeFind ? P.takeFind() : ''; if (f) startFind(f);
+  if (P.findOver && P.findOver()) endFind();
 }
+
+// «Знайди планшет»: the page shows the beacon and counts down; the service rings and blinks.
+let findEnd = 0, findTimer = 0;
+function startFind(f) {
+  const [text, secs] = f.split('\n');
+  $('findText').textContent = text || 'Я тут!';
+  findEnd = Date.now() + (parseInt(secs, 10) || 30) * 1000;
+  $('find').hidden = false;
+  clearInterval(findTimer); findTick(); findTimer = setInterval(findTick, 250);
+}
+function findTick() {
+  const s = Math.ceil((findEnd - Date.now()) / 1000);
+  if (s <= 0) return endFind();
+  $('findLeft').textContent = 'Дзвоню ще ' + s + ' с · торкніться, коли знайдете';
+}
+function endFind() { clearInterval(findTimer); $('find').hidden = true; }
+$('find').onclick = $('findStop').onclick = () => { if (P.stopFind) P.stopFind(); endFind(); };
 $('tog').onclick = () => { P.setOn($('tog').getAttribute('aria-checked') !== 'true'); setTimeout(render, 150); };
 $('bOverlay').onclick = () => P.openOverlay();
 $('bBattery').onclick = () => P.openBattery();

@@ -6,6 +6,10 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.hardware.camera2.CameraCharacteristics;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
+import android.media.RingtoneManager;
+import android.media.ToneGenerator;
 import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
 import android.net.Uri;
@@ -34,6 +38,8 @@ final class Runner {
     private PowerManager.WakeLock awake;
     private final Handler main = new Handler(Looper.getMainLooper());
     private Runnable torchOff;
+    /** Set by the «Знайшов!» button on the find screen: stops the alarm early. */
+    static volatile boolean stopFind;
 
     Runner(Context c) {
         ctx = c.getApplicationContext();
@@ -88,6 +94,7 @@ final class Runner {
             case "awake": return keepAwake(a.optInt("minutes", 10));
             case "brightness": return brightness(a.optString("level", "50"));
             case "torch": return torch(a.optString("mode", "on"), a.optInt("minutes", 0), a.optInt("times", 3));
+            case "find": return find(a.optInt("seconds", 30), a.optString("text", ""));
             case "wait": Thread.sleep(Math.max(0, Math.min(30000, a.optLong("ms", 1000)))); return "· пауза " + a.optLong("ms", 1000) + " мс";
             default: return "✗ не знаю дії «" + a.optString("do") + "»";
         }
@@ -273,5 +280,71 @@ final class Runner {
         torchOff = () -> { setTorch(false); torchOff = null; };
         main.postDelayed(torchOff, mins * 60_000L);
         return "✓ ліхтарик увімкнено на " + mins + " хв";
+    }
+
+    /**
+     * «Знайди планшет»: wakes the screen, shows a pulsing «Я тут!» screen, rings the alarm sound at full alarm volume
+     * (alarms pass «Не турбувати») and blinks the flashlight — until the time is up or someone taps «Знайшов!».
+     */
+    private String find(int seconds, String text) throws InterruptedException {
+        int secs = Math.max(5, Math.min(120, seconds));
+        stopFind = false;
+        MainActivity.findOver = false;
+        try { wake(); } catch (Exception ignored) {}
+        MainActivity.pendingFind = (text == null || text.trim().isEmpty() ? "Я тут!" : text.trim()) + "\n" + secs;
+        try { start(new Intent(ctx, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)); } catch (Exception ignored) {}
+
+        AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        int was = am.getStreamVolume(AudioManager.STREAM_ALARM);
+        try { am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0); } catch (Exception ignored) {}
+
+        MediaPlayer mp = null;
+        ToneGenerator tone = null;
+        try {
+            Uri u = RingtoneManager.getActualDefaultRingtoneUri(ctx, RingtoneManager.TYPE_ALARM);
+            if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            if (u != null) {
+                mp = new MediaPlayer();
+                mp.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+                mp.setDataSource(ctx, u);
+                mp.setLooping(true);
+                mp.prepare();
+                mp.start();
+            }
+        } catch (Exception e) {
+            if (mp != null) try { mp.release(); } catch (Exception ignored) {}
+            mp = null;
+        }
+        if (mp == null) {
+            try { tone = new ToneGenerator(AudioManager.STREAM_ALARM, 100); } catch (Exception ignored) {}
+        }
+
+        boolean flash = flashCamera() != null;
+        if (flash && torchOff != null) { main.removeCallbacks(torchOff); torchOff = null; }
+        long end = System.currentTimeMillis() + secs * 1000L;
+        int blinks = 0;
+        while (System.currentTimeMillis() < end && !stopFind) {
+            if (tone != null) tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 500);
+            if (flash && setTorch(true)) blinks++;
+            Thread.sleep(250);
+            if (flash) setTorch(false);
+            Thread.sleep(350);
+        }
+        boolean found = stopFind;
+        stopFind = false;
+        MainActivity.pendingFind = null;
+        MainActivity.findOver = true;
+        if (mp != null) try { mp.stop(); mp.release(); } catch (Exception ignored) {}
+        if (tone != null) try { tone.release(); } catch (Exception ignored) {}
+        if (flash) setTorch(false);
+        try { am.setStreamVolume(AudioManager.STREAM_ALARM, was, 0); } catch (Exception ignored) {}
+
+        String how = (mp != null ? "дзвонив будильником" : tone != null ? "пищав" : "без звуку")
+                + (blinks > 0 ? ", блимав ліхтариком" : "");
+        return found ? "✓ планшет знайшли — " + how + " до натискання «Знайшов!»"
+                     : "✓ кликав " + secs + " с: " + how;
     }
 }
