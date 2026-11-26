@@ -48,6 +48,24 @@ body.night{background:#0e1222}
 .tapebar button.dk{background:var(--fg);color:#fff;border-color:var(--fg)}
 body.walking .tapebar{bottom:auto;top:max(116px,calc(env(safe-area-inset-top) + 106px))}
 body.taping .hint{display:none}
+.paintbar{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(760px,calc(100vw - 32px));padding:8px 8px 10px;border-radius:22px;display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+.paintbar .prow{display:flex;align-items:center;gap:8px}
+.paintbar .ptabs{display:flex;gap:2px;padding:3px;border-radius:999px;background:rgba(0,0,0,.06);flex:none}
+.paintbar .ptabs button{border:0;background:none;border-radius:999px;padding:6px 13px;font:600 12.5px var(--f);color:var(--dim)}
+.paintbar .ptabs button.on{background:var(--fg);color:#fff}
+.paintbar #paintMsg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paintbar .prow>button{border:1px solid var(--line);background:rgba(255,255,255,.6);border-radius:999px;padding:7px 13px;font:600 12.5px var(--f);flex:none}
+.paintbar .prow>button.dk{background:var(--fg);color:#fff;border-color:var(--fg)}
+.paintbar .swr,.paintbar .rms{display:flex;gap:6px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;padding:2px}
+.paintbar .swr::-webkit-scrollbar,.paintbar .rms::-webkit-scrollbar{display:none}
+.paintbar .sw{flex:none;width:62px;border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:3px;font:500 10.5px/1.15 var(--f);color:var(--dim);text-align:center}
+.paintbar .sw i{width:44px;height:44px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.14);transition:transform .15s}
+.paintbar .sw.on i{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--accent);transform:scale(1.04)}
+.paintbar .sw.on{color:var(--fg);font-weight:600}
+.paintbar .rc{flex:none;display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.55);border-radius:999px;padding:5px 11px 5px 5px;font:500 12.5px var(--f)}
+.paintbar .rc i{width:20px;height:20px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.16)}
+body.walking .paintbar{bottom:auto;top:max(116px,calc(env(safe-area-inset-top) + 106px))}
+body.painting .hint{display:none}
 #tags .tag.tape{z-index:2}
 #tags{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 .lbl{position:absolute;left:0;top:0;padding:5px 10px;border-radius:10px;background:rgba(255,255,255,.88);font:600 13px/1.2 var(--f);text-align:center;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,.12)}
@@ -132,12 +150,18 @@ body.walking .side::-webkit-scrollbar{display:none}
   <button class="b" id="bPower"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg>Електрика</button>
   <button class="b" id="bDims"><svg viewBox="0 0 24 24"><path d="M3 17l14-14 4 4-14 14z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Розміри</button>
   <button class="b" id="bTape"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="3"/><circle cx="9" cy="12" r="2.2"/><path d="M15 15h6v3h-6"/><path d="M18 15v1.5"/></svg>Рулетка</button>
+  <button class="b" id="bPaint"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="13" height="6" rx="1.5"/><path d="M17 6h3v5h-8v3"/><rect x="10.5" y="14" width="3" height="7" rx="1"/></svg>Фарба</button>
   <button class="b" id="bMore"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Більше</button>
 </div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
 <canvas class="minimap glass" id="minimap" hidden></canvas>
 <div class="tip glass" id="tip" hidden></div>
 <div class="tapebar glass" id="tapebar" hidden><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="3"/><circle cx="9" cy="12" r="2.2"/><path d="M15 15h6v3h-6"/></svg><span id="tapeMsg"></span><button id="tapeUndo">Назад</button><button id="tapeClear">Стерти все</button><button id="tapeDone" class="dk">Готово</button></div>
+<div class="paintbar glass" id="paintbar" hidden>
+  <div class="prow"><div class="ptabs"><button data-pt="walls">Стіни</button><button data-pt="floors">Підлога</button></div><span id="paintMsg"></span><button id="paintReset">Скинути все</button><button id="paintDone" class="dk">Готово</button></div>
+  <div class="swr" id="paintSw"></div>
+  <div class="rms" id="paintRooms"></div>
+</div>
 <div class="legend glass" id="legend" hidden></div>
 <div class="styles glass" id="styles" hidden></div>
 <div class="styles sunp glass" id="sunp" hidden></div>
@@ -161,6 +185,7 @@ body.walking .side::-webkit-scrollbar{display:none}
       <p><b>Будиночок:</b> веди пальцем — квартира обертається; двома пальцями — наблизити й посунути. Торкнись кімнати — можна зайти в неї.</p>
       <p><b>Прогулянка:</b> торкнись підлоги — підеш туди сам; торкнись мапки в куті — опинишся в тій точці. Круг ліворуч — іти, пальцем по екрану — роззиратися. Крізь стіни й зачинені двері не пройдеш, а на балкон — можна.</p>
       <p><b>Рулетка:</b> торкніться двох точок — на стіні, підлозі, підвіконні чи меблях — і побачите відстань у сантиметрах. Якщо майже вздовж стіни чи прямовисно, рулетка сама вирівнюється. Для косих вимірів видно ще окремо по горизонталі (↔) і висоті (↕). Виміри зберігаються; «Назад» прибирає останній.</p>
+      <p><b>Фарба:</b> оберіть колір стін (вкладка «Стіни») або підлогу (вкладка «Підлога») і торкніться будь-якого місця в кімнаті — стіни чи підлога цієї кімнати зміняться. Можна й кнопками з назвами кімнат унизу. «Як у стилі» повертає як було, «Скинути все» — усе одразу. Фарба тримається при зміні інтер'єру й зберігається окремо для кожного планування.</p>
       <p><b>Розміри:</b> показує ширину й довжину кожної кімнати, висоту стелі, розміри вікон і дверей — помаранчевими позначками.</p>
       <p><b>Електрика:</b> прибирає всі меблі й показує кожну розетку, вимикач, щиток і виводи з підписом висоти від підлоги.</p>
       <p><b>Двері й вікна:</b> торкнись дверей — відчиняться чи зачиняться; вікно поділене на широку глуху частину й вужчу з перемичкою посередині — торкнись верхньої шибки вужчої частини, і вона відкинеться на провітрювання (вікна відчиняються лише так). Балконні двері панорамні, скляні й відчиняються повністю. Вхідні двері спочатку зачинені.</p>

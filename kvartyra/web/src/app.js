@@ -475,12 +475,31 @@ const wallAO = { value: 0 };
 const depthShade = { value: 0 };          // 0 in doll/plan, 1 while walking
 const DWIN = P.depth;                      // window wall is at z = DWIN; deeper into the room (smaller z) is darker
 const DEPTH_GLSL = `diffuseColor.rgb *= 1.0 - uDepth * 0.42 * clamp((${DWIN.toFixed(2)} - vKvZ) / ${DWIN.toFixed(2)}, 0.0, 1.0);`;
+// paint: every room can get its own wall colour. A small texture over the plan holds the colour of each room (alpha 0 = keep the
+// style's colour); a wall fragment looks a few centimetres off its face — into the room it faces — and takes that room's colour.
+const PB = { x0: -0.3, z0: -0.3, x1: P.width + 0.3, z1: P.depthWithBalcony + 0.3 }, PK = 30; // texels per metre
+const PTW = Math.ceil((PB.x1 - PB.x0) * PK), PTH = Math.ceil((PB.z1 - PB.z0) * PK);
+const paintData = new Uint8Array(PTW * PTH * 4);
+const paintTex = new THREE.DataTexture(paintData, PTW, PTH, THREE.RGBAFormat);
+paintTex.colorSpace = THREE.SRGBColorSpace; paintTex.magFilter = paintTex.minFilter = THREE.NearestFilter; paintTex.generateMipmaps = false; paintTex.needsUpdate = true;
+const paintU = { tex: { value: paintTex }, box: { value: new THREE.Vector4(PB.x0, PB.z0, 1 / (PB.x1 - PB.x0), 1 / (PB.z1 - PB.z0)) } };
+function paintShader(sh) {
+  sh.uniforms.uPaint = paintU.tex; sh.uniforms.uPaintBox = paintU.box;
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vKpW;\nvarying vec3 vKpN;')
+    .replace('#include <project_vertex>', '#include <project_vertex>\nvKpW = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvKpN = mat3(modelMatrix) * objectNormal;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vKpW;\nvarying vec3 vKpN;\nuniform sampler2D uPaint;\nuniform vec4 uPaintBox;')
+    .replace('#include <color_fragment>', '#include <color_fragment>\n{ vec2 kq = (vKpW.xz + normalize(vKpN).xz * 0.06 - uPaintBox.xy) * uPaintBox.zw;\n  if (kq.x > 0.0 && kq.x < 1.0 && kq.y > 0.0 && kq.y < 1.0) { vec4 kc = texture2D(uPaint, kq); diffuseColor.rgb = mix(diffuseColor.rgb, kc.rgb, kc.a); } }');
+}
+M.ext.onBeforeCompile = paintShader; M.ext.customProgramCacheKey = () => 'kv-ext-paint';
 function addWallAO(mat) {
+  mat.customProgramCacheKey = () => 'kv-wall-ao-paint';
   mat.onBeforeCompile = sh => {
     sh.uniforms.uCeil = wallAO; sh.uniforms.uDepth = depthShade;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKvY;\nvarying float vKvZ;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 _kvW = modelMatrix * vec4(transformed, 1.0);\nvKvY = _kvW.y;\nvKvZ = _kvW.z;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vKvY;\nvarying float vKvZ;\nuniform float uCeil;\nuniform float uDepth;')
       .replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.rgb *= 1.0 - 0.16 * exp(-max(vKvY, 0.0) * 6.0) - uCeil * 0.24 * exp(-max(${H.toFixed(2)} - vKvY, 0.0) * 5.0);\n${DEPTH_GLSL}`);
+
+    paintShader(sh); // inserted right after color_fragment, so the shading above darkens the new colour too
   };
   return mat;
 }
@@ -599,6 +618,13 @@ function applyWalls() {
   lampFin.visible = full && !raw; lampRaw.visible = full && raw; glowG.visible = full && lampsLit;
   invalidate(true);
 }
+// the user's own paint: { walls: { room: 0xRRGGBB }, floors: { room: floorKey } }, separately for each layout
+const PAINT_KEY = 'paint.' + LAYOUT;
+let paintSet = store.get(PAINT_KEY, null);
+if (Q.get('paint')) { try { paintSet = JSON.parse(Q.get('paint')); } catch (e) { paintSet = null; } } // test hook: ?paint={"walls":{"Спальня":12345},"floors":{…}}
+if (!paintSet || typeof paintSet !== 'object') paintSet = {};
+if (!paintSet.walls || typeof paintSet.walls !== 'object') paintSet.walls = {};
+if (!paintSet.floors || typeof paintSet.floors !== 'object') paintSet.floors = {};
 // interior look: 'raw' (as it is now), 'base' (first finished version) or a designed style from interior.js
 let look = Q.get('look') || (Q.get('raw') === '0' ? 'base' : Q.get('raw') === '1' ? 'raw' : null) || store.get('look', store.get('raw', true) ? 'raw' : 'base');
 if (!STYLES.some(st => st.id === look)) look = 'raw';
@@ -627,10 +653,16 @@ function styleFloor(f, key) {
   }
   return styleFloorMats.get(k);
 }
+function floorKeyFor(f) {
+  const own = paintSet.floors[f.room]; if (own && FLOOR_MAKERS[own]) return own;
+  const S = STYLES.find(st => st.id === look);
+  return look === 'raw' ? 'concrete' : S.wall ? (S.floors[f.room] || S.floors[f.as] || 'oak') : f.key;
+}
+function applyFloors() { for (const f of floorMats) f.m.material = styleFloor(f, floorKeyFor(f)); invalidate(); }
 function applyFinish() {
   const S = STYLES.find(st => st.id === look); raw = look === 'raw';
   const styled = !!S.wall;
-  for (const f of floorMats) f.m.material = styleFloor(f, raw ? 'concrete' : styled ? (S.floors[f.room] || S.floors[f.as] || 'oak') : f.key);
+  applyFloors();
   fx.visible = !raw && !elecMode; archG.visible = baseG.visible = !raw; for (const d of innerDoors) d.visible = !raw;
   if (raw) for (const o of openables) if (o.inner && !o.open) toggleOpenable(o);
   M.wall.color.set(styled ? S.wall : DEF.wall); M.door.color.set(styled ? S.door : DEF.door);
@@ -860,6 +892,7 @@ addEventListener('keydown', e => keys.add(e.key)); addEventListener('keyup', e =
 // tap a room in doll/plan view → walk into it
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function tapAt(x, y) {
+  if (paintOn) { paintTap(x, y); return; }
   if (tapeOn) { tapeTap(x, y); return; }
   if (tapOpenable(x, y)) return;
   if (mode === 'walk') { // tap the floor → walk there
@@ -1067,6 +1100,7 @@ function tapeBar() {
   $('tapeUndo').hidden = !tapes.length && !tapeA; $('tapeClear').hidden = tapes.length < 2;
 }
 function setTape(on) {
+  if (on && paintOn) setPaint(false);
   tapeOn = on; $('bTape').classList.toggle('on', on); if (!on) tapeA = null; hideTip(); rebuildTape();
   document.body.classList.toggle('taping', on);
 }
@@ -1100,6 +1134,95 @@ try { tapes = (store.get(TAPE_KEY, []) || []).filter(t => t && t.a && t.b && t.a
 if (Q.get('tape')) { // test hook: ?tape=x,y,z,x,y,z;… 
   tapes = Q.get('tape').split(';').map(s => s.split(',').map(Number)).filter(n => n.length === 6 && n.every(isFinite)).map(n => ({ a: n.slice(0, 3), b: n.slice(3) }));
 }
+
+/* ================= paint: wall colour and floor of each room ================= */
+// a brush is picked in the bar, then a tap anywhere in a room (wall, floor, furniture) paints that room;
+// in the plan view or from afar, the room chips in the bar do the same
+const PAINTS = [
+  ['Як у стилі', null], ['Молоко', 0xf4f0e6], ['Льон', 0xe6dac4], ['Пісок', 0xd8c09c], ['Пудра', 0xe6c7bd], ['Теракота', 0xbf7050],
+  ['Гірчиця', 0xd2a443], ['Шавлія', 0xb3bfa3], ['Оливка', 0x878c63], ['Смарагд', 0x2f5a4c], ['М’ята', 0xcde0d4],
+  ['Небо', 0xc6d7e5], ['Індиго', 0x3d5878], ['Лаванда', 0xc8bfd8], ['Графіт', 0x4a4d52]
+];
+const FLOORS = [
+  ['Як у стилі', null], ['Дуб', 'oak'], ['Світлий дуб', 'light'], ['Ясен', 'ash'], ['Теплий дуб', 'oakWarm'], ['Горіх', 'walnut'], ['Темний горіх', 'walnutDark'],
+  ['Ялинка', 'herring'], ['Мікроцемент', 'polished'], ['Стяжка', 'concrete'], ['Камінь', 'stone'],
+  ['Плитка біла', 'tileWhite'], ['Плитка сіра', 'tile'], ['Плитка пісок', 'tileSand'], ['Плитка зелена', 'tileGreen'], ['Плитка графіт', 'tileDark']
+];
+let paintOn = false, paintTab = 'walls', brush = { walls: 7, floors: 7 }, paintLast = null;
+const hex6 = c => '#' + c.toString(16).padStart(6, '0');
+const roomAt = (x, z) => P.rooms.find(r => r.rects.some(([x1, z1, x2, z2]) => x >= x1 && x <= x2 && z >= z1 && z <= z2));
+function rebuildPaintTex() {
+  paintData.fill(0);
+  for (const r of P.rooms) {
+    const c = paintSet.walls[r.name]; if (typeof c !== 'number') continue;
+    const R = c >> 16 & 255, G = c >> 8 & 255, B = c & 255;
+    for (const [x1, z1, x2, z2] of r.rects) {
+      const i1 = Math.max(0, Math.floor((x1 - PB.x0) * PK)), i2 = Math.min(PTW, Math.ceil((x2 - PB.x0) * PK));
+      const j1 = Math.max(0, Math.floor((z1 - PB.z0) * PK)), j2 = Math.min(PTH, Math.ceil((z2 - PB.z0) * PK));
+      for (let j = j1; j < j2; j++) for (let i = i1; i < i2; i++) { const k = (j * PTW + i) * 4; paintData[k] = R; paintData[k + 1] = G; paintData[k + 2] = B; paintData[k + 3] = 255; }
+    }
+  }
+  paintTex.needsUpdate = true; invalidate();
+}
+function savePaint() { store.set(PAINT_KEY, paintSet); }
+function paintRoom(room) {
+  if (!room) return;
+  const list = paintTab === 'walls' ? PAINTS : FLOORS, [name, val] = list[brush[paintTab]], set = paintSet[paintTab];
+  if (val == null) delete set[room.name]; else set[room.name] = val;
+  paintLast = { room: room.name, tab: paintTab, name };
+  savePaint();
+  if (paintTab === 'walls') rebuildPaintTex(); else applyFloors();
+  paintBar();
+}
+const floorThumbs = {};
+function floorThumb(key) { // a small square cut from the real floor texture
+  if (floorThumbs[key]) return floorThumbs[key];
+  const src = floorTex(key).image, c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), cut = Math.min(src.width, src.height) * (key.startsWith('tile') || key === 'stone' ? 0.75 : 0.32);
+  g.drawImage(src, 0, 0, cut, cut, 0, 0, 64, 64);
+  return (floorThumbs[key] = c.toDataURL());
+}
+function swatchStyle(tab, val) {
+  if (val == null) return 'background:repeating-linear-gradient(135deg,#fff 0 6px,#e9e6e0 6px 12px)';
+  return tab === 'walls' ? 'background:' + hex6(val) : `background:url(${floorThumb(val)}) center/cover`;
+}
+function paintBar() {
+  const bar = $('paintbar'); bar.hidden = !paintOn; if (!paintOn) return;
+  bar.querySelectorAll('[data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === paintTab));
+  const list = paintTab === 'walls' ? PAINTS : FLOORS;
+  $('paintSw').innerHTML = list.map(([n, v], i) => `<button class="sw${i === brush[paintTab] ? ' on' : ''}" data-b="${i}"><i style="${swatchStyle(paintTab, v)}"></i><span>${n}</span></button>`).join('');
+  $('paintSw').querySelectorAll('[data-b]').forEach(b => b.addEventListener('click', () => { brush[paintTab] = +b.dataset.b; paintLast = null; paintBar(); }));
+  const rooms = P.rooms.filter(r => paintTab === 'walls' ? r.name !== 'Балкон' : true);
+  $('paintRooms').innerHTML = rooms.map(r => {
+    const v = paintSet[paintTab][r.name];
+    return `<button class="rc" data-room="${r.name}"><i style="${swatchStyle(paintTab, v == null ? null : v)}"></i>${r.name}</button>`;
+  }).join('');
+  $('paintRooms').querySelectorAll('[data-room]').forEach(b => b.addEventListener('click', () => paintRoom(P.rooms.find(r => r.name === b.dataset.room))));
+  const [bn] = list[brush[paintTab]], what = paintTab === 'walls' ? 'стіни' : 'підлогу';
+  $('paintMsg').innerHTML = paintLast && paintLast.tab === paintTab ? `<b>${paintLast.room}</b> — ${paintTab === 'walls' ? 'стіни' : 'підлога'}: ${paintLast.name.toLowerCase()}` :
+    bn === 'Як у стилі' ? `Торкніться кімнати — повернути ${what} як у стилі` : `Торкніться кімнати, щоб зробити ${what} «${bn}»`;
+  const any = Object.keys(paintSet.walls).length + Object.keys(paintSet.floors).length;
+  $('paintReset').hidden = !any;
+  $('bPaint').classList.toggle('on', paintOn);
+}
+function paintTap(x, y) {
+  ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); ray.layers.mask = camera.layers.mask;
+  const hit = ray.intersectObjects(tapeTargets(), false).find(h => h.distance > 0.05 && h.distance < 60);
+  ray.layers.set(0);
+  let p = null;
+  if (hit) { p = hit.point.clone(); if (hit.face) p.add(hit.face.normal.clone().transformDirection(hit.object.matrixWorld).multiplyScalar(0.08)); }
+  else { const q = new THREE.Vector3(); if (ray.ray.intersectPlane(floorPlane, q)) p = q; }
+  if (p) paintRoom(roomAt(p.x, p.z));
+}
+function setPaint(on) {
+  paintOn = on; if (on && tapeOn) setTape(false);
+  hideTip(); document.body.classList.toggle('painting', on); $('bPaint').classList.toggle('on', on); paintBar();
+}
+$('bPaint').addEventListener('click', () => setPaint(!paintOn));
+$('paintDone').addEventListener('click', () => setPaint(false));
+$('paintReset').addEventListener('click', () => { paintSet = { walls: {}, floors: {} }; paintLast = null; savePaint(); rebuildPaintTex(); applyFloors(); paintBar(); });
+$('paintbar').querySelectorAll('[data-pt]').forEach(b => b.addEventListener('click', () => { paintTab = b.dataset.pt; paintLast = null; paintBar(); }));
+rebuildPaintTex();
 
 /* ================= labels ================= */
 const labelEls = roomLabels.map(l => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${l.name}<small>${l.area.toFixed(2).replace('.', ',')} м²</small>`; $('labels').appendChild(d); return d; });
@@ -1160,7 +1283,7 @@ function resize() {
 addEventListener('resize', resize);
 
 /* ================= loop ================= */
-setMode(mode); applyLight(); applyFinish(); renderDiary(); rebuildTape(); if (Q.get('tapeon')) setTape(true);
+setMode(mode); applyLight(); applyFinish(); renderDiary(); rebuildTape(); if (Q.get('tapeon')) setTape(true); if (Q.get('painton')) { if (Q.get('ptab')) paintTab = Q.get('ptab'); setPaint(true); }
 if (LAYOUT === 'closet') document.querySelector('.title p').textContent = '77,3 м² · дві кімнати · з гардеробною';
 if (Q.get('dist')) orbit.dist = +Q.get('dist');
 let last = performance.now(), streak = 0, ema = 16, tuneN = 0;
@@ -1214,7 +1337,7 @@ function loop(t) {
         if (Math.hypot(walker.x - ox, walker.z - oz) < sp * 0.2) { if (++g.stuck > 20) { walker.goal = null; hideMarker(); } } else g.stuck = 0;
       }
     }
-  } else if (mode === 'doll' && !ptrs.size && !tapeOn && Q.get('still') == null && idle(t)) { orbit.yaw += dt * 0.04; moving = true; }
+  } else if (mode === 'doll' && !ptrs.size && !tapeOn && !paintOn && Q.get('still') == null && idle(t)) { orbit.yaw += dt * 0.04; moving = true; }
   if (animateOpenables(dt)) { moving = true; shadowDirty = true; }
   if (moving) lastActive = t;
   // moving → lighter resolution; a moment after everything stops → one sharp frame, then nothing is drawn until something changes
