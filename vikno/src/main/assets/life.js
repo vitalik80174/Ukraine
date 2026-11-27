@@ -490,6 +490,8 @@ function renderLifePanel(){
   const hints=mysteryHints(); if ($("mystery")) $("mystery").innerHTML=hints.map(h=>`<li>${h}</li>`).join("");
   const n=store.get("catCount",0), today=store.get("catDay","")===dayKey(d);
   if ($("catInfo")) $("catInfo").innerHTML=`Щодня на якомусь даху ховається кіт. Знайдіть і торкніться його.<br><b>Знайдено: ${n}</b>${today?" · сьогодні вже знайшли":""}`;
+  const rb=store.get("rainbows",0);
+  if ($("rbInfo")) $("rbInfo").innerHTML=`Буває після дощу, коли низьке сонце світить у спину: зранку — праворуч, надвечір — ліворуч, а вдень і взимку майже ніколи.<br><b>${rb?`Побачено веселок: ${rb}`:"Ще жодної — чекаємо на сонце після дощу"}</b>`;
 }
 function landmarkRing(){
   if (LIFE.ringUntil<tsec || !LIFE.ringAt) return;
@@ -509,6 +511,7 @@ function bell(n){
 }
 function lifeTap(x,y){
   if (!world || !world.tower) return false;
+  if (rainbowTap(x,y)) return true;
   const c=LIFE.cat;
   if (c && Math.hypot(x-c.x,y-(c.y-c.s*.7))<Math.max(26,c.s*2)){
     const d=now(), k=dayKey(d);
@@ -521,4 +524,66 @@ function lifeTap(x,y){
   if (Math.abs(x-t.cx)<t.tw*.8 && y>t.topY-H*.22 && y<t.topY+H*.12){ bell(1+(now().getHours()%3)); pigeonsUp(); toast("Дзень-дзелень!"); return true; }
   if (world.wins){ for(let i=0;i<world.wins.length;i++){ const w=world.wins[i]; if (x>w.x-4&&x<w.x+w.w+4&&y>w.y-4&&y<w.y+w.h+4){ LIFE.tapped[i]=tsec+600; return true; } } }
   return false;
+}
+
+/* ================= the rainbow: after rain, with a low sun at our back =================
+   A real rainbow is a ring of 42° around the point opposite the sun, so in a south-facing window it shows up
+   on the right in the morning and on the left in the evening, and never at a high sun. The secondary bow sits
+   at 51° with its colours reversed, the sky inside the main bow is brighter and the band between them darker
+   (Alexander's band). The bows are painted into a small canvas once a minute and scaled up, so they are soft
+   and cost almost nothing per frame. Preview: ?rainbow=1&h=19&m=7&wx=clear */
+const RB={k:0, cv:null, key:"", shown:false, poly:null};
+const RB_COLS=[[255,40,40],[255,130,30],[255,230,40],[70,220,70],[40,150,255],[80,70,230],[150,60,210]];
+function rainbowWant(W_,sp){
+  if (LQ.get("rainbow")) return sp.el>-1 && sp.el<41 ? 1 : 0;
+  if (sp.el<1 || sp.el>40 || W_.snow || W_.fog || W_.storm || W_.temp<1) return 0;
+  const sun=clamp((.92-W_.cloud)/.35);                                  // the sun has to break through
+  const rain=W_.rain>0 && W_.rain<=.6 ? 1 : smooth(.25,.7,LIFE.wet)*(W_.rain?0:1); // light rain now, or just after
+  return sun*rain*smooth(1,5,sp.el)*(1-smooth(32,40,sp.el));
+}
+function rainbowCone(sp,R){ // points (az, el) on a ring of angular radius R around the antisolar point
+  const d=Math.PI/180, ae=-sp.el*d, aa=(sp.az+180)*d;
+  const A=[Math.cos(ae)*Math.sin(aa),Math.cos(ae)*Math.cos(aa),Math.sin(ae)];      // x east, y north, z up
+  const U=[Math.cos(aa),-Math.sin(aa),0], V=[A[1]*U[2]-A[2]*U[1],A[2]*U[0]-A[0]*U[2],A[0]*U[1]-A[1]*U[0]];
+  const out=[], cr=Math.cos(R*d), sr=Math.sin(R*d);
+  for(let i=0;i<=120;i++){ const t=i/120*Math.PI*2, c=Math.cos(t)*sr, s=Math.sin(t)*sr;
+    const x=A[0]*cr+U[0]*c+V[0]*s, y=A[1]*cr+U[1]*c+V[1]*s, z=A[2]*cr+U[2]*c+V[2]*s;
+    const az=Math.atan2(x,y)/d, c0=(sp.az+180)%360; out.push({az:c0+((az-c0)%360+540)%360-180, el:Math.asin(clamp(z,-1,1))/d}); }
+  return out;
+}
+function paintRainbow(sp){
+  const sc=.35, w=Math.max(2,W*sc|0), h=Math.max(2,H*.56*sc|0);
+  if (!RB.cv) RB.cv=document.createElement("canvas");
+  RB.cv.width=w; RB.cv.height=h; const g=RB.cv.getContext("2d");
+  const P=p=>[w*(p.az-90)/180, h/.56*(.5-p.el/80)];
+  const band=(r1,r2,fill)=>{ const a=rainbowCone(sp,r1), b=rainbowCone(sp,r2);
+    g.fillStyle=fill; g.beginPath(); a.forEach((p,i)=>{ const q=P(p); i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]); });
+    for(let i=b.length-1;i>=0;i--){ const q=P(b[i]); g.lineTo(q[0],q[1]); } g.closePath(); g.fill("evenodd"); };
+  // brighter sky inside the main bow, darker band between the bows
+  for(let k=0;k<8;k++) band(28+k*1.5,29.5+k*1.5,`rgba(255,255,250,${.015+k*.008})`);
+  band(42.4,50.4,"rgba(20,30,50,.07)");
+  // the main bow: red outside (42.3°) to violet inside (40.6°), then the faint reversed secondary
+  const N=21;
+  for(let i=0;i<N;i++){ const f=i/(N-1), c=colAt(f), r=42.4-f*2.2; band(r-.12,r+.01,rgb(c,.55)); }
+  for(let i=0;i<N;i++){ const f=i/(N-1), c=colAt(f), r=50.3+f*2.8; band(r,r+.15,rgb(c,.22)); }
+  function colAt(f){ const x=f*(RB_COLS.length-1), i=Math.min(RB_COLS.length-2,x|0); return mix(RB_COLS[i],RB_COLS[i+1],x-i); }
+  // where the bow touches the sky, for tapping
+  RB.poly=rainbowCone(sp,41.5).filter(p=>p.el>0&&p.el<60).map(p=>[W*(p.az-90)/180, H*(.5-p.el/80)]).filter(q=>q[0]>-20&&q[0]<W+20);
+}
+function lifeRainbow(dt,d,S,W_,sp){
+  const want=rainbowWant(W_,sp);
+  RB.k+=(want-RB.k)*Math.min(1,dt/(want>RB.k?25:40));                  // fades in and out slowly, like the real thing
+  if (LQ.get("rainbow")) RB.k=want;
+  if (RB.k<.02){ if (want===0){ RB.shown=false; RB.poly=null; } return; }
+  const key=`${W}x${H}:${sp.el.toFixed(1)}:${sp.az.toFixed(1)}`;
+  if (key!==RB.key){ RB.key=key; paintRainbow(sp); }
+  if (!RB.poly || !RB.poly.length) return;
+  ctx.save(); ctx.globalAlpha=RB.k*(.55+.45*S.day)*(1-W_.cloud*.35);   ctx.drawImage(RB.cv,0,0,W,H*.56); ctx.restore();
+  if (!RB.shown && RB.k>.5 && !LQ.get("rainbow")){ RB.shown=true; store.set("rainbows",store.get("rainbows",0)+1); toast("Над Львовом веселка! Торкніться її й загадайте бажання"); renderLifePanel(); }
+}
+function rainbowTap(x,y){
+  if (RB.k<.3 || !RB.poly) return false;
+  if (!RB.poly.some(q=>Math.hypot(q[0]-x,q[1]-y)<H*.05)) return false;
+  const W8=["Бажання загадано. Хай збудеться!","Кажуть, під веселкою лежить скарб — десь біля Високого Замку","Веселка — це сонце, розкладене дощем на сім кольорів","Подивіться вище: там друга, блідіша веселка з кольорами навпаки"];
+  toast(W8[(store.get("rbTap",0))%W8.length]); store.set("rbTap",store.get("rbTap",0)+1); return true;
 }

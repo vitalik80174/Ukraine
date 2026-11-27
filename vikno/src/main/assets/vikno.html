@@ -120,6 +120,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div class="card2" id="fact"></div>
   <h2>Знайди кота</h2>
   <div class="card2" id="catInfo">Щодня на якомусь даху ховається кіт. Знайдіть і торкніться його.</div>
+  <h2>Веселка</h2>
+  <div class="card2" id="rbInfo"></div>
   <h2>Таємниця вікна</h2>
   <div class="card2">Одне вікно в місті світиться завжди. Щодня відкривається нова підказка — торкніться його, щоб прочитати.<ul class="story" id="mystery"></ul></div>
   <h2>Щоденник змін</h2>
@@ -581,6 +583,9 @@ function frame(ms){
   // the city's own light glows on low clouds and mist at night
   if (night>.5 && (W_.cloud>.4 || W_.fog)){ const a=(night-.5)*2*Math.max(W_.cloud-.3,W_.fog?.6:0)*.32, cg=ctx.createLinearGradient(0,H*.25,0,H*.55);
     cg.addColorStop(0,"rgba(255,150,80,0)"); cg.addColorStop(1,`rgba(255,150,80,${a})`); ctx.fillStyle=cg; ctx.fillRect(0,H*.25,W,H*.3); }
+
+  // a rainbow after rain, opposite the sun
+  lifeRainbow(dt, d, S, W_, sp);
 
   // terrain + house
   paintTerrain(S, season, W_);
