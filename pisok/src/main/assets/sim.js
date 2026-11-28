@@ -5,8 +5,9 @@
 const E=0, SAND=1, WATER=2, STONE=3, FIRE=4, PLANT=5, LAVA=6, STEAM=7, SNOW=8, SMOKE=9, METAL=10, GLASS=11, OIL=12, ACID=13,
       POWDER=14, ICE=15, SALT=16, SALTWATER=17, ASH=18, SEED=19, WOOD=20, COAL=21, GAS=22, NITRO=23, CEMENT=24, CLONE=25,
       VOID=26, SPARK=27, ANT=28, FISH=29, FLOWER=30, HEATER=31, COOLER=32, CLOUD=33, BATTERY=34, LAMP=35, MERCURY=36,
-      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42, FIREFLY=43, MUSH=44, SPORE=45, MOTH=46, BAT=47;
-const N=48;
+      WETSAND=37, THERMITE=38, MOLTEN=39, CLAY=40, BRICK=41, BIRD=42, FIREFLY=43, MUSH=44, SPORE=45, MOTH=46, BAT=47,
+      HIVE=48, BEE=49, HONEY=50;
+const N=51;
 // kind: p powder, l liquid, g gas, w wall (static, pressure-tight), s static (porous)
 const MAT=[];
 function def(id,name,kind,col,v,dens,cond,extra={}){ MAT[id]=Object.assign({id,name,kind,col,v,dens,cond,fill:.5,t0:null,ign:null},extra); }
@@ -58,6 +59,9 @@ def(MUSH,"Світний гриб","s",[226,218,198],10,9,.1,{fill:1,ign:220});
 def(SPORE,"Світні гриби","p",[150,230,200],10,.6,.1,{fill:.05,ign:150});
 def(MOTH,"Метелик","p",[214,198,166],12,.4,.1,{fill:.025});
 def(BAT,"Кажан","p",[58,48,56],8,.5,.1,{fill:.015});
+def(HIVE,"Вулик","s",[226,166,62],10,9,.1,{fill:1,ign:240});
+def(BEE,"Бджола","p",[246,196,46],0,.5,.1,{fill:.02});
+def(HONEY,"Мед","l",[206,128,26],8,1.45,.2,{fill:.6});
 
 const tbl=(f)=>{ const a=new Array(N); for(let i=0;i<N;i++) a[i]=f(MAT[i]); return a; };
 const DENS=tbl(m=>m.dens), COND=tbl(m=>m.cond), KIND=tbl(m=>m.kind), IGN=tbl(m=>m.ign);
@@ -68,7 +72,7 @@ const WALL=tbl(m=>m.kind==="w");
 const GASK=tbl(m=>m.kind==="g"&&m.id!==E);
 const MOVES=tbl(m=>(m.kind==="p"||m.kind==="l"||m.kind==="g")&&m.id!==E ? (m.id===LAVA||m.id===CEMENT?.3:1) : 0);
 const CONDUCT=tbl(m=>m.id===METAL||m.id===WATER||m.id===SALTWATER||m.id===MERCURY||m.id===LAMP||m.id===MOLTEN);
-const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[FIREFLY]:.4,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05,[MUSH]:.2,[SPORE]:.3,[MOTH]:.4,[BAT]:.3})[m.id]||0);
+const ACIDEATS=tbl(m=>({[STONE]:.05,[SAND]:.08,[PLANT]:.15,[METAL]:.03,[ICE]:.1,[SNOW]:.2,[POWDER]:.1,[WOOD]:.08,[SALT]:.2,[ASH]:.2,[COAL]:.1,[CEMENT]:.05,[FLOWER]:.2,[SEED]:.2,[ANT]:.3,[FISH]:.3,[BIRD]:.3,[FIREFLY]:.4,[BRICK]:.03,[CLAY]:.1,[WETSAND]:.08,[THERMITE]:.1,[BATTERY]:.02,[LAMP]:.05,[MUSH]:.2,[SPORE]:.3,[MOTH]:.4,[BAT]:.3,[HIVE]:.1,[BEE]:.4})[m.id]||0);
 const FLOWERS=[[232,72,96],[250,206,60],[246,150,200],[245,245,245],[160,110,230],[255,140,60]];
 
 /* ================= world state ================= */
@@ -105,7 +109,7 @@ function rnb(x,y){ const [dx,dy]=NB4[rnd()*4|0]; const nx=x+dx, ny=y+dy; return 
 function count8(x,y,t){ let c=0; for(const [dx,dy] of NB8) if (at(x+dx,y+dy)===t) c++; return c; }
 
 /* ================= events for sound & haptics (ui.js listens) ================= */
-const EV={boom:0,crack:0,glass:0,sizzle:0,fire:0,zap:0,chirp:0};
+const EV={boom:0,crack:0,glass:0,sizzle:0,fire:0,zap:0,chirp:0,buzz:0};
 
 /* ================= heat ================= */
 function heat(){
@@ -259,6 +263,9 @@ function cell(x,y){
         case SPORE: spore(i,x,y); break;
         case MOTH: moth(i,x,y); break;
         case BAT: bat(i,x,y); break;
+        case HIVE: hive(i,x,y); break;
+        case BEE: bee(i,x,y); break;
+        case HONEY: honey(i,x,y); break;
       }
       if (pActive && MOVES[T[i]] && !M[i]) push(i,x,y,T[i]);
 }
@@ -361,12 +368,12 @@ function spark(i,x,y){
 }
 function zapTouch(j,u){ // what electricity does to its neighbour
   if (u===GAS||u===POWDER||u===NITRO||u===OIL||u===PLANT||u===WOOD||u===COAL||u===FLOWER||u===SEED) H[j]+=400;
-  else if (u===FISH||u===ANT||u===FIREFLY||u===BIRD||u===MOTH||u===BAT) conv(j,ASH);
+  else if (u===FISH||u===ANT||u===FIREFLY||u===BIRD||u===MOTH||u===BAT||u===BEE) conv(j,ASH);
   else if (u===MUSH||u===SPORE) H[j]+=200;
 }
 const HEAD=30;
 function electric(i,x,y){ // conductors carry pulses: head (30) → a long rest (29…1) so a wave never feeds on itself → ready (0)
-  if (L[i]===HEAD){ each4(x,y,(j)=>{ const u=T[j]; if (CONDUCT[u] && L[j]===0){ L[j]=HEAD; M[j]=1; } else if (u!==T[i] && u!==MOTH && u!==BAT) zapTouch(j,u); }); H[i]+=T[i]===METAL?6:2; EV.zap++; }
+  if (L[i]===HEAD){ each4(x,y,(j)=>{ const u=T[j]; if (CONDUCT[u] && L[j]===0){ L[j]=HEAD; M[j]=1; } else if (u!==T[i] && u!==MOTH && u!==BAT && u!==BEE) zapTouch(j,u); }); H[i]+=T[i]===METAL?6:2; EV.zap++; }
   L[i]--;
 }
 function conductor(i,x,y){ if (L[i]) electric(i,x,y); }
@@ -413,6 +420,7 @@ function ant(i,x,y){
   if (f===E){ if (at(fx+GX,fy+GY)===E && at(x+GX,y+GY)!==E && rnd()<.7){ L[i]=3-L[i]; return; } swap(i,fy*GW+fx); return; }
   if ((f===SAND||f===ASH||f===SALT||f===WETSAND||f===CLAY) && rnd()<.12){ swap(i,fy*GW+fx); return; }   // dig a tunnel
   if (f===SEED && rnd()<.05){ const j=fy*GW+fx; put(j,ANT); L[j]=3-L[i]; M[j]=1; return; }              // eat a seed, hatch a friend
+  if (f===HONEY && rnd()<.03){ const j=fy*GW+fx; put(j,antsN<150?ANT:E); if (T[j]===ANT) L[j]=3-L[i]; M[j]=1; return; }   // ants love honey
   if (at(fx-GX,fy-GY)===E && at(x-GX,y-GY)===E){ swap(i,(fy-GY)*GW+fx-GX); return; }                    // climb a step
   L[i]=3-L[i];
 }
@@ -453,7 +461,7 @@ function bird(i,x,y){ // flies about, keeps off the ground, pecks at seeds
   if (rnd()<.01) dir=-dir;
   const nx=x+dir, ny=y+dy, u=at(nx,ny);
   if (u===E){ swap(i,ny*GW+nx); S[ny*GW+nx]=(S[ny*GW+nx]&~1)|(dir>0?1:0); }
-  else { S[i]^=1; if ((u===SEED||u===MOTH) && rnd()<.3){ T[ny*GW+nx]=E; L[ny*GW+nx]=0; } }
+  else { S[i]^=1; if ((u===SEED||u===MOTH||u===BEE) && rnd()<.3){ T[ny*GW+nx]=E; L[ny*GW+nx]=0; } }
 }
 // fireflies: each one has its own clock (L counts up to FLY_PER) and flashes when it runs out.
 // A flash nudges the clocks of fireflies nearby a little forward, so after a while whole swarms blink together.
@@ -497,7 +505,7 @@ const mRole=i=>(L[i]>>4)&3, mLight=i=>L[i]>>6;
 function setMush(i,role,bud,light){ T[i]=MUSH; L[i]=(Math.min(MLIGHT,light|0)<<6)|(role<<4)|bud; M[i]=1; }
 const MUSHBED=tbl(m=>({[WOOD]:1,[ASH]:.8,[WETSAND]:.7,[CLAY]:.6,[COAL]:.6,[PLANT]:.4,[STONE]:.15,[BRICK]:.15,[MUSH]:0})[m.id]||0);
 // the beacon map: how bright each 6×6 block is, refreshed every 8 frames; moths read it to find light
-const BS=6; let BW=0, BH=0, BEAC=null, MOTHB=null, BATB=null, ROOSTB=null, mushCount=0, mothCount=0, batCount=0;
+const BS=6; let BW=0, BH=0, BEAC=null, MOTHB=null, BATB=null, ROOSTB=null, FLOWB=null, HIVEB=null, mushCount=0, mothCount=0, batCount=0, beeCount=0, antsN=0;
 function lightOf(i,t){
   switch(t){
     case LAMP: return L[i]?8:0;
@@ -512,13 +520,14 @@ function lightOf(i,t){
 }
 function beacons(){
   BW=Math.ceil(GW/BS); BH=Math.ceil(GH/BS);
-  if (!BEAC || BEAC.length!==BW*BH){ BEAC=new Float32Array(BW*BH); MOTHB=new Uint16Array(BW*BH); BATB=new Uint8Array(BW*BH); ROOSTB=new Uint8Array(BW*BH); } else { BEAC.fill(0); MOTHB.fill(0); BATB.fill(0); }
-  let mc=0, oc=0, bc=0;
+  if (!BEAC || BEAC.length!==BW*BH){ BEAC=new Float32Array(BW*BH); MOTHB=new Uint16Array(BW*BH); BATB=new Uint8Array(BW*BH); ROOSTB=new Uint8Array(BW*BH); FLOWB=new Uint8Array(BW*BH); HIVEB=new Uint8Array(BW*BH); } else { BEAC.fill(0); MOTHB.fill(0); BATB.fill(0); FLOWB.fill(0); HIVEB.fill(0); }
+  let mc=0, oc=0, bc=0, ec=0, an=0;
   for(let y=0;y<GH;y++){ const row=y*GW, br=((y/BS)|0)*BW;
     for(let x=0;x<GW;x++){ const i=row+x, t=T[i]; if (t===E) continue;
+      if (t===FLOWER){ const k=br+((x/BS)|0); if (FLOWB[k]<255) FLOWB[k]++; continue; } else if (t===HIVE){ HIVEB[br+((x/BS)|0)]=1; continue; } else if (t===BEE){ ec++; continue; } else if (t===ANT){ an++; continue; }
       if (t===MUSH) mc++; else if (t===MOTH){ oc++; MOTHB[br+((x/BS)|0)]++; continue; } else if (t===BAT){ bc++; const k=br+((x/BS)|0); if (BATB[k]<255) BATB[k]++; if (!(S[i]&4) && !outside(x-GX,y-GY) && ROOF[T[i-GX-GW*GY]]) ROOSTB[k]=1; continue; }   // a sleeping bat marks its roost
       const w=lightOf(i,t); if (w) BEAC[br+((x/BS)|0)]+=w; } }
-  mushCount=mc; mothCount=oc; batCount=bc;
+  mushCount=mc; mothCount=oc; batCount=bc; beeCount=ec; antsN=an;
 }
 function mushAt(x,y,h,half,hue,light){ // a whole mushroom standing on (x,y): a stem h cells tall and a domed cap
   const ux=-GX, uy=-GY; let cx=x, cy=y;
@@ -652,6 +661,73 @@ function batMove(i,x,y,mx,my){
   else if (u===E || GASK[u]){ S[i]^=1; }                                                  // hot air or smoke: turn away
   else { S[i]^=1; const sx=x+mx, sy=y; if (mx && my && !outside(sx,sy) && T[sy*GW+sx]===E) swap(i,sy*GW+sx); }   // slide along walls
 }
+/* ================= bees, hives & honey ================= */
+// by day a bee flies to flowers (the flower map shows where they bloom), sips nectar and carries it home to the nearest hive.
+// A hive turns every eight loads into a drop of honey that oozes out of it, and now and then a new bee hatches.
+// Bees carry pollen too: a visited flower sometimes drops a seed. Smoke calms them, at dusk and at night they go home and sleep.
+// L — 1 while carrying nectar. S bit 0 — which way it flies, bit 1 — up or down.
+const HONEYLOADS=8;
+function beeSpawn(x,y){ const j=rnb(x,y); if (j>=0 && T[j]===E){ put(j,BEE); M[j]=1; beeCount++; } }
+function hive(i,x,y){
+  if (L[i]>=HONEYLOADS){ const cand=[[GX,GY],[PX,PY],[-PX,-PY]]; let done=false;
+    for(const [dx,dy] of cand){ const nx=x+dx, ny=y+dy; if (outside(nx,ny)) continue; const j=ny*GW+nx;
+      if (T[j]===E){ put(j,HONEY); H[j]=H[i]; M[j]=1; L[i]-=HONEYLOADS; done=true; break; } }
+    if (!done){ const d=rnd()<.6?[GX,GY]:cand[1+(rnd()*2|0)], nx=x+d[0], ny=y+d[1];          // no way out here: the honey seeps down through the combs
+      if (!outside(nx,ny) && T[ny*GW+nx]===HIVE && L[ny*GW+nx]<60000-HONEYLOADS){ L[ny*GW+nx]+=HONEYLOADS; L[i]-=HONEYLOADS; } } }
+  if (beeCount<3 && simSky===0 && rnd()<.0002) beeSpawn(x,y);                          // an empty hive slowly gets a swarm of its own
+}
+function honey(i,x,y){
+  if (H[i]>160 && rnd()<.01){ conv(i,SMOKE); return; }                                  // it burns into caramel smoke
+  const j=rnb(x,y); if (j>=0 && (T[j]===WATER) && rnd()<.002){ conv(i,WATER); return; }  // slowly dissolves in water
+  if (rnd()<(H[i]<10?.04:.22)) flow(i,x,y,HONEY,1);                                     // thick, and thicker in the cold
+}
+function beeTarget(i,x,y,map,R,weigh){
+  if (!map) return null; const bx=(x/BS)|0, by=(y/BS)|0; let best=-1, tx=-1, ty=-1;
+  for(let yy=Math.max(0,by-R);yy<=Math.min(BH-1,by+R);yy++) for(let xx=Math.max(0,bx-R);xx<=Math.min(BW-1,bx+R);xx++){
+    const n=map[yy*BW+xx]; if (!n) continue; const dx=xx-bx, dy=yy-by;
+    const sc= weigh ? Math.min(n,12)*(1+((S[i]*7+xx*13+yy*5)&15)/12)/(1+(dx*dx+dy*dy)*.08) : 1/(1+dx*dx+dy*dy);   // each bee has its favourite patches
+    if (sc>best){ best=sc; tx=xx; ty=yy; } }
+  if (tx<0) return null;
+  if (Math.abs(tx-bx)<=1 && Math.abs(ty-by)<=1){                                          // close: look for the exact cell
+    const want= map===HIVEB ? HIVE : FLOWER; let bd=1e9, cx=-1, cy=-1;
+    for(let dy=-5;dy<=5;dy++) for(let dx=-5;dx<=5;dx++){ if (at(x+dx,y+dy)!==want || outside(x+dx,y+dy)) continue; const d=dx*dx+dy*dy; if (d<bd){ bd=d; cx=x+dx; cy=y+dy; } }
+    if (cx>=0) return [cx,cy]; }
+  return [tx*BS+3, ty*BS+3];
+}
+function bee(i,x,y){
+  if (H[i]>55 || H[i]<-8){ conv(i,ASH); return; }
+  if (count8(x,y,WATER)+count8(x,y,SALTWATER)>3 && rnd()<.03){ conv(i,ASH); return; }
+  if (rnd()<.00003){ T[i]=E; L[i]=0; beeCount--; return; }                              // a long, busy life comes to an end
+  if (count8(x,y,SMOKE) && rnd()<.95) return;                                           // smoke makes them drowsy
+  if (rnd()<.3) return;
+  const full=L[i]>0;
+  for(const [dx,dy] of NB8){ const nx=x+dx, ny=y+dy; if (outside(nx,ny)) continue; const j=ny*GW+nx, u=T[j];
+    if (u===FLOWER && !full && simSky===0 && rnd()<.3){ L[i]=1; S[i]^=1; EV.buzz+=.4;
+      if (rnd()<.07){ const k=rnb(nx,ny); if (k>=0 && T[k]===E){ put(k,SEED); M[k]=1; } }   // pollen: the flower sets a seed
+      return; }
+    if (u===HIVE){
+      if (full){ L[i]=0; L[j]=Math.min(60000,L[j]+1); EV.buzz+=.2; if (beeCount<70 && rnd()<.05) beeSpawn(x,y); return; }
+      if (simSky>0){ if (rnd()<.01){ const k=rnb(x,y); if (k>=0 && T[k]===E && count8((k%GW),(k/GW)|0,HIVE)) swap(i,k); } return; } } }   // asleep by the hive
+  const home=full || simSky>0;
+  const tg= home ? beeTarget(i,x,y,HIVEB,45,false) : beeTarget(i,x,y,FLOWB,24,true);
+  let mx, my;
+  if (tg){ const dx=tg[0]-x, dy=tg[1]-y; mx=Math.sign(dx); my=Math.sign(dy);
+    if (rnd()<.3) mx=(rnd()*3|0)-1; if (rnd()<.3) my=(rnd()*3|0)-1;                       // a wobbly, buzzing flight
+    if (mx) S[i]=(S[i]&~1)|(mx>0?1:0); EV.buzz+=.01; }
+  else if (simSky>0){                                                                    // no hive: settle wherever it is
+    const b=at(x+GX,y+GY); if (b!==E && !GASK[b]) return; mx=GX; my=GY; }
+  else {                                                                                 // nothing in bloom: hover about
+    let side=(S[i]&1)?1:-1; if (rnd()<.05){ side=-side; S[i]^=1; }
+    let gap=99; for(let k=1;k<=16;k++){ const u=at(x+GX*k,y+GY*k); if (u!==E && !GASK[u]){ gap=k; break; } }
+    const r=rnd(), vert= gap<3 ? -1 : gap>14 ? 1 : (r<.33?-1:r<.66?1:0);
+    mx=PX*side+GX*vert; my=PY*side+GY*vert; }
+  if (!mx && !my) return;
+  const nx=x+mx, ny=y+my; if (outside(nx,ny)){ S[i]^=1; return; }
+  const j=ny*GW+nx;
+  if (T[j]===E && H[j]<50) swap(i,j);
+  else { S[i]^=1; const ux=x-GX, uy=y-GY; if (!outside(ux,uy) && T[uy*GW+ux]===E && rnd()<.5) swap(i,uy*GW+ux); }   // bump: hop over it
+}
+
 /* ================= lightning ================= */
 function lightning(cx,cy){ // a jagged bolt from the sky that homes in on the touched point and strikes the first solid thing
   let x=Math.max(0,Math.min(GW-1,cx+((rnd()-.5)*GW*.25|0))), y=0;
@@ -828,3 +904,26 @@ SCENES.bats=function(){ sceneSky=1;
   for(let k=0;k<70;k++){ const x=Math.round(GW*(.45+rnd()*.53)), y=ground(x)-4-(rnd()*34|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,MOTH); }
   for(let k=0;k<18;k++){ const x=Math.round(GW*(.5+rnd()*.45)), y=ground(x)-3-(rnd()*10|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,FIREFLY); } };
 SCENE_LIST.push(["bats","Печера кажанів","Удень кажани сплять під склепінням печери, а в сутінках вилітають полювати на метеликів біля ліхтаря"]);
+SCENES.apiary=function(){ sceneSky=0;
+  const ground=x=>Math.round(GH*(.76-.04*Math.sin(x/GW*4.6+.4)-.012*Math.sin(x/GW*27)));
+  for(let x=0;x<GW;x++){ const g=ground(x); for(let y=g;y<GH;y++) put(y*GW+x, y<g+4?WETSAND:y<g+8?CLAY:STONE); }
+  const pond=Math.round(GW*.2), pw=Math.round(GW*.09);                                  // a little pond to drink from
+  for(let x=pond-pw;x<pond+pw;x++){ const d=Math.round(9*Math.sqrt(Math.max(0,1-((x-pond)/pw)**2))), g=ground(x); for(let y=g;y<g+d;y++) put(y*GW+x,WATER); }
+  for(let k=0;k<4;k++){ const x=pond-pw+5+(rnd()*(pw*2-10)|0), y=ground(x)+3; if (T[y*GW+x]===WATER) put(y*GW+x,FISH); }
+  for(let x=2;x<GW-2;x+=1+(rnd()*3|0)){ if (Math.abs(x-pond)<pw+1) continue; const g=ground(x);   // a meadow in bloom
+    const h=1+(rnd()*5|0), flower=rnd()<.55;
+    for(let k=1;k<=h;k++){ const i=(g-k)*GW+x; if (T[i]!==E) break; put(i,PLANT); S[i]=48+(rnd()*20|0); }
+    if (flower){ const i=(g-h-1)*GW+x; if (T[i]===E){ put(i,FLOWER); S[i]=rnd()*256|0; } } }
+  const box=(cx,w,h)=>{ const g=Math.max(ground(cx-(w>>1)),ground(cx+(w>>1)));                // a hive on two legs under a little roof
+    for(let y=g-4;y<g+1;y++){ put(y*GW+cx-(w>>1)+1,WOOD); put(y*GW+cx+(w>>1)-2,WOOD); }
+    const top=g-4-h; for(let y=top;y<g-4;y++) for(let x=cx-(w>>1);x<cx+(w>>1);x++){ const i=y*GW+x; put(i,HIVE); L[i]=rnd()<.4?3:0; }
+    rect(cx-(w>>1)-2,top-2,cx+(w>>1)+2,top,WOOD); rect(cx-(w>>1)-1,top-3,cx+(w>>1)+1,top-2,WOOD);
+    for(let k=0;k<12;k++){ const x=cx-12+(rnd()*24|0), y=top-4-(rnd()*14|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,BEE); } };
+  box(Math.round(GW*.6),12,10); box(Math.round(GW*.78),10,9);
+  const tx=Math.round(GW*.93), tg=ground(tx), th=Math.round(GH*.36);                    // a blossoming apple tree
+  for(let y=tg-th;y<tg;y++) for(let x=tx-1;x<=tx;x++) put(y*GW+x,WOOD);
+  for(let k=0;k<190;k++){ const a=rnd()*Math.PI*2, d=Math.sqrt(rnd())*th*.4, x=Math.round(tx+Math.cos(a)*d*1.3), y=Math.round(tg-th+Math.sin(a)*d*.75);
+    if (!outside(x,y) && T[y*GW+x]===E){ const i=y*GW+x; if (rnd()<.22){ put(i,FLOWER); S[i]=3; } else put(i,PLANT); } }
+  for(let k=0;k<20;k++){ const x=Math.round(GW*(.3+rnd()*.6)), y=ground(x)-8-(rnd()*16|0); if (y>0 && T[y*GW+x]===E) put(y*GW+x,BEE); }
+  for(let k=0;k<5;k++){ const x=Math.round(GW*(.36+rnd()*.1)), y=ground(x)-1; if (T[y*GW+x]===E) put(y*GW+x,ANT); } };
+SCENE_LIST.push(["apiary","Пасіка","Бджоли літають на квіти по нектар і несуть його у вулики, а з вуликів крапає мед. Квіти, які відвідали бджоли, дають насіння"]);

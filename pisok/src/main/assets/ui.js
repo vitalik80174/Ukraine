@@ -61,7 +61,7 @@ function tcol(h){ // temperature colour: icy blue below room temperature, dark a
 }
 const SKY_AMB=[null,[150,108,132],[42,50,86]];
 const MHUE=[[90,235,205],[110,170,255],[170,255,120]];   // glowing mushrooms: sea-green, blue, lime
-const BATS=[];
+const BATS=[], BEES=[];
 function render(){
   const tick=frame, glow=settings.glow, sk=view?0:skyNow(), lit=sk>0, emit=glow||lit;
   bg=bgs[sk];
@@ -103,11 +103,13 @@ function render(){
           case SPORE:{ const hc=MHUE[S[i]%3]; r=hc[0]*.85; g=hc[1]*.85; bl=hc[2]*.85; if (lit) nbuf[i]=pack(hc[0]*.4|0,hc[1]*.4|0,hc[2]*.4|0); break; }
           case MOTH:{ const fly=simSky>0 && T[i+GW*GY+GX]===E, up=fly && (((tick>>1)+S[i])&1); r=up?236:c[0]+s*8; g=up?226:c[1]+s*8; bl=up?204:c[2]+s*8; if (lit) nbuf[i]=pack(up?70:44,up?64:40,up?54:34); break; }
           case BAT:{ const hang=ROOF[T[i-GW*GY-GX]]&&!(S[i]&4); r=hang?104:34+s*6; g=hang?84:28+s*6; bl=hang?78:34+s*6; if (lit) nbuf[i]=hang?pack(34,28,30):pack(44,42,60); if (!hang && BATS.length<400) BATS.push(i); break; }
+          case BEE:{ const st=(((tick>>1)+S[i])&3)===0; r=st?64:L[i]?255:248; g=st?44:L[i]?168:204; bl=st?20:L[i]?30:54; if (BEES.length<300) BEES.push(i); break; }
+          case HIVE:{ const hx=(x+((((y/3)|0)&1)?2:0))&3, edge=hx===0||y%3===0, full=L[i]>2; r=(edge?166:full?242:224)+s*6; g=(edge?108:full?148:170)+s*6; bl=(edge?34:full?22:82)+s*4; break; }
           case BIRD:{ const up=((tick>>2)+S[i])&1; r=up?235:160; g=up?238:166; bl=up?245:180; break; }
           case HEATER:{ const f=.5+.5*Math.sin(tick*.05+x*.3); r=200+f*40; g=80+f*30; bl=40; er=120*f; eg=40*f; break; }
           case COOLER:{ r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v; break; }
           default:{ r=c[0]+s*v; g=c[1]+s*v; bl=c[2]+s*v;
-            if (t===WATER||t===SALTWATER||t===ACID||t===OIL||t===NITRO||t===MERCURY){ const w=Math.sin(tick*.05+x*.3+y*.2)*(t===OIL?3:6); r+=w; g+=w; bl+=w;
+            if (t===WATER||t===SALTWATER||t===ACID||t===OIL||t===NITRO||t===MERCURY||t===HONEY){ const w=Math.sin(tick*.05+x*.3+y*.2)*(t===OIL?3:6); r+=w; g+=w; bl+=w;
               if (y>0 && T[i-GW]===E){ r+=t===OIL?20:40; g+=t===OIL?18:40; bl+=t===OIL?10:30; } }
             if ((t===WOOD||t===COAL) && L[i]>0){ const f=.5+.5*Math.sin(tick*.3+S[i]); r=lerp(r,255,.5+f*.3); g=lerp(g,110,.5); bl=lerp(bl,30,.6); er=200; eg=80; eb=10; }
             if (t===FISH && (tick>>3)%2) { r+=20; g+=20; } }
@@ -127,6 +129,9 @@ function render(){
   for(const i of BATS){ const x=i%GW, y=(i/GW)|0, ph=((tick>>1)+S[i])&3, dy=ph===0?-1:ph===2?1:0, w=pack(26,20,28);   // flapping wings either side of the body
     for(const sd of [-1,1]){ const wx=x+PX*sd-GX*dy, wy=y+PY*sd-GY*dy; if (wx>=0&&wy>=0&&wx<GW&&wy<GH && T[wy*GW+wx]===E){ buf[wy*GW+wx]=w; if (lit) nbuf[wy*GW+wx]=pack(34,34,50); } } }
   BATS.length=0;
+  for(const i of BEES){ if (!((tick+S[i])&1)) continue; const x=i%GW, y=(i/GW)|0, wx=x-GX, wy=y-GY;     // fluttering wings
+    if (wx>=0&&wy>=0&&wx<GW&&wy<GH && T[wy*GW+wx]===E){ const b=buf[wy*GW+wx], k=.42; buf[wy*GW+wx]=pack(lerp(b&255,200,k)|0,lerp((b>>8)&255,226,k)|0,lerp((b>>16)&255,255,k)|0); } }
+  BEES.length=0;
   offCtx.putImageData(img,0,0);
   ctx.globalCompositeOperation="source-over"; ctx.filter="none";
   ctx.drawImage(off,0,0);
@@ -165,11 +170,11 @@ function setSky(m,quiet){ skyMode=m; store.set("sky",m); skyCheck=0; buildTop();
 /* ================= palette ================= */
 const CATS=[
   {id:"powder",name:"Сипке",items:[SAND,WETSAND,CLAY,SALT,SNOW,ASH,COAL,POWDER,THERMITE]},
-  {id:"liquid",name:"Рідини",items:[WATER,SALTWATER,OIL,ACID,LAVA,MERCURY,MOLTEN,NITRO,CEMENT]},
+  {id:"liquid",name:"Рідини",items:[WATER,SALTWATER,OIL,ACID,HONEY,LAVA,MERCURY,MOLTEN,NITRO,CEMENT]},
   {id:"gas",name:"Гази",items:[STEAM,SMOKE,GAS,CLOUD]},
   {id:"solid",name:"Тверде",items:[STONE,BRICK,METAL,GLASS,ICE,WOOD]},
   {id:"energy",name:"Енергія",items:[FIRE,SPARK,"bolt",BATTERY,LAMP,HEATER,COOLER,"hot","cold"]},
-  {id:"life",name:"Живе",items:[SEED,PLANT,FLOWER,SPORE,ANT,FISH,BIRD,FIREFLY,MOTH,BAT]},
+  {id:"life",name:"Живе",items:[SEED,PLANT,FLOWER,SPORE,ANT,FISH,BIRD,BEE,HIVE,FIREFLY,MOTH,BAT]},
   {id:"special",name:"Особливе",items:[CLONE,VOID]},
   {id:"tools",name:"Інструменти",items:["erase","wind","probe"]}
 ];
@@ -185,7 +190,7 @@ let cat=store.get("cat","powder"), current=store.get("cur",SAND);
 const SIZES=[1,2,4,7,11]; let sizeIx=store.get("size",2);
 const SPEEDS=[.5,1,2]; let speedIx=1, paused=false;
 function itemName(it){ return typeof it==="number" ? MAT[it].name : TOOLS[it].name; }
-function swatch(it){ if (typeof it==="string") return TOOLS[it].sw; if (it===FLOWER) return "conic-gradient(#e84860,#facc3c,#f696c8,#a06ee6,#e84860)"; if (it===SPORE) return "radial-gradient(ellipse 70% 45% at 50% 38%,#8ff0d4 0 55%,transparent 58%),linear-gradient(90deg,transparent 42%,#e2dac6 42% 58%,transparent 58%) bottom/100% 60% no-repeat,#1d2a30"; if (it===MOTH) return "radial-gradient(ellipse 30% 40% at 30% 50%,#e8dcc0 0 90%,transparent 95%),radial-gradient(ellipse 30% 40% at 70% 50%,#e8dcc0 0 90%,transparent 95%),#3a3428"; if (it===BAT) return "radial-gradient(circle at 50% 46%,#2a2028 0 14%,transparent 16%),conic-gradient(from 200deg at 50% 52%,transparent 0 40deg,#2a2028 40deg 140deg,transparent 140deg) ,linear-gradient(#5a6aa0,#2c3358)"; if (it===FIREFLY) return "radial-gradient(circle at 60% 60%,#efff8a 0 22%,#9fd04a 34%,#2a2c22 72%)"; return `rgb(${MAT[it].col})`; }
+function swatch(it){ if (typeof it==="string") return TOOLS[it].sw; if (it===FLOWER) return "conic-gradient(#e84860,#facc3c,#f696c8,#a06ee6,#e84860)"; if (it===SPORE) return "radial-gradient(ellipse 70% 45% at 50% 38%,#8ff0d4 0 55%,transparent 58%),linear-gradient(90deg,transparent 42%,#e2dac6 42% 58%,transparent 58%) bottom/100% 60% no-repeat,#1d2a30"; if (it===MOTH) return "radial-gradient(ellipse 30% 40% at 30% 50%,#e8dcc0 0 90%,transparent 95%),radial-gradient(ellipse 30% 40% at 70% 50%,#e8dcc0 0 90%,transparent 95%),#3a3428"; if (it===BAT) return "radial-gradient(circle at 50% 46%,#2a2028 0 14%,transparent 16%),conic-gradient(from 200deg at 50% 52%,transparent 0 40deg,#2a2028 40deg 140deg,transparent 140deg) ,linear-gradient(#5a6aa0,#2c3358)"; if (it===BEE) return "radial-gradient(ellipse 34% 26% at 34% 30%,#eef6ffcc 0 90%,transparent 95%),radial-gradient(ellipse 34% 26% at 66% 30%,#eef6ffcc 0 90%,transparent 95%),repeating-linear-gradient(90deg,#f6c42e 0 5px,#2a2016 5px 8px)"; if (it===HIVE) return "radial-gradient(circle,#f4a21c 0 34%,#a8701e 38% 46%,transparent 48%) 0 0/12px 10px,radial-gradient(circle,#f4a21c 0 34%,#a8701e 38% 46%,transparent 48%) 6px 5px/12px 10px,#e0aa52"; if (it===FIREFLY) return "radial-gradient(circle at 60% 60%,#efff8a 0 22%,#9fd04a 34%,#2a2c22 72%)"; return `rgb(${MAT[it].col})`; }
 function buildDock(){
   const tabs=$("tabs"); tabs.innerHTML="";
   for(const c of CATS){ const b=document.createElement("button"); b.className="tab"+(c.id===cat?" on":""); b.textContent=c.name; b.setAttribute("aria-pressed",c.id===cat);
@@ -203,7 +208,7 @@ function buildDock(){
 const HINTS={bolt:"Торкніться — з неба вдарить блискавка",wind:"Проведіть пальцем — вітер понесе пісок, воду й дим",probe:"Торкніться, щоб дізнатись матеріал, температуру й тиск",
   hot:"Тримайте палець — усе під ним нагрівається",cold:"Тримайте палець — усе під ним холоне",[CLONE]:"Клонер копіює перше, що його торкнеться, і створює це безкінечно",
   [VOID]:"Чорна діра поглинає все, що торкається",[SPARK]:"Іскра запускає струм по металу й воді",[SEED]:"Насіння проростає на мокрому піску чи попелі",
-  [CEMENT]:"Цемент тече, а за кілька секунд твердне в камінь",[NITRO]:"Нітро вибухає від тепла чи іскри — дуже сильно",[CLOUD]:"Хмара пливе й поливає дощем, а в мороз — снігом",[BATTERY]:"Батарейка двічі на секунду шле струм у дроти, що її торкаються",[LAMP]:"Лампа світиться, коли через неї йде струм",[MERCURY]:"Ртуть — важка рідина, що проводить струм",[THERMITE]:"Терміт горить при 2600°, плавить метал і лишає рідке залізо",[WETSAND]:"Мокрий пісок тримає форму — можна ліпити замки",[CLAY]:"Глина ліпиться, а в жарі понад 500° випікається в цеглу",[BIRD]:"Птахи літають, тримаються над землею й клюють насіння",[FIREFLY]:"Світлячки блимають, а сусіди поступово підлаштовуються — і зграя починає блимати разом. Найкраще видно вночі",[MOLTEN]:"Рідкий метал застигає нижче 1400° і підпалює все навколо",[SALT]:"Сіль розчиняється у воді й топить лід",[SPORE]:"Спори проростають на дереві, попелі, мокрому піску чи глині. Удень гриби запасають світло, а вночі світяться",[MOTH]:"Метелики вдень сидять, а ввечері й уночі летять до найяскравішого світла — лампи, вогню чи грибів. Якщо поруч кажан — складають крила й падають донизу",[BAT]:"Кажани вдень сплять униз головою під стелею печери, гілкою чи карнизом, а ввечері вилітають на полювання: на слух знаходять метеликів і ловлять їх на льоту. Світлячків не чіпають — вони несмачні"};
+  [CEMENT]:"Цемент тече, а за кілька секунд твердне в камінь",[NITRO]:"Нітро вибухає від тепла чи іскри — дуже сильно",[CLOUD]:"Хмара пливе й поливає дощем, а в мороз — снігом",[BATTERY]:"Батарейка двічі на секунду шле струм у дроти, що її торкаються",[LAMP]:"Лампа світиться, коли через неї йде струм",[MERCURY]:"Ртуть — важка рідина, що проводить струм",[THERMITE]:"Терміт горить при 2600°, плавить метал і лишає рідке залізо",[WETSAND]:"Мокрий пісок тримає форму — можна ліпити замки",[CLAY]:"Глина ліпиться, а в жарі понад 500° випікається в цеглу",[BIRD]:"Птахи літають, тримаються над землею й клюють насіння",[FIREFLY]:"Світлячки блимають, а сусіди поступово підлаштовуються — і зграя починає блимати разом. Найкраще видно вночі",[MOLTEN]:"Рідкий метал застигає нижче 1400° і підпалює все навколо",[SALT]:"Сіль розчиняється у воді й топить лід",[SPORE]:"Спори проростають на дереві, попелі, мокрому піску чи глині. Удень гриби запасають світло, а вночі світяться",[MOTH]:"Метелики вдень сидять, а ввечері й уночі летять до найяскравішого світла — лампи, вогню чи грибів. Якщо поруч кажан — складають крила й падають донизу",[BEE]:"Бджоли вдень літають на квіти по нектар і несуть його в найближчий вулик. Квітка, яку відвідала бджола, іноді дає насіння. Дим їх заспокоює, а ввечері вони повертаються додому спати",[HIVE]:"Вулик: з кожних восьми порцій нектару робить краплю меду, що витікає назовні, і час від часу з нього вилуплюється нова бджола. Порожній вулик сам приваблює рій",[HONEY]:"Мед дуже густий, а на холоді ще густіший. Мурахи його обожнюють, у воді він повільно розчиняється, а в жарі горить карамельним димом",[BAT]:"Кажани вдень сплять униз головою під стелею печери, гілкою чи карнизом, а ввечері вилітають на полювання: на слух знаходять метеликів і ловлять їх на льоту. Світлячків не чіпають — вони несмачні"};
 function hint(it){ if (HINTS[it]) toast(HINTS[it]); }
 
 /* ================= fingers ================= */
@@ -295,6 +300,7 @@ const sfx=(()=>{
     sizzle(k){ nz(.25,4200,.04+k*.08,1.5,"highpass"); },
     crackle(k){ nz(.03,2200+Math.random()*2000,.05+k*.12,2,"bandpass"); },
     zap(){ nz(.08,1800,.12,8,"bandpass"); },
+    buzz(){ nz(.18,180+Math.random()*90,.05,9,"bandpass",1.15); },
     chirp(){ nz(.035,7000+Math.random()*2500,.035,12,"bandpass",.45); }
   };
 })();
@@ -306,6 +312,7 @@ function sounds(){
   if (EV.sizzle && Math.random()<.25) sfx.sizzle(Math.min(1,EV.sizzle/40));
   if (EV.fire && Math.random()<Math.min(.6,EV.fire/150)) sfx.crackle(Math.min(1,EV.fire/600));
   if (EV.zap && Math.random()<.3) sfx.zap();
+  if (EV.buzz && Math.random()<Math.min(.12,EV.buzz*.05)) sfx.buzz();
   if (EV.chirp && Math.random()<Math.min(.5,EV.chirp*.4)) sfx.chirp();
   for (const k in EV) EV[k]=0;
 }
